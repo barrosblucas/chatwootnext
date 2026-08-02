@@ -1,7 +1,9 @@
 # frozen_string_literal: true
 
 # Liberação de features premium do Chatwoot fazer.ai (CE fork)
-# Uso: bundle exec rails runner script/liberar_premium.rb
+# Local:  bundle exec rails runner script/liberar_premium.rb
+# Docker: docker compose -f docker-compose.fazer.yml exec rails \
+#           bundle exec rails runner /scripts/liberar_premium.rb
 
 PREMIUM_FEATURES = %w[
   advanced_assignment
@@ -21,23 +23,37 @@ PREMIUM_FEATURES = %w[
   advanced_search
 ].freeze
 
+def write_installation_config(name, value, locked:)
+  config = InstallationConfig.find_or_initialize_by(name: name)
+  if config.respond_to?(:value=)
+    config.value = value
+  else
+    config.val = value
+  end
+  config.locked = locked
+  config.save!
+  config
+end
+
 puts '==> Configurando INSTALLATION_PRICING_PLAN=enterprise'
-ic = InstallationConfig.find_or_initialize_by(name: 'INSTALLATION_PRICING_PLAN')
-ic.value = 'enterprise'
-ic.locked = true
-ic.save!
+write_installation_config('INSTALLATION_PRICING_PLAN', 'enterprise', locked: true)
+write_installation_config('CREATE_NEW_ACCOUNT_FROM_DASHBOARD', true, locked: false)
 
-ac = InstallationConfig.find_or_initialize_by(name: 'CREATE_NEW_ACCOUNT_FROM_DASHBOARD')
-ac.value = true
-ac.locked = false
-ac.save!
+# Limpa cache para self_hosted_enterprise? refletir o novo plano
+GlobalConfig.clear_cache if defined?(GlobalConfig)
 
-puts "    pricing_plan=#{ChatwootHub.pricing_plan}"
+pricing = begin
+  ChatwootHub.pricing_plan
+rescue StandardError
+  GlobalConfig.get_value('INSTALLATION_PRICING_PLAN')
+end
+
+puts "    pricing_plan=#{pricing}"
 puts "    enterprise?=#{ChatwootApp.enterprise?}"
 puts "    self_hosted_enterprise?=#{ChatwootApp.self_hosted_enterprise?}"
 
 if Account.none?
-  puts '==> Nenhuma conta encontrada — criando conta + SuperAdmin de desenvolvimento'
+  puts '==> Nenhuma conta encontrada — criando conta + SuperAdmin'
   account = Account.create!(name: 'Sua Empresa')
   user = User.new(
     name: 'Admin',
@@ -52,10 +68,14 @@ if Account.none?
 end
 
 puts '==> Habilitando features premium em todas as contas'
+feature_names = if defined?(Featurable::FEATURE_LIST)
+                  Featurable::FEATURE_LIST.pluck('name')
+                else
+                  Account::FEATURE_LIST.pluck('name')
+                end
+
 Account.find_each do |account|
-  available = PREMIUM_FEATURES.select do |name|
-    Account::FEATURE_LIST.any? { |f| f['name'] == name }
-  end
+  available = PREMIUM_FEATURES.select { |name| feature_names.include?(name) }
   account.enable_features!(*available)
   account.custom_attributes['plan_name'] = 'Enterprise'
   account.save!
@@ -65,6 +85,5 @@ end
 
 puts '==> Feito'
 puts
-puts 'NOTA: Kanban e Internal Chat Pro NÃO estão neste repo CE.'
-puts '      Eles exigem o fork privado fazer-ai/chatwoot-pro / assinatura Pro.'
-puts '      Internal Chat base (canais públicos, DMs) já vem no CE sem flag.'
+puts 'NOTA: Kanban e Internal Chat Pro exigem chatwoot-pro / assinatura Pro.'
+puts '      Internal Chat base já vem no CE sem flag.'

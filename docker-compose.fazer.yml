@@ -1,0 +1,85 @@
+# Deploy com imagem pronta do fazer.ai (sem build local)
+# Uso:
+#   cp .env.fazer.example .env
+#   # edite SECRET_KEY_BASE, senhas, FRONTEND_URL
+#   docker compose -f docker-compose.fazer.yml up -d
+#   docker compose -f docker-compose.fazer.yml exec rails bundle exec rails runner /scripts/liberar_premium.rb
+#
+# Liberação: o script é montado de ./script no container.
+
+services:
+  base: &base
+    image: ghcr.io/fazer-ai/chatwoot:latest
+    pull_policy: always
+    env_file: .env
+    volumes:
+      - storage_data:/app/storage
+      - ./script:/scripts:ro
+
+  rails:
+    <<: *base
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    ports:
+      - '3000:3000'
+    environment:
+      - NODE_ENV=production
+      - RAILS_ENV=production
+      - INSTALLATION_ENV=docker
+    entrypoint: docker/entrypoints/rails.sh
+    command: ['bundle', 'exec', 'rails', 's', '-p', '3000', '-b', '0.0.0.0']
+    restart: always
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- --header="Accept: text/html" http://127.0.0.1:3000/ || exit 1']
+      interval: 30s
+      timeout: 20s
+      retries: 10
+      start_period: 120s
+
+  sidekiq:
+    <<: *base
+    depends_on:
+      rails:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      - NODE_ENV=production
+      - RAILS_ENV=production
+      - INSTALLATION_ENV=docker
+    command: ['bundle', 'exec', 'sidekiq', '-C', 'config/sidekiq.yml']
+    restart: always
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: always
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=${POSTGRES_DATABASE:-chatwoot}
+      - POSTGRES_USER=${POSTGRES_USERNAME:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -h localhost -p 5432 -U $$POSTGRES_USER -d $$POSTGRES_DB']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:alpine
+    restart: always
+    command: ['sh', '-c', 'redis-server --requirepass "$$REDIS_PASSWORD"']
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+    volumes:
+      - redis_data:/data
+
+volumes:
+  storage_data:
+  postgres_data:
+  redis_data:
