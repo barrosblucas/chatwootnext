@@ -77,6 +77,10 @@ class InstallationConfig < ApplicationRecord
     }.with_indifferent_access
   end
 
+  # Compat: ChatwootHub e código upstream ainda usam val/val=
+  alias_method :val, :value
+  alias_method :val=, :value=
+
   private
 
   def set_lock
