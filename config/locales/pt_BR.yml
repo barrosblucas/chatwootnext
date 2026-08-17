@@ -109,6 +109,7 @@ pt_BR:
         misconfigured: A transferência Connecta está habilitada, mas a URL ou o segredo do gateway estão ausentes
         timeout: A solicitação ao gateway Connecta expirou
         gateway_error: O gateway Connecta retornou um erro
+        target_department_id_required: target_department_id é obrigatório
     data_import:
       data_type:
         invalid: Tipo de dado inválido

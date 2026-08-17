@@ -158,6 +158,55 @@ RSpec.describe 'Connecta Transfer API', type: :request do
       }
     end
 
+    context 'when it is an unauthenticated user' do
+      it 'returns unauthorized' do
+        post api_v1_account_conversation_connecta_transfer_url(
+          account_id: account.id,
+          conversation_id: conversation.display_id
+        ),
+             params: { target_department_id: target_department_id },
+             as: :json
+
+        expect(response).to have_http_status(:unauthorized)
+      end
+    end
+
+    context 'when it is an agent from another account' do
+      let(:other_account) { create(:account) }
+      let(:other_agent) { create(:user, account: other_account, role: :agent) }
+
+      it 'returns unauthorized' do
+        post api_v1_account_conversation_connecta_transfer_url(
+          account_id: account.id,
+          conversation_id: conversation.display_id
+        ),
+             params: { target_department_id: target_department_id },
+             headers: other_agent.create_new_auth_token,
+             as: :json
+
+        expect(response).to have_http_status(:unauthorized)
+      end
+    end
+
+    context 'when the conversation does not exist' do
+      before do
+        create(:inbox_member, inbox: conversation.inbox, user: agent)
+        enable_connecta_transfer!
+      end
+
+      it 'returns not found' do
+        post api_v1_account_conversation_connecta_transfer_url(
+          account_id: account.id,
+          conversation_id: 99_999
+        ),
+             params: { target_department_id: target_department_id },
+             headers: agent.create_new_auth_token,
+             as: :json
+
+        expect(response).to have_http_status(:not_found)
+      end
+    end
+
     context 'when Connecta transfer is enabled' do
       before do
         create(:inbox_member, inbox: conversation.inbox, user: agent)
@@ -198,6 +247,21 @@ RSpec.describe 'Connecta Transfer API', type: :request do
           'source_resolved' => true
         )
         expect(response.body).not_to include(transfer_secret)
+      end
+
+      it 'returns unprocessable entity when target_department_id is blank' do
+        post api_v1_account_conversation_connecta_transfer_url(
+          account_id: account.id,
+          conversation_id: conversation.display_id
+        ),
+             params: { target_department_id: '' },
+             headers: agent.create_new_auth_token,
+             as: :json
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response.parsed_body['error']).to be_present
+        expect(response.body).not_to include(transfer_secret)
+        expect(WebMock).not_to have_requested(:post, "#{gateway_url}/chatwoot/transfer")
       end
 
       it 'maps gateway conflict to 409' do

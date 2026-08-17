@@ -53,6 +53,12 @@ captain:
   enabled: true
   icon: 'icon-captain'
   config_key: 'captain'
+connecta:
+  name: 'Connecta Transfer'
+  description: 'Cross-inbox conversation transfer via the Connecta Cidade gateway.'
+  enabled: true
+  icon: 'icon-share-forward-line'
+  config_key: 'connecta'
 
 # ------- Communication Channels ------- #
 live_chat:

@@ -1,21 +1,28 @@
 class Api::V1::Accounts::Conversations::ConnectaTransfersController < Api::V1::Accounts::Conversations::BaseController
   def destinations
-    render json: transfer_service.destinations
-  rescue Connecta::TransferService::Error => e
-    render json: { error: e.message }, status: e.status
-  rescue Net::OpenTimeout, Net::ReadTimeout, SocketError, Errno::ECONNREFUSED, Errno::ETIMEDOUT, HTTParty::Error
-    render json: { error: I18n.t('errors.conversations.connecta_transfer.timeout') }, status: :gateway_timeout
+    proxy { transfer_service.destinations }
   end
 
   def create
-    render json: transfer_service.transfer(target_department_id: transfer_params[:target_department_id])
+    target_department_id = transfer_params[:target_department_id]
+    if target_department_id.blank?
+      render json: { error: I18n.t('errors.conversations.connecta_transfer.target_department_id_required') },
+             status: :unprocessable_entity
+      return
+    end
+
+    proxy { transfer_service.transfer(target_department_id: target_department_id) }
+  end
+
+  private
+
+  def proxy
+    render json: yield
   rescue Connecta::TransferService::Error => e
     render json: { error: e.message }, status: e.status
   rescue Net::OpenTimeout, Net::ReadTimeout, SocketError, Errno::ECONNREFUSED, Errno::ETIMEDOUT, HTTParty::Error
     render json: { error: I18n.t('errors.conversations.connecta_transfer.timeout') }, status: :gateway_timeout
   end
-
-  private
 
   def transfer_service
     Connecta::TransferService.new(
