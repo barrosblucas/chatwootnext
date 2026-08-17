@@ -4,8 +4,11 @@
 # lint js and vue files
 npx --no-install lint-staged
 
-# lint only staged ruby files
-git diff --name-only --cached | xargs ls -1 2>/dev/null | grep '\.rb$' | xargs bundle exec rubocop --force-exclusion
+# lint only staged ruby files, without invoking Bundler when there are none
+ruby_files=$(git diff --name-only --cached --diff-filter=ACMR -- '*.rb')
+if [ -n "$ruby_files" ]; then
+  printf '%s\n' "$ruby_files" | xargs bundle exec rubocop --force-exclusion
+fi
 
 # stage rubocop changes to files
 # git diff --name-only --cached | xargs git add
