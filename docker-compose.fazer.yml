@@ -33,7 +33,7 @@ services:
     command: ['bundle', 'exec', 'rails', 's', '-p', '3000', '-b', '0.0.0.0']
     restart: always
     healthcheck:
-      test: ['CMD-SHELL', 'wget -qO- --header="Accept: text/html" http://127.0.0.1:3000/ || exit 1']
+      test: ['CMD-SHELL', "ruby -r net/http -e 'r = Net::HTTP.get_response(URI(\"http://127.0.0.1:3000/\")); exit(r.code.to_i < 400 ? 0 : 1)'"]
       interval: 30s
       timeout: 20s
       retries: 10
@@ -53,6 +53,22 @@ services:
       - RAILS_ENV=production
       - INSTALLATION_ENV=docker
     command: ['bundle', 'exec', 'sidekiq', '-C', 'config/sidekiq.yml']
+    restart: always
+
+  premium_watch:
+    <<: *base
+    depends_on:
+      rails:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      - NODE_ENV=production
+      - RAILS_ENV=production
+      - INSTALLATION_ENV=docker
+    command: ['bundle', 'exec', 'rails', 'runner', '/scripts/watch_liberar_premium.rb']
     restart: always
 
   postgres:
