@@ -153,6 +153,18 @@ class ConversationApi extends ApiClient {
   delete(conversationId) {
     return axios.delete(`${this.url}/${conversationId}`);
   }
+
+  getConnectaTransferDestinations(conversationId) {
+    return axios.get(
+      `${this.url}/${conversationId}/connecta_transfer/destinations`
+    );
+  }
+
+  createConnectaTransfer(conversationId, { targetDepartmentId }) {
+    return axios.post(`${this.url}/${conversationId}/connecta_transfer`, {
+      target_department_id: targetDepartmentId,
+    });
+  }
 }
 
 export default new ConversationApi();

@@ -104,6 +104,11 @@ pt_BR:
     conversations:
       unread_counts:
         feature_not_enabled: O recurso de contagem de conversas não lidas não está habilitado para esta conta
+      connecta_transfer:
+        disabled: A transferência Connecta não está habilitada nesta instalação
+        misconfigured: A transferência Connecta está habilitada, mas a URL ou o segredo do gateway estão ausentes
+        timeout: A solicitação ao gateway Connecta expirou
+        gateway_error: O gateway Connecta retornou um erro
     data_import:
       data_type:
         invalid: Tipo de dado inválido

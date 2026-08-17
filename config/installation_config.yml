@@ -547,6 +547,24 @@
   description: 'Token expiry in days'
 ## ------ End of Customizations for Customers ------ ##
 
+## ------ Connecta Cidade Cross-Inbox Transfer ------ ##
+- name: CONNECTA_TRANSFER_ENABLED
+  display_title: 'Connecta Transfer Enabled'
+  description: 'Enable cross-inbox conversation transfer via Connecta Cidade gateway'
+  value: false
+  locked: false
+  type: boolean
+- name: CONNECTA_GATEWAY_URL
+  display_title: 'Connecta Gateway URL'
+  description: 'Base URL of the whatsapp-platform gateway (no trailing slash)'
+  locked: false
+- name: CONNECTA_TRANSFER_SECRET
+  display_title: 'Connecta Transfer Secret'
+  description: 'Bearer token for gateway transfer endpoints (must match CHATWOOT_TRANSFER_SECRET on the gateway)'
+  locked: false
+  type: secret
+## ------ End of Connecta Cidade Cross-Inbox Transfer ------ ##
+
 ## ----- LLM Observability ---- ##
 - name: OTEL_PROVIDER
   display_title: 'OpenTelemetry Provider'

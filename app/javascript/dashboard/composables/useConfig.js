@@ -42,6 +42,12 @@ export function useConfig() {
    */
   const inboxEventsEnabled = config.inboxEventsEnabled === 'true';
 
+  /**
+   * Indicates whether Connecta cross-inbox transfer is enabled.
+   * @type {boolean}
+   */
+  const connectaTransferEnabled = config.connectaTransferEnabled === 'true';
+
   return {
     hostURL,
     vapidPublicKey,
@@ -49,5 +55,6 @@ export function useConfig() {
     isEnterprise,
     enterprisePlanName,
     inboxEventsEnabled,
+    connectaTransferEnabled,
   };
 }

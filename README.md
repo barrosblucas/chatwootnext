@@ -137,3 +137,33 @@ Thanks goes to all these [wonderful people](https://www.chatwoot.com/docs/contri
 
 
 *Chatwoot* &copy; 2017-2026, Chatwoot Inc - Released under the MIT License.
+
+## Connecta Cidade — transferência cross-inbox (Fase 3)
+
+Esta fork suporta transferência de conversas entre departamentos/inboxes via o gateway **whatsapp-platform** (Connecta Cidade), sem expor credenciais no navegador.
+
+### Variáveis de instalação
+
+Configure via Super Admin ou `config/installation_config.yml` / `.env`:
+
+| Variável | Descrição |
+|----------|-----------|
+| `CONNECTA_TRANSFER_ENABLED` | `true` para habilitar o botão **Transferir** na UI (padrão: `false`) |
+| `CONNECTA_GATEWAY_URL` | URL base do gateway (ex.: `https://wb-saude.exemplo.gov.br`, sem barra final) |
+| `CONNECTA_TRANSFER_SECRET` | Segredo Bearer para os endpoints de transferência no gateway |
+
+O valor de `CONNECTA_TRANSFER_SECRET` deve ser **idêntico** ao `CHATWOOT_TRANSFER_SECRET` configurado no gateway whatsapp-platform.
+
+### Endpoints do gateway
+
+O Rails atua apenas como **proxy** — a lógica de handoff/relay/WhatsApp fica no gateway:
+
+- `GET /chatwoot/transfer/destinations?from_inbox_id=&account_id=`
+- `POST /chatwoot/transfer`
+
+Ver plano Fase 3 §6.1 do whatsapp-platform.
+
+### UI
+
+Quando `CONNECTA_TRANSFER_ENABLED=true` e a conversa está **aberta** ou **pendente**, o botão **Transferir** aparece ao lado de **Resolver** no cabeçalho da conversa. O segredo nunca é enviado ao frontend.
+

@@ -25,6 +25,7 @@ const {
   DISABLE_USER_PROFILE_UPDATE: disableUserProfileUpdate,
   DEPLOYMENT_ENV: deploymentEnv,
   BAILEYS_WHATSAPP_GROUPS_ENABLED: baileysWhatsappGroupsEnabled,
+  CONNECTA_TRANSFER_ENABLED: connectaTransferEnabled,
   ACTIVE_PLATFORM_BANNERS: activePlatformBanners,
 } = window.globalConfig || {};
 
@@ -52,6 +53,7 @@ const state = {
   widgetBrandURL,
   isEnterprise: parseBoolean(isEnterprise),
   baileysWhatsappGroupsEnabled: parseBoolean(baileysWhatsappGroupsEnabled),
+  connectaTransferEnabled: parseBoolean(connectaTransferEnabled),
   activePlatformBanners: activePlatformBanners || [],
 };
 

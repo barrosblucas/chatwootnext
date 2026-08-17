@@ -233,5 +233,22 @@ describe('#ConversationAPI', () => {
         '/api/v1/conversations/1/attachments'
       );
     });
+
+    it('#getConnectaTransferDestinations', () => {
+      conversationAPI.getConnectaTransferDestinations(12);
+      expect(axiosMock.get).toHaveBeenCalledWith(
+        '/api/v1/conversations/12/connecta_transfer/destinations'
+      );
+    });
+
+    it('#createConnectaTransfer', () => {
+      conversationAPI.createConnectaTransfer(12, {
+        targetDepartmentId: 'vs.ubs-01',
+      });
+      expect(axiosMock.post).toHaveBeenCalledWith(
+        '/api/v1/conversations/12/connecta_transfer',
+        { target_department_id: 'vs.ubs-01' }
+      );
+    });
   });
 });

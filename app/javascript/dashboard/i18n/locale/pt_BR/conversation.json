@@ -107,6 +107,7 @@
     },
     "HEADER": {
       "RESOLVE_ACTION": "Resolver",
+      "TRANSFER_ACTION": "Transferir",
       "REOPEN_ACTION": "Reabrir",
       "OPEN_ACTION": "Abrir",
       "MORE_ACTIONS": "Mais ações",
@@ -141,6 +142,18 @@
         "TOMORROW": "Amanhã",
         "NEXT_WEEK": "Próxima semana"
       }
+    },
+    "TRANSFER": {
+      "TITLE": "Transferir conversa",
+      "DESCRIPTION": "Selecione o departamento de destino para transferir esta conversa.",
+      "DESTINATION_PLACEHOLDER": "Selecione o destino",
+      "EMPTY": "Nenhum destino de transferência disponível.",
+      "CONFIRM": "Transferir para {name}? O cidadão será avisado.",
+      "SUBMIT": "Transferir",
+      "CANCEL": "Cancelar",
+      "SUCCESS": "Conversa transferida com sucesso.",
+      "ERROR": "Não foi possível transferir a conversa. Tente novamente.",
+      "LOAD_ERROR": "Não foi possível carregar os destinos de transferência. Tente novamente."
     },
     "MENTION": {
       "AGENTS": "Agentes",

@@ -119,6 +119,7 @@
     },
     "HEADER": {
       "RESOLVE_ACTION": "Resolve",
+      "TRANSFER_ACTION": "Transfer",
       "REOPEN_ACTION": "Reopen",
       "OPEN_ACTION": "Open",
       "MORE_ACTIONS": "More actions",
@@ -153,6 +154,18 @@
         "TOMORROW": "Tomorrow",
         "NEXT_WEEK": "Next week"
       }
+    },
+    "TRANSFER": {
+      "TITLE": "Transfer conversation",
+      "DESCRIPTION": "Select the department inbox to transfer this conversation to.",
+      "DESTINATION_PLACEHOLDER": "Select destination",
+      "EMPTY": "No transfer destinations available.",
+      "CONFIRM": "Transfer to {name}? The citizen will be notified.",
+      "SUBMIT": "Transfer",
+      "CANCEL": "Cancel",
+      "SUCCESS": "Conversation transferred successfully.",
+      "ERROR": "Could not transfer the conversation. Please try again.",
+      "LOAD_ERROR": "Could not load transfer destinations. Please try again."
     },
     "MENTION": {
       "AGENTS": "Agents",
