@@ -1,0 +1,16 @@
+services:
+  base:
+    image: chatwootnext:local
+    pull_policy: never
+
+  rails:
+    image: chatwootnext:local
+    pull_policy: never
+
+  sidekiq:
+    image: chatwootnext:local
+    pull_policy: never
+
+  premium_watch:
+    image: chatwootnext:local
+    pull_policy: never
