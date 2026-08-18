@@ -116,9 +116,7 @@ const handleConfirm = async () => {
       );
     }
   } catch (error) {
-    useAlert(
-      error.response?.data?.error || t('CONVERSATION.TRANSFER.ERROR')
-    );
+    useAlert(error.response?.data?.error || t('CONVERSATION.TRANSFER.ERROR'));
   } finally {
     isLoading.value = false;
   }
@@ -143,6 +141,7 @@ const handleConfirm = async () => {
       :cancel-button-label="t('CONVERSATION.TRANSFER.CANCEL')"
       :disable-confirm-button="!selectedDepartmentId || isLoadingDestinations"
       :is-loading="isLoading"
+      overflow-visible
       @confirm="handleConfirm"
     >
       <div class="flex flex-col gap-4">
@@ -153,10 +152,7 @@ const handleConfirm = async () => {
           :disabled="isLoadingDestinations || loadError"
           :empty-state="t('CONVERSATION.TRANSFER.EMPTY')"
         />
-        <p
-          v-if="selectedDepartmentId"
-          class="text-sm text-n-slate-11"
-        >
+        <p v-if="selectedDepartmentId" class="text-sm text-n-slate-11">
           {{
             t('CONVERSATION.TRANSFER.CONFIRM', {
               name: selectedDestinationName,

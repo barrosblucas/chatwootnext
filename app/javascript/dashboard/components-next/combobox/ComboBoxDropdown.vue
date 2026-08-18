@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue';
+import { ref, watch, nextTick } from 'vue';
 import { useI18n } from 'vue-i18n';
 import Spinner from 'dashboard/components-next/spinner/Spinner.vue';
 import Icon from 'dashboard/components-next/icon/Icon.vue';
@@ -35,7 +35,7 @@ const props = defineProps({
   },
 });
 
-const emit = defineEmits(['select', 'search']);
+const emit = defineEmits(['select', 'search', 'close']);
 
 const { t } = useI18n();
 
@@ -45,6 +45,8 @@ const searchValue = defineModel('searchValue', {
 });
 
 const searchInput = ref(null);
+const listRef = ref(null);
+const highlightedIndex = ref(0);
 
 const isSelected = option => {
   if (Array.isArray(props.selectedValues)) {
@@ -53,13 +55,89 @@ const isSelected = option => {
   return option.value === props.selectedValues;
 };
 
+const scrollToHighlighted = () => {
+  nextTick(() => {
+    if (!listRef.value) return;
+    const items = listRef.value.querySelectorAll('li[role="option"]');
+    const targetItem = items[highlightedIndex.value];
+    targetItem?.scrollIntoView?.({ block: 'nearest' });
+  });
+};
+
+watch(
+  () => props.options,
+  () => {
+    highlightedIndex.value = 0;
+  }
+);
+
+watch(
+  () => props.open,
+  isOpen => {
+    if (isOpen) {
+      highlightedIndex.value = 0;
+    }
+  }
+);
+
 const onInputSearch = event => {
   searchValue.value = event.target.value;
   emit('search', event.target.value);
 };
 
+const onInputKeydown = event => {
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    event.stopPropagation();
+    emit('close');
+    return;
+  }
+
+  if (event.key === 'ArrowDown') {
+    event.preventDefault();
+    if (props.options.length > 0) {
+      highlightedIndex.value =
+        (highlightedIndex.value + 1) % props.options.length;
+      scrollToHighlighted();
+    }
+    return;
+  }
+
+  if (event.key === 'ArrowUp') {
+    event.preventDefault();
+    if (props.options.length > 0) {
+      highlightedIndex.value =
+        highlightedIndex.value <= 0
+          ? props.options.length - 1
+          : highlightedIndex.value - 1;
+      scrollToHighlighted();
+    }
+    return;
+  }
+
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    if (
+      highlightedIndex.value >= 0 &&
+      highlightedIndex.value < props.options.length
+    ) {
+      emit('select', props.options[highlightedIndex.value]);
+    } else if (props.options.length === 1) {
+      emit('select', props.options[0]);
+    }
+  }
+};
+
+const focus = () => {
+  if (searchInput.value) {
+    searchInput.value.focus();
+    const len = searchInput.value.value?.length || 0;
+    searchInput.value.setSelectionRange?.(len, len);
+  }
+};
+
 defineExpose({
-  focus: () => searchInput.value?.focus(),
+  focus,
 });
 </script>
 
@@ -86,9 +164,11 @@ defineExpose({
         :placeholder="searchPlaceholder || t('COMBOBOX.SEARCH_PLACEHOLDER')"
         class="reset-base w-full py-2 !ps-10 !pe-2 text-sm focus:outline-none border-none rounded-t-md bg-n-solid-1 text-n-slate-12"
         @input="onInputSearch"
+        @keydown="onInputKeydown"
       />
     </div>
     <ul
+      ref="listRef"
       class="py-1 mb-0 overflow-auto max-h-60"
       role="listbox"
       :aria-multiselectable="multiple"
@@ -98,11 +178,12 @@ defineExpose({
         :key="`${option.value}-${index}`"
         class="flex items-center justify-between w-full gap-2 px-3 py-2 text-sm transition-colors duration-150 cursor-pointer hover:bg-n-alpha-2"
         :class="{
-          'bg-n-alpha-2': isSelected(option),
+          'bg-n-alpha-2': isSelected(option) || highlightedIndex === index,
         }"
         role="option"
         :aria-selected="isSelected(option)"
         @click.stop="emit('select', option)"
+        @mouseenter="highlightedIndex = index"
       >
         <span
           :class="{

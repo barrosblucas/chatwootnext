@@ -62,10 +62,10 @@ vi.mock('dashboard/helper/URLHelper', () => ({
 describe('TransferAction.vue', () => {
   beforeAll(() => {
     if (typeof HTMLDialogElement !== 'undefined') {
-      HTMLDialogElement.prototype.showModal = vi.fn(function () {
+      HTMLDialogElement.prototype.showModal = vi.fn(function showModal() {
         this.open = true;
       });
-      HTMLDialogElement.prototype.close = vi.fn(function () {
+      HTMLDialogElement.prototype.close = vi.fn(function closeDialog() {
         this.open = false;
       });
     }
@@ -130,6 +130,13 @@ describe('TransferAction.vue', () => {
   });
 
   describe('Opening Dialog & Destination Loading', () => {
+    it('renders Dialog with overflow-visible set to true', () => {
+      const wrapper = mountComponent();
+      const dialog = wrapper.findComponent({ name: 'Dialog' });
+      expect(dialog.exists()).toBe(true);
+      expect(dialog.props('overflowVisible')).toBe(true);
+    });
+
     it('fetches destinations when opening the dialog', async () => {
       const mockDestinations = [
         { departmentId: 'dept-1', displayName: 'Department 1' },

@@ -48,6 +48,10 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  overflowVisible: {
+    type: Boolean,
+    default: false,
+  },
   width: {
     type: String,
     default: 'lg',
@@ -122,14 +126,19 @@ defineExpose({ open, close });
       :class="[
         maxWidthClass,
         positionClass,
-        overflowYAuto ? 'overflow-y-auto' : 'overflow-hidden',
+        overflowVisible
+          ? 'overflow-visible'
+          : overflowYAuto
+            ? 'overflow-y-auto'
+            : 'overflow-hidden',
       ]"
       @close.prevent="handleDialogClose"
     >
       <OnClickOutside @trigger="handleClickOutside">
         <form
           ref="dialogContentRef"
-          class="flex flex-col w-full max-h-[90vh] gap-6 p-6 overflow-hidden text-start align-middle transition-all duration-300 ease-in-out transform bg-n-alpha-3 backdrop-blur-[100px] shadow-xl rounded-xl"
+          class="flex flex-col w-full max-h-[90vh] gap-6 p-6 text-start align-middle transition-all duration-300 ease-in-out transform bg-n-alpha-3 backdrop-blur-[100px] shadow-xl rounded-xl"
+          :class="overflowVisible ? 'overflow-visible' : 'overflow-hidden'"
           @submit.prevent="confirm"
           @click.stop
         >
@@ -146,7 +155,10 @@ defineExpose({ open, close });
               </p>
             </slot>
           </div>
-          <div class="flex-1 min-h-0 overflow-y-auto">
+          <div
+            class="flex-1 min-h-0"
+            :class="overflowVisible ? 'overflow-visible' : 'overflow-y-auto'"
+          >
             <slot v-if="isOpen" />
           </div>
           <!-- Dialog content will be injected here -->
