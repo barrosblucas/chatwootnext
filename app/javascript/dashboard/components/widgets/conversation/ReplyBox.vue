@@ -50,8 +50,10 @@ import {
 import fileUploadMixin from 'dashboard/mixins/fileUploadMixin';
 import {
   appendSignature,
+  agentNamePrefix,
   getAgentVariables,
   getContactVariables,
+  prependAgentName,
 } from 'dashboard/helper/editorHelper';
 import { useCopilotReply } from 'dashboard/composables/useCopilotReply';
 import { useKbd } from 'dashboard/composables/utils/useKbd';
@@ -443,7 +445,16 @@ export default {
     messageSignature() {
       return this.getSignatureForInbox(this.inboxId);
     },
+    editorSignature() {
+      if (this.isAPIInbox && this.sendWithSignature) {
+        return agentNamePrefix(this.currentUser.available_name) || '';
+      }
+      return this.messageSignature;
+    },
     isSignatureAvailable() {
+      if (this.isAPIInbox) {
+        return !!agentNamePrefix(this.currentUser.available_name);
+      }
       return !!this.messageSignature;
     },
     sendWithSignature() {
@@ -547,7 +558,7 @@ export default {
     shouldShowSignaturePreview() {
       return (
         this.sendWithSignature &&
-        this.messageSignature &&
+        this.editorSignature &&
         !this.isPrivate &&
         !this.showRichContentEditor
       );
@@ -821,7 +832,13 @@ export default {
       );
     },
     applySignatureToMessage(message) {
-      if (!this.sendWithSignature || !this.messageSignature) {
+      if (!this.sendWithSignature) {
+        return message;
+      }
+      if (this.isAPIInbox) {
+        return prependAgentName(this.currentUser.available_name, message);
+      }
+      if (!this.messageSignature) {
         return message;
       }
       const signatureSettings = {
@@ -1487,7 +1504,7 @@ export default {
           :disabled="isEditorDisabled"
           enable-variables
           :variables="messageVariables"
-          :signature="messageSignature"
+          :signature="editorSignature"
           allow-signature
           :signature-position-override="signaturePosition"
           :signature-separator-override="signatureSeparator"
@@ -1530,6 +1547,7 @@ export default {
           v-if="
             isSignatureEnabledForInbox &&
             !isSignatureAvailable &&
+            !isAPIInbox &&
             isDefaultEditorMode
           "
           class="mb-2"

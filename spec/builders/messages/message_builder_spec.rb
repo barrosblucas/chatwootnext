@@ -450,4 +450,119 @@ describe Messages::MessageBuilder do
       end
     end
   end
+
+  describe 'agent name prefix for API inboxes' do
+    let(:channel_api) { create(:channel_api, account: account) }
+    let(:inbox) { channel_api.inbox }
+    let(:user) do
+      create(
+        :user,
+        account: account,
+        name: 'Maria Silva',
+        display_name: 'Maria Silva',
+        email: 'maria.silva@example.test'
+      )
+    end
+    let(:params) do
+      ActionController::Parameters.new({ content: 'Oi, tudo bem?' })
+    end
+
+    before do
+      user.update!(ui_settings: { 'channel_api_signature_enabled' => true })
+    end
+
+    it 'prepends agent name when flag is enabled' do
+      message = message_builder
+
+      expect(message.content).to eq("*Maria Silva*:\nOi, tudo bem?")
+    end
+
+    context 'when flag is disabled' do
+      before { user.update!(ui_settings: { 'channel_api_signature_enabled' => false }) }
+
+      it 'does not prepend agent name' do
+        message = message_builder
+
+        expect(message.content).to eq('Oi, tudo bem?')
+      end
+    end
+
+    context 'when content is already prefixed' do
+      let(:params) do
+        ActionController::Parameters.new({ content: "*Maria Silva*:\nOi, tudo bem?" })
+      end
+
+      it 'does not double-prefix' do
+        message = message_builder
+
+        expect(message.content).to eq("*Maria Silva*:\nOi, tudo bem?")
+      end
+    end
+
+    context 'when message is private' do
+      let(:params) do
+        ActionController::Parameters.new({ content: 'Private note', private: true })
+      end
+
+      it 'does not prepend agent name' do
+        message = message_builder
+
+        expect(message.content).to eq('Private note')
+      end
+    end
+
+    context 'when inbox is not API' do
+      let(:inbox) { create(:inbox, account: account) }
+
+      it 'does not prepend agent name' do
+        message = message_builder
+
+        expect(message.content).to eq('Oi, tudo bem?')
+      end
+    end
+
+    context 'when content is empty' do
+      let(:params) do
+        ActionController::Parameters.new({ content: '' })
+      end
+
+      it 'does not prepend agent name' do
+        message = message_builder
+
+        expect(message.content).to eq('')
+      end
+    end
+
+    context 'when sender is AgentBot' do
+      let(:agent_bot) { create(:agent_bot, account: account) }
+      let(:params) do
+        ActionController::Parameters.new({
+                                           content: 'Oi',
+                                           sender_type: 'AgentBot',
+                                           sender_id: agent_bot.id
+                                         })
+      end
+
+      it 'does not prepend agent name' do
+        message = message_builder
+
+        expect(message.content).to eq('Oi')
+      end
+    end
+
+    context 'when relay_origin is bot' do
+      let(:params) do
+        ActionController::Parameters.new({
+                                           content: 'Oi',
+                                           content_attributes: { relay_origin: 'bot' }
+                                         })
+      end
+
+      it 'does not prepend agent name' do
+        message = message_builder
+
+        expect(message.content).to eq('Oi')
+      end
+    end
+  end
 end

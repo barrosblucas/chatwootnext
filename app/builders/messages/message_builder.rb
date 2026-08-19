@@ -232,7 +232,7 @@ class Messages::MessageBuilder # rubocop:disable Metrics/ClassLength
       account_id: @conversation.account_id,
       inbox_id: @conversation.inbox_id,
       message_type: message_type,
-      content: @params[:content],
+      content: apply_agent_name_prefix(@params[:content]),
       private: @private,
       sender: sender,
       content_type: @params[:content_type],
@@ -321,6 +321,51 @@ class Messages::MessageBuilder # rubocop:disable Metrics/ClassLength
     message_drops(@conversation).merge({
                                          'agent' => UserDrop.new(sender)
                                        })
+  end
+
+  def apply_agent_name_prefix(content)
+    return content unless should_apply_agent_name_prefix?
+
+    prepend_agent_name(@user.available_name, content)
+  end
+
+  def should_apply_agent_name_prefix?
+    agent_name_prefix_context? && agent_name_prefix_allowed_content?
+  end
+
+  def agent_name_prefix_context?
+    !@private && @message_type == 'outgoing' && @user.is_a?(User) && api_inbox? && agent_name_signature_enabled?
+  end
+
+  def agent_name_prefix_allowed_content?
+    @params[:sender_type] != 'AgentBot' && content_attributes&.dig(:relay_origin) != 'bot' && @params[:content].present?
+  end
+
+  def api_inbox?
+    @conversation.inbox&.channel_type == 'Channel::Api'
+  end
+
+  def agent_name_signature_enabled?
+    ActiveModel::Type::Boolean.new.cast(@user.ui_settings&.fetch('channel_api_signature_enabled', false))
+  end
+
+  def prepend_agent_name(name, content)
+    safe_name = sanitize_agent_name(name)
+    return content if safe_name.blank?
+
+    prefix = "*#{safe_name}*:"
+    return content if content.start_with?("#{prefix}\n") || content == prefix
+
+    "#{prefix}\n#{content}"
+  end
+
+  def sanitize_agent_name(name)
+    return nil if name.blank?
+
+    sanitized = name.to_s.gsub(/\s+/, ' ').strip.delete('*')
+    return nil if sanitized.blank?
+
+    sanitized[0, 60]
   end
 end
 

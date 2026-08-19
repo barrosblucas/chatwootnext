@@ -382,6 +382,9 @@ const shouldShowSignaturePreview = computed(() => {
 
 const formattedSignature = computed(() => {
   if (!props.signature) return '';
+  if (props.channelType === INBOX_TYPES.API) {
+    return props.signature;
+  }
   return formatMessage(props.signature, false, false);
 });
 

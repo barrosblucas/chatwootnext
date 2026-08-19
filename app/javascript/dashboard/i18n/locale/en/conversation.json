@@ -243,6 +243,8 @@
       "MESSAGE_SIGN_TOOLTIP": "Message signature",
       "ENABLE_SIGN_TOOLTIP": "Enable signature",
       "DISABLE_SIGN_TOOLTIP": "Disable signature",
+      "ENABLE_AGENT_NAME_TOOLTIP": "Include agent name",
+      "DISABLE_AGENT_NAME_TOOLTIP": "Do not include agent name",
       "SIGNATURE_LABEL_TOP": "↓ Signature",
       "SIGNATURE_LABEL_TOP_TOOLTIP": "The signature will be sent at the top of the message",
       "SIGNATURE_LABEL_BOTTOM": "↑ Signature",

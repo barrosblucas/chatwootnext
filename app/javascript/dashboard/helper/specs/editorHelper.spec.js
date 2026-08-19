@@ -22,6 +22,7 @@ import {
   getMenuAnchor,
   getSelectionCoords,
   insertAtCursor,
+  prependAgentName,
   removeSignature,
   replaceSignature,
   stripInlineBase64Images,
@@ -132,6 +133,42 @@ describe.skip('findSignatureInBody - SKIP(#78): Due to changes on append signatu
       const { body, signature } = HAS_SIGNATURE[key];
       expect(findSignatureInBody(body, signature).index).toBeGreaterThan(0);
     });
+  });
+});
+
+describe('prependAgentName', () => {
+  it('prepends sanitized agent name to message content', () => {
+    expect(prependAgentName('Maria Silva', 'Oi, tudo bem?')).toBe(
+      '*Maria Silva*:\nOi, tudo bem?'
+    );
+  });
+
+  it('is idempotent when content is already prefixed', () => {
+    const content = '*Maria Silva*:\nOi, tudo bem?';
+    expect(prependAgentName('Maria Silva', content)).toBe(content);
+  });
+
+  it('returns content unchanged when name is empty', () => {
+    expect(prependAgentName('', 'Oi')).toBe('Oi');
+    expect(prependAgentName(null, 'Oi')).toBe('Oi');
+  });
+
+  it('returns content unchanged when message content is empty', () => {
+    expect(prependAgentName('Maria Silva', '')).toBe('');
+    expect(prependAgentName('Maria Silva', '   ')).toBe('   ');
+  });
+
+  it('sanitizes name by collapsing whitespace and stripping asterisks', () => {
+    expect(prependAgentName('  Maria   Silva  ', 'Oi')).toBe(
+      '*Maria Silva*:\nOi'
+    );
+    expect(prependAgentName('*Maria*', 'Oi')).toBe('*Maria*:\nOi');
+  });
+
+  it('truncates long names to 60 characters', () => {
+    const longName = 'A'.repeat(80);
+    const expectedPrefix = `*${'A'.repeat(60)}*:`;
+    expect(prependAgentName(longName, 'Oi')).toBe(`${expectedPrefix}\nOi`);
   });
 });
 

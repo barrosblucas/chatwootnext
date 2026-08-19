@@ -169,6 +169,58 @@ export function getEffectiveChannelType(channelType, medium) {
   return channelType;
 }
 
+const MAX_AGENT_NAME_LENGTH = 60;
+
+/**
+ * Sanitizes an agent display name for WAHA-style message prefixes.
+ *
+ * @param {string} name - The agent name to sanitize.
+ * @returns {string|null} - Sanitized name, or null when unusable.
+ */
+export function sanitizeAgentName(name) {
+  if (name === undefined || name === null) return null;
+
+  const collapsed = String(name).replace(/\s+/g, ' ').trim().replace(/\*/g, '');
+
+  if (!collapsed) return null;
+
+  return collapsed.slice(0, MAX_AGENT_NAME_LENGTH);
+}
+
+/**
+ * Builds the WAHA-style agent name prefix (`*Name*:`).
+ *
+ * @param {string} name - The agent name.
+ * @returns {string|null} - Prefix string, or null when name is unusable.
+ */
+export function agentNamePrefix(name) {
+  const safeName = sanitizeAgentName(name);
+  if (!safeName) return null;
+
+  return `*${safeName}*:`;
+}
+
+/**
+ * Prepends a WAHA-style agent name prefix to outgoing message content.
+ * Idempotent: does not prefix when content is empty or already prefixed.
+ *
+ * @param {string} name - The agent display name.
+ * @param {string} content - Message body text.
+ * @returns {string} - Content with optional prefix.
+ */
+export function prependAgentName(name, content) {
+  if (!content || !String(content).trim()) return content;
+
+  const prefix = agentNamePrefix(name);
+  if (!prefix) return content;
+
+  if (content.startsWith(`${prefix}\n`) || content === prefix) {
+    return content;
+  }
+
+  return `${prefix}\n${content}`;
+}
+
 /**
  * Appends the signature to the body, separated by the signature delimiter.
  * Automatically strips unsupported formatting based on channel capabilities.

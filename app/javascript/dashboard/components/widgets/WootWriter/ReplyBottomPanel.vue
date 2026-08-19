@@ -262,6 +262,11 @@ export default {
       return this.fetchSignatureFlagFromUISettings(this.channelType);
     },
     signatureToggleTooltip() {
+      if (this.isAPIInbox) {
+        return this.sendWithSignature
+          ? this.$t('CONVERSATION.FOOTER.DISABLE_AGENT_NAME_TOOLTIP')
+          : this.$t('CONVERSATION.FOOTER.ENABLE_AGENT_NAME_TOOLTIP');
+      }
       return this.sendWithSignature
         ? this.$t('CONVERSATION.FOOTER.DISABLE_SIGN_TOOLTIP')
         : this.$t('CONVERSATION.FOOTER.ENABLE_SIGN_TOOLTIP');

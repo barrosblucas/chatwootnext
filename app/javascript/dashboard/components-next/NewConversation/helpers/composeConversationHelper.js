@@ -1,6 +1,9 @@
 import { INBOX_TYPES } from 'dashboard/helper/inbox';
 import { getInboxIconByType } from 'dashboard/helper/inbox';
-import { appendSignature } from 'dashboard/helper/editorHelper';
+import {
+  appendSignature,
+  prependAgentName,
+} from 'dashboard/helper/editorHelper';
 import camelcaseKeys from 'camelcase-keys';
 import ContactAPI from 'dashboard/api/contacts';
 
@@ -137,12 +140,16 @@ export const prepareNewMessagePayload = ({
   signatureSettings = null,
 }) => {
   let finalMessage = message;
-  if (sendWithSignature && messageSignature) {
-    const settings = signatureSettings || {
-      position: currentUser?.ui_settings?.signature_position || 'top',
-      separator: currentUser?.ui_settings?.signature_separator || 'blank',
-    };
-    finalMessage = appendSignature(message, messageSignature, settings);
+  if (sendWithSignature) {
+    if (targetInbox.channelType === INBOX_TYPES.API) {
+      finalMessage = prependAgentName(currentUser?.available_name, message);
+    } else if (messageSignature) {
+      const settings = signatureSettings || {
+        position: currentUser?.ui_settings?.signature_position || 'top',
+        separator: currentUser?.ui_settings?.signature_separator || 'blank',
+      };
+      finalMessage = appendSignature(message, messageSignature, settings);
+    }
   }
 
   const payload = {
