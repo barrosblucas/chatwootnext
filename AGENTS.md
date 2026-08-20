@@ -159,3 +159,17 @@ For NEW account-level toggles, prefer the `settings` jsonb column instead of `fe
 4. The frontend reads it from `account.settings.your_toggle` (already serialized via `app/views/api/v1/models/_account.json.jbuilder` as `json.settings resource.settings`).
 
 This keeps toggles keyed by name (immune to bit-position drift between branches) and unbounded by the bigint width.
+
+## Cursor Cloud specific instructions
+
+This environment is provisioned as a Cloud Agent snapshot. Ruby 3.4.4 (via `rbenv`, shims already on `PATH` through `~/.bashrc`), Node 24.13.0, `pnpm` 10.2.0, PostgreSQL 16 (+ `pgvector`), Redis, and `overmind` are pre-installed. The startup update script only refreshes dependencies (`bundle install` + `pnpm install`); everything below must be done by the agent within a session.
+
+- **Node gotcha:** the Cloud VM ships an infra binary at `/exec-daemon/node` (v22) that is earlier on `PATH` than `nvm`. Node 24 is made to win by symlinking `node`/`npm`/`npx`/`corepack`/`pnpm` into `/usr/local/cargo/bin` (first on `PATH`). If `node -v` ever reports v22, re-create those symlinks from `~/.nvm/versions/node/v24.13.0/bin`.
+- **Services are NOT auto-started** (no systemd). At the start of each session, before running the app or specs, start them:
+  - Postgres: `sudo pg_ctlcluster 16 main start`
+  - Redis: `sudo redis-server /etc/redis/redis.conf --daemonize yes` (verify with `redis-cli ping`)
+- **`.env` is pre-generated** (gitignored, persisted in the snapshot) from `.env.example` with `POSTGRES_HOST=localhost`, `POSTGRES_USERNAME=postgres`, `POSTGRES_PASSWORD=postgres`, `REDIS_URL=redis://localhost:6379`, plus a real `SECRET_KEY_BASE` and `ACTIVE_RECORD_ENCRYPTION_*` keys. The `postgres` role password is `postgres`.
+- **Databases** already exist (`chatwoot_dev`, `chatwoot_test`) with schema loaded and dev data seeded. To (re)prepare after schema changes: `bundle exec rake db:chatwoot_prepare` (dev) and `RAILS_ENV=test bundle exec rails db:test:prepare` (test). Use `POSTGRES_STATEMENT_TIMEOUT=600s` when preparing to avoid the 14s statement timeout during schema load.
+- **Run the app:** `overmind start -f Procfile.dev` (Rails backend on `http://localhost:3000`, Vite dev server on `:3036`, Sidekiq worker). Overmind stops all processes if any one exits — if `backend`/`vite` die immediately with an "Interrupting..." message, check that the `worker` line's `dotenv`/`sidekiq` binstubs resolve (they are `rbenv` shims installed to the global gemset; a local `vendor/bundle` bundle path would hide them). The first browser load is slow (~30-60s) while Vite compiles on demand; wait and reload rather than assuming a crash. Health check: `curl http://localhost:3000/api` returns `{"queue_services":"ok","data_services":"ok"}` when Redis + Postgres are wired up.
+- **Seeded login:** `john@acme.inc` / `Password1!` (SuperAdmin) with a pre-seeded "Acme Inc" account, an "Acme Support" inbox, and a sample conversation.
+- Lint/test/run commands are documented under **Build / Test / Lint** above; they all work as-is once services are running.
