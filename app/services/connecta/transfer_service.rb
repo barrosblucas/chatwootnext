@@ -66,7 +66,11 @@ class Connecta::TransferService
   end
 
   def gateway_url
-    GlobalConfigService.load('CONNECTA_GATEWAY_URL', nil).to_s.chomp('/')
+    account_url = @account.custom_attributes&.dig('connecta_gateway_url')
+    return account_url.to_s.chomp('/') if account_url.present?
+
+    GlobalConfigService.load("CONNECTA_GATEWAY_URL_#{@account.id}", nil).presence&.to_s&.chomp('/') ||
+      GlobalConfigService.load('CONNECTA_GATEWAY_URL', nil).to_s.chomp('/')
   end
 
   def transfer_secret

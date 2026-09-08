@@ -1,6 +1,6 @@
 # Deploy rápido — imagem pronta fazer.ai + liberação premium
 #
-# 1) cp .env.fazer.example .env  &&  edite senhas / FRONTEND_URL / SECRET_KEY_BASE
+# 1) use o .env de produção desta VM e complete SMTP/segredos externos
 # 2) docker compose -f docker-compose.fazer.yml pull
 # 3) docker compose -f docker-compose.fazer.yml up -d
 # 4) Aguarde o healthcheck do rails (~2–5 min na 1ª subida: migrate)
@@ -9,5 +9,8 @@
 #
 # Imagem: ghcr.io/fazer-ai/chatwoot:latest  (sem build local)
 # Compose: docker-compose.fazer.yml
-# Env:     .env.fazer.example → .env
+# Env:     .env (produção; FRONTEND_URL definido no arquivo local)
 # Script:  script/liberar_premium.rb (montado em /scripts)
+
+# O Caddy remoto termina TLS e encaminha o origin configurado para a porta
+# publicada nesta VM.
