@@ -1,0 +1,18 @@
+## depois (07) 2026-10-22T16:51:48Z
+canario=g0-canario-sintetico-2026-10-22
+migracoes=185
+tabelas_base_public=119
+views=2
+tabelas_connecta_g0=7
+linhas_accounts=0
+linhas_users=0
+linhas_inboxes=0
+linhas_conversations=0
+linhas_messages=0
+linhas_contacts=0
+linhas_account_users=0
+linhas_connecta_g0_scoped_inboxes=0
+linhas_connecta_g0_conversation_scopes=0
+linhas_connecta_g0_user_grants=0
+linhas_connecta_g0_access_audits=0
+linhas_custom_filters=0

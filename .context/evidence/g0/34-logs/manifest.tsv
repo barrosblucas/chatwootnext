@@ -1,0 +1,9 @@
+label	exit	seconds	examples	failures	log
+T	0	45	40	0	.context/evidence/g0/34-logs/t-transfer.log
+D	0	28	27	0	.context/evidence/g0/34-logs/d-attachment.log
+B	0	70	73	0	.context/evidence/g0/34-logs/b-leftovers.log
+G1	0	86	94	0	.context/evidence/g0/34-logs/g1-scope.log
+G2	0	113	123	0	.context/evidence/g0/34-logs/g2-related.log
+C1	0	27	33	0	.context/evidence/g0/34-logs/c1-captain-1.log
+C2	0	27	33	0	.context/evidence/g0/34-logs/c2-captain-2.log
+C3	0	25	33	0	.context/evidence/g0/34-logs/c3-captain-3.log

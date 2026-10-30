@@ -1,0 +1,29 @@
+<p>{{ 'mailer.common.hi' | t: 'name', user.available_name }}</p>
+
+<p>
+  {{ 'mailer.agent_notifications.conversation_creation.body' | t: 'url', action_url, 'conversation_id', conversation.display_id, 'inbox_name', inbox.name, 'contact_name', conversation.contact_name }}
+</p>
+
+{% for chat_message in conversation.recent_messages %}
+  <div>
+    <h4 style="margin: 0;">
+      {% if chat_message.sender == user.available_name %}
+        {{ 'mailer.common.you' | t }}
+      {% else %}
+        {{chat_message.sender}}
+      {% endif %}
+    </h4>
+  </div>
+
+  <div style="padding: 10px 20px; margin: 5px 0 20px 0; background: #F2F3F7; border-radius: 10px; display: inline-block; font-family: 'Helvetica Neue',Tahoma,Arial,sans-serif; text-align: start; unicode-bidi: plaintext;">
+    {% if chat_message.content %}
+      {{chat_message.content}}
+    {% endif %}
+
+    {% if chat_message.attachments %}
+      {% for attachment in chat_message.attachments %}
+        {{ 'mailer.common.attachment_click_to_view' | t: 'url', attachment }}
+      {% endfor %}
+    {% endif %}
+  </div>
+{% endfor %}

@@ -1,0 +1,417 @@
+class ActionCableListener < BaseListener # rubocop:disable Metrics/ClassLength
+  include Events::Types
+
+  def notification_created(event)
+    notification, account, unread_count, count = extract_notification_and_account(event)
+    tokens = [event.data[:notification].user.pubsub_token]
+    broadcast(account, tokens, NOTIFICATION_CREATED, { notification: notification.push_event_data, unread_count: unread_count, count: count })
+  end
+
+  def notification_updated(event)
+    notification, account, unread_count, count = extract_notification_and_account(event)
+    tokens = [event.data[:notification].user.pubsub_token]
+    broadcast(account, tokens, NOTIFICATION_UPDATED, { notification: notification.push_event_data, unread_count: unread_count, count: count })
+  end
+
+  def notification_deleted(event)
+    notification_data = event.data[:notification_data]
+
+    user = User.find_by(id: notification_data[:user_id])
+    account = Account.find_by(id: notification_data[:account_id])
+    return if user.blank? || account.blank?
+
+    notification_finder = NotificationFinder.new(user, account)
+    tokens = [user.pubsub_token]
+    broadcast(account, tokens, NOTIFICATION_DELETED, {
+                notification: { id: notification_data[:id] },
+                unread_count: notification_finder.unread_count,
+                count: notification_finder.count
+              })
+  end
+
+  def account_cache_invalidated(event)
+    account = event.data[:account]
+    tokens = user_tokens(account, account.agents)
+
+    broadcast(account, tokens, ACCOUNT_CACHE_INVALIDATED, {
+                cache_keys: event.data[:cache_keys]
+              })
+  end
+
+  def inbox_provider_connection_updated(event)
+    inbox = event.data[:inbox]
+    account = inbox.account
+    provider_connection = event.data[:provider_connection] || {}
+
+    # QR code / error are admin-only (mirrors Channel::Whatsapp#provider_connection_data):
+    # the QR grants full access to the WhatsApp account, so it must not reach agents.
+    # Agents and admins receive different payloads (admins also get qr_data_url/error,
+    # which grant full WhatsApp account access), so the two recipient lists are built
+    # separately. Querying each role directly also avoids `user_tokens` re-querying
+    # administrators. The roles are disjoint, so the lists never overlap.
+    admin_tokens = account.administrators.pluck(:pubsub_token)
+    agent_tokens = account.agents.pluck(:pubsub_token)
+
+    # reach-out lock, new-chat cap and send-stall are not credential-sensitive (unlike qr_data_url), so they
+    # ride the base hash shared by both agent and admin broadcasts. Without this, a connection.update
+    # push would broadcast a provider_connection without them and the frontend mutation (wholesale
+    # replace) would drop the restriction/cap banners. .presence + .compact keeps absent keys out.
+    connection = {
+      connection: provider_connection['connection'],
+      reachout_time_lock: provider_connection['reachout_time_lock'].presence,
+      new_chat_cap: provider_connection['new_chat_cap'].presence,
+      send_stall: provider_connection['send_stall'].presence
+    }.compact
+    broadcast(account, agent_tokens, INBOX_PROVIDER_CONNECTION_UPDATED, { inbox_id: inbox.id, provider_connection: connection })
+    broadcast(account, admin_tokens, INBOX_PROVIDER_CONNECTION_UPDATED, {
+                inbox_id: inbox.id,
+                provider_connection: connection.merge(inbox.channel.provider_connection_admin_data(provider_connection))
+              })
+  end
+
+  def message_created(event)
+    message, account = extract_message_and_account(event)
+    conversation = message.conversation
+    tokens = user_tokens(account, conversation.inbox.members) + contact_tokens(conversation.contact_inbox, message)
+
+    broadcast(account, tokens, MESSAGE_CREATED, message.push_event_data)
+  end
+
+  def message_updated(event)
+    message, account = extract_message_and_account(event)
+    conversation = message.conversation
+    tokens = user_tokens(account, conversation.inbox.members) + contact_tokens(conversation.contact_inbox, message)
+
+    broadcast(account, tokens, MESSAGE_UPDATED, message.push_event_data.merge(previous_changes: event.data[:previous_changes]))
+  end
+
+  def scheduled_message_created(event)
+    scheduled_message = event.data[:scheduled_message]
+    account = scheduled_message.account
+    tokens = user_tokens(account, scheduled_message.conversation.inbox.members)
+
+    broadcast(account, tokens, SCHEDULED_MESSAGE_CREATED, scheduled_message.push_event_data)
+  end
+
+  def scheduled_message_updated(event)
+    scheduled_message = event.data[:scheduled_message]
+    account = scheduled_message.account
+    tokens = user_tokens(account, scheduled_message.conversation.inbox.members)
+
+    broadcast(account, tokens, SCHEDULED_MESSAGE_UPDATED, scheduled_message.push_event_data)
+  end
+
+  def scheduled_message_deleted(event)
+    scheduled_message = event.data[:scheduled_message]
+    account = scheduled_message.account
+    tokens = user_tokens(account, scheduled_message.conversation.inbox.members)
+
+    broadcast(account, tokens, SCHEDULED_MESSAGE_DELETED, scheduled_message.push_event_data)
+  end
+
+  def recurring_scheduled_message_created(event)
+    recurring = event.data[:recurring_scheduled_message]
+    account = recurring.account
+    tokens = user_tokens(account, recurring.conversation.inbox.members)
+
+    broadcast(account, tokens, RECURRING_SCHEDULED_MESSAGE_CREATED, recurring.push_event_data)
+  end
+
+  def recurring_scheduled_message_updated(event)
+    recurring = event.data[:recurring_scheduled_message]
+    account = recurring.account
+    tokens = user_tokens(account, recurring.conversation.inbox.members)
+
+    broadcast(account, tokens, RECURRING_SCHEDULED_MESSAGE_UPDATED, recurring.push_event_data)
+  end
+
+  def recurring_scheduled_message_deleted(event)
+    recurring = event.data[:recurring_scheduled_message]
+    account = recurring.account
+    tokens = user_tokens(account, recurring.conversation.inbox.members)
+
+    broadcast(account, tokens, RECURRING_SCHEDULED_MESSAGE_DELETED, recurring.push_event_data)
+  end
+
+  def first_reply_created(event)
+    message, account = extract_message_and_account(event)
+    conversation = message.conversation
+    tokens = user_tokens(account, conversation.inbox.members)
+
+    broadcast(account, tokens, FIRST_REPLY_CREATED, message.push_event_data)
+  end
+
+  def conversation_created(event)
+    conversation, account = extract_conversation_and_account(event)
+    # Built once and shared: `push_event_data` is several queries deep, and the
+    # contact's copy is a subset of the agents', never a fresher read.
+    payload = conversation.push_event_data
+
+    broadcast(account, user_tokens(account, conversation.inbox.members), CONVERSATION_CREATED, payload)
+    broadcast_to_contact(account, conversation, CONVERSATION_CREATED, payload)
+  end
+
+  def conversation_read(event)
+    conversation, account = extract_conversation_and_account(event)
+    tokens = user_tokens(account, conversation.inbox.members)
+
+    broadcast(account, tokens, CONVERSATION_READ, conversation.push_event_data)
+  end
+
+  def conversation_status_changed(event)
+    conversation, account = extract_conversation_and_account(event)
+    payload = conversation.push_event_data
+
+    broadcast(account, user_tokens(account, conversation.inbox.members), CONVERSATION_STATUS_CHANGED, payload)
+    broadcast_to_contact(account, conversation, CONVERSATION_STATUS_CHANGED, payload)
+  end
+
+  def conversation_updated(event)
+    conversation, account = extract_conversation_and_account(event)
+
+    payload = conversation.push_event_data
+    metadata = event.data[:broadcast_metadata]
+    payload = payload.merge(event_metadata: metadata) if metadata.present?
+
+    broadcast(account, user_tokens(account, conversation.inbox.members), CONVERSATION_UPDATED, payload)
+    broadcast_to_contact(account, conversation, CONVERSATION_UPDATED, payload)
+  end
+
+  def conversation_unread_count_changed(event)
+    account, inbox_members = ::Conversations::UnreadCounts::BroadcastScope.new(event).perform
+    return if account.blank? || !account.feature_enabled?('conversation_unread_counts')
+
+    tokens = user_tokens(account, inbox_members)
+
+    broadcast(account, tokens, CONVERSATION_UNREAD_COUNT_CHANGED, {})
+  end
+
+  def conversation_typing_on(event)
+    conversation = event.data[:conversation]
+    account = conversation.account
+    user = event.data[:user]
+    tokens = typing_event_listener_tokens(account, conversation, user)
+
+    broadcast(
+      account,
+      tokens,
+      CONVERSATION_TYPING_ON,
+      { conversation: typing_conversation_data(conversation),
+        user: user.push_event_data,
+        is_private: event.data[:is_private] || false }
+    )
+  end
+
+  def conversation_recording(event)
+    conversation = event.data[:conversation]
+    account = conversation.account
+    user = event.data[:user]
+    tokens = typing_event_listener_tokens(account, conversation, user)
+
+    broadcast(
+      account,
+      tokens,
+      CONVERSATION_RECORDING,
+      { conversation: typing_conversation_data(conversation),
+        user: user.push_event_data,
+        is_private: event.data[:is_private] || false }
+    )
+  end
+
+  def conversation_typing_off(event)
+    conversation = event.data[:conversation]
+    account = conversation.account
+    user = event.data[:user]
+    tokens = typing_event_listener_tokens(account, conversation, user)
+
+    broadcast(
+      account,
+      tokens,
+      CONVERSATION_TYPING_OFF,
+      { conversation: typing_conversation_data(conversation),
+        user: user.push_event_data,
+        is_private: event.data[:is_private] || false }
+    )
+  end
+
+  def assignee_changed(event)
+    conversation, account = extract_conversation_and_account(event)
+    tokens = user_tokens(account, conversation.inbox.members)
+
+    broadcast(account, tokens, ASSIGNEE_CHANGED, conversation.push_event_data)
+  end
+
+  def team_changed(event)
+    conversation, account = extract_conversation_and_account(event)
+    tokens = user_tokens(account, conversation.inbox.members)
+
+    broadcast(account, tokens, TEAM_CHANGED, conversation.push_event_data)
+  end
+
+  def conversation_contact_changed(event)
+    conversation, account = extract_conversation_and_account(event)
+    tokens = user_tokens(account, conversation.inbox.members)
+
+    broadcast(account, tokens, CONVERSATION_CONTACT_CHANGED, conversation.push_event_data)
+  end
+
+  def contact_created(event)
+    contact, account = extract_contact_and_account(event)
+    broadcast(account, [account_token(account)], CONTACT_CREATED, contact.push_event_data)
+  end
+
+  def contact_updated(event)
+    contact, account = extract_contact_and_account(event)
+    broadcast(account, [account_token(account)], CONTACT_UPDATED, contact.push_event_data)
+  end
+
+  def contact_merged(event)
+    contact, account = extract_contact_and_account(event)
+    broadcast(account, [account_token(account)], CONTACT_MERGED, contact.push_event_data)
+  end
+
+  def contact_deleted(event)
+    contact_data = event.data[:contact_data]
+    account = Account.find_by(id: contact_data[:account_id])
+    return if account.blank?
+
+    broadcast(account, [account_token(account)], CONTACT_DELETED, contact_data)
+  end
+
+  def contact_group_synced(event)
+    contact, account = extract_contact_and_account(event)
+    # The inbox the sync actually ran as. `Contact#group_channel` is the group contact's
+    # first contact inbox, which is an arbitrary pick as soon as the same group is in two
+    # inboxes of one account: it would answer "you administer this group" for a number
+    # that is not the one the agent has open. Kept as the fallback for an event queued by
+    # a version that did not name it.
+    channel = event.data[:channel] || contact.group_channel
+    # The same answer the REST roster sends, from the same lookup. Two copies of it is how
+    # an account known by LID alone was recognised by whichever ran last: the fetch said
+    # "you administer this group" and the first sync event took it back.
+    own_member = Whatsapp::Session::Owner.group_member(channel, contact)
+    payload = contact.push_event_data.merge(
+      group_members: group_members_data(contact, account),
+      inbox_id: channel&.inbox&.id,
+      inbox_phone_number: channel&.phone_number,
+      own_member_id: own_member&.id,
+      is_inbox_admin: own_member&.role == 'admin'
+    )
+
+    broadcast(account, [account_token(account)], CONTACT_GROUP_SYNCED, payload)
+  end
+
+  def conversation_mentioned(event)
+    conversation, account = extract_conversation_and_account(event)
+    user = event.data[:user]
+
+    broadcast(account, [user.pubsub_token], CONVERSATION_MENTIONED, conversation.push_event_data)
+  end
+
+  def conversation_pinned(event)
+    broadcast_conversation_pin(event, CONVERSATION_PINNED)
+  end
+
+  def conversation_unpinned(event)
+    broadcast_conversation_pin(event, CONVERSATION_UNPINNED)
+  end
+
+  private
+
+  # Pins are personal, so the event only reaches the sessions of the agent who pinned the conversation.
+  def broadcast_conversation_pin(event, event_name)
+    pin_data = event.data[:conversation_pin]
+
+    user = User.find_by(id: pin_data[:user_id])
+    account = Account.find_by(id: pin_data[:account_id])
+    return if user.blank? || account.blank?
+
+    broadcast(account, [user.pubsub_token], event_name, {
+                conversation_id: pin_data[:conversation_id],
+                pinned_at: pin_data[:pinned_at]
+              })
+  end
+
+  def account_token(account)
+    "account_#{account.id}"
+  end
+
+  # The contact subscribes to the same conversation events as the agents, but
+  # `push_event_data` is an agent payload. It gets its own broadcast built from
+  # the contact allowlist instead of riding along on the agents' hash.
+  # `payload` is passed in rather than re-derived so per-event extras the caller
+  # merged in (eg. `event_metadata`) survive the narrowing.
+  # ActionCableBroadcastJob preserves the shape it is handed; without that, the
+  # refresh would rebuild the full agent payload and undo this.
+  def broadcast_to_contact(account, conversation, event_name, payload)
+    # `performer` is skipped rather than allowlisted: it is merged in below,
+    # after the narrowing, and carries the acting agent's name and availability
+    # status. The widget never reads it. Typing events keep it — they already
+    # send `user` on purpose so the widget can render "agent is typing".
+    broadcast(account, contact_inbox_tokens(conversation.contact_inbox), event_name,
+              Conversations::EventDataPresenter.contact_slice(payload), include_performer: false)
+  end
+
+  # Typing events reach agents and the contact in a single payload, and no
+  # subscriber reads more than the conversation id here — the dashboard handlers
+  # key their timers off `conversation.id` and nothing else. So this ships the
+  # contact-sized payload to everyone rather than doubling the jobs on a
+  # per-keystroke path.
+  def typing_conversation_data(conversation)
+    conversation.contact_push_event_data
+  end
+
+  def typing_event_listener_tokens(account, conversation, user)
+    current_user_token = if user.is_a?(Contact)
+                           conversation.contact_inbox.pubsub_token
+                         elsif user.respond_to?(:pubsub_token)
+                           user.pubsub_token
+                         end
+
+    tokens = user_tokens(account, conversation.inbox.members) + [conversation.contact_inbox.pubsub_token]
+    current_user_token.present? ? tokens - [current_user_token] : tokens
+  end
+
+  def user_tokens(account, agents)
+    agent_tokens = agents.pluck(:pubsub_token)
+    admin_tokens = account.administrators.pluck(:pubsub_token)
+    (agent_tokens + admin_tokens).uniq
+  end
+
+  def contact_tokens(contact_inbox, message)
+    return [] if message.private?
+    return [] if message.activity?
+    return [] if contact_inbox.nil?
+
+    contact_inbox_tokens(contact_inbox)
+  end
+
+  def contact_inbox_tokens(contact_inbox)
+    contact = contact_inbox.contact
+
+    contact_inbox.hmac_verified? ? contact.contact_inboxes.where(hmac_verified: true).filter_map(&:pubsub_token) : [contact_inbox.pubsub_token]
+  end
+
+  def group_members_data(contact, _account)
+    GroupMember.active.where(group_contact: contact).includes(:contact).map do |member|
+      {
+        id: member.id, role: member.role, is_active: member.is_active, group_contact_id: member.group_contact_id,
+        contact: { id: member.contact.id, name: member.contact.name, phone_number: member.contact.phone_number,
+                   identifier: member.contact.identifier, thumbnail: member.contact.avatar_url }
+      }
+    end
+  end
+
+  def broadcast(account, tokens, event_name, data, include_performer: true)
+    return if tokens.blank?
+
+    payload = data.merge(account_id: account.id)
+    # So the frondend knows who performed the action.
+    # Useful in cases like conversation assignment for generating a notification with assigner name.
+    payload[:performer] = Current.user&.push_event_data if include_performer && Current.user.present?
+
+    ::ActionCableBroadcastJob.perform_later(tokens.uniq, event_name, payload)
+  end
+end
+
+ActionCableListener.prepend_mod_with('ActionCableListener')

@@ -1,0 +1,9 @@
+<p>{{ 'mailer.common.hi' | t: 'name', user.available_name }},</p>
+
+<p>
+  {{ 'mailer.agent_notifications.sla_missed_first_response.full_body' | t: 'conversation_id', conversation.display_id, 'inbox_name', inbox.name, 'sla_policy_name', sla_policy.name }}
+</p>
+
+<p>
+<a href="{{action_url}}">{{ 'mailer.agent_notifications.sla_missed_first_response.action' | t }}</a>
+</p>

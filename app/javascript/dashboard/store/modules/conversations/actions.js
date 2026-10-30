@@ -1,0 +1,771 @@
+import types from '../../mutation-types';
+import ConversationApi from '../../../api/inbox/conversation';
+import MessageApi from '../../../api/inbox/message';
+import { MESSAGE_STATUS, MESSAGE_TYPE } from 'shared/constants/messages';
+import { createPendingMessage } from 'dashboard/helper/commons';
+import { isStaleConversation } from './helpers';
+import wootConstants from 'dashboard/constants/globals';
+import { emitter } from 'shared/helpers/mitt';
+import { BUS_EVENTS } from 'shared/constants/busEvents';
+import {
+  buildConversationList,
+  isOnMentionsView,
+  isOnParticipatingView,
+  isOnUnattendedView,
+  isOnFoldersView,
+} from './helpers/actionHelpers';
+import messageReadActions from './actions/messageReadActions';
+import messageTranslateActions from './actions/messageTranslateActions';
+import * as Sentry from '@sentry/vue';
+import {
+  handleVoiceCallCreated,
+  handleVoiceCallUpdated,
+  syncConversationCallVisibility,
+} from 'dashboard/helper/voice';
+
+export const hasMessageFailedWithExternalError = pendingMessage => {
+  // This helper is used to check if the message has failed with an external error.
+  // We have two cases
+  // 1. Messages that fail from the UI itself (due to large attachments or a failed network):
+  //    In this case, the message will have a status of failed but no external error. So we need to create that message again
+  // 2. Messages sent from Chatwoot but failed to deliver to the customer for some reason (user blocking or client system down):
+  //    In this case, the message will have a status of failed and an external error. So we need to retry that message
+  const { content_attributes: contentAttributes, status } = pendingMessage;
+  const externalError = contentAttributes?.external_error ?? '';
+  return status === MESSAGE_STATUS.FAILED && externalError !== '';
+};
+
+// The getter behind each assignee tab is the same predicate the list on screen uses, so what it
+// returns is exactly what the agent is looking at. Saved filters and folders narrow the list with
+// a rule of their own and have no assigneeType, so they fall out here.
+const TAB_GETTERS = {
+  me: 'getMineChats',
+  unassigned: 'getUnAssignedChats',
+  all: 'getAllStatusChats',
+};
+
+// Mentions and participating do carry an assigneeType, but the server narrows those lists by a
+// membership the store cannot reproduce, so what is on screen there is not the tab a reconciliation
+// would judge it against.
+const UNRECONCILABLE_VIEWS = [
+  wootConstants.CONVERSATION_TYPE.MENTION,
+  wootConstants.CONVERSATION_TYPE.PARTICIPATING,
+];
+
+// The trigger fires from a watcher, which can fire again while the request is still out.
+const tabsBeingReconciled = new Set();
+
+// actions
+const actions = {
+  getConversation: async ({ commit }, conversationId) => {
+    try {
+      const response = await ConversationApi.show(conversationId);
+      commit(types.UPDATE_CONVERSATION, response.data);
+      commit(`contacts/${types.SET_CONTACT_ITEM}`, response.data.meta.sender);
+    } catch (error) {
+      // Ignore error
+    }
+  },
+
+  fetchAllConversations: async ({ commit, state, dispatch }) => {
+    commit(types.SET_LIST_LOADING_STATUS);
+    try {
+      const params = state.conversationFilters;
+      const {
+        data: { data },
+      } = await ConversationApi.get(params);
+      buildConversationList(
+        { commit, dispatch },
+        params,
+        data,
+        params.assigneeType
+      );
+    } catch (error) {
+      // Handle error
+    }
+  },
+
+  fetchFilteredConversations: async ({ commit, dispatch }, params) => {
+    commit(types.SET_LIST_LOADING_STATUS);
+    try {
+      const { data } = await ConversationApi.filter(params);
+      buildConversationList(
+        { commit, dispatch },
+        params,
+        data,
+        'appliedFilters'
+      );
+    } catch (error) {
+      commit(types.CLEAR_LIST_LOADING_STATUS);
+      throw error;
+    }
+  },
+
+  // Puts a tab back in sync with the server. The store is a cache nothing invalidates:
+  // SET_ALL_CONVERSATION only adds or replaces, and a conversation that leaves a tab stops being
+  // sent to it, so one missed cable event leaves a copy on the list forever and the copies pile up.
+  //
+  // Refreshes rather than evicts, because `allConversations` is shared by every tab: a conversation
+  // that left "unassigned" by gaining an assignee still belongs to "all", and very likely to
+  // someone's "mine". Fresh data takes it off this tab and keeps it on the others. Only what the
+  // server does not return at all is removed, which means deleted or no longer permitted.
+  //
+  // Only the conversations that were on screen when the request went out can be judged by its
+  // answer, so the candidates are snapshotted here and both the question and the verdict are
+  // scoped to that list. A conversation that arrives over the cable mid-flight is not in the
+  // snapshot and is therefore left alone, rather than read as missing from a reply that was
+  // never about it.
+  //
+  // Returns what it removed, so the caller can drop the same conversations from anything keyed
+  // by them.
+  reconcileConversationTab: async ({ commit, getters, state }, filters) => {
+    const tabGetter = TAB_GETTERS[filters.assigneeType];
+    if (!tabGetter || UNRECONCILABLE_VIEWS.includes(filters.conversationType)) {
+      return [];
+    }
+    if (tabsBeingReconciled.has(filters.assigneeType)) return [];
+
+    tabsBeingReconciled.add(filters.assigneeType);
+    try {
+      const candidates = getters[tabGetter](filters).map(c => ({
+        id: c.id,
+        inboxId: c.inbox_id,
+      }));
+      if (!candidates.length) return [];
+
+      const {
+        data: { payload },
+      } = await ConversationApi.sync(candidates.map(c => c.id));
+
+      // A cable event can beat this response home, and SET_ALL_CONVERSATION replaces without
+      // looking at timestamps, so an older row is dropped here rather than written over a newer
+      // one. Regressing a status or an assignee would also hide the conversation with no way back:
+      // a list shorter than its badge is not a contradiction anything watches for.
+      const applicable = payload.filter(
+        c => !isStaleConversation(c, getters.getConversationById(c.id))
+      );
+      // The open conversation keeps its messages and attachments through this mutation's own
+      // selected-chat branch, so a refresh never empties the panel under the agent.
+      if (applicable.length) commit(types.SET_ALL_CONVERSATION, applicable);
+
+      const stillThere = new Set(payload.map(c => c.id));
+      const removed = candidates.filter(c => !stillThere.has(c.id));
+      if (removed.length) {
+        commit(
+          types.REMOVE_CONVERSATIONS,
+          removed.map(c => c.id)
+        );
+      }
+      // The panel is showing a conversation the server just refused to serve. Announced rather
+      // than acted on here, because the store has no router, and announced from here rather than
+      // left to each caller, because it is a fact about the removal and not about who asked.
+      if (removed.some(c => c.id === state.selectedChatId)) {
+        emitter.emit(BUS_EVENTS.OPEN_CONVERSATION_GONE);
+      }
+      return removed;
+    } catch (error) {
+      return [];
+    } finally {
+      tabsBeingReconciled.delete(filters.assigneeType);
+    }
+  },
+
+  emptyAllConversations({ commit }) {
+    commit(types.EMPTY_ALL_CONVERSATION);
+  },
+
+  clearSelectedState({ commit }) {
+    commit(types.CLEAR_CURRENT_CHAT_WINDOW);
+  },
+
+  fetchPreviousMessages: async ({ commit }, data) => {
+    try {
+      const {
+        data: { meta, payload },
+      } = await MessageApi.getPreviousMessages(data);
+      commit(`conversationMetadata/${types.SET_CONVERSATION_METADATA}`, {
+        id: data.conversationId,
+        data: meta,
+      });
+      commit(types.SET_PREVIOUS_CONVERSATIONS, {
+        id: data.conversationId,
+        data: payload,
+      });
+      if (!payload.length) {
+        commit(types.SET_ALL_MESSAGES_LOADED, data.conversationId);
+      }
+    } catch (error) {
+      // Handle error
+    }
+  },
+
+  // Asks the provider for the page before this thread's oldest message. Nothing comes
+  // back here: the phone answers on the webhook minutes later, or never, and the rows
+  // arrive through the same cable push live traffic uses.
+  syncHistory: async (_, conversationId) => {
+    await ConversationApi.syncHistory(conversationId);
+  },
+
+  fetchAllAttachments: async ({ commit }, conversationId) => {
+    let attachments = [];
+
+    try {
+      const { data } = await ConversationApi.getAllAttachments(conversationId);
+      attachments = data.payload;
+    } catch (error) {
+      // in case of error, log the error and continue
+      Sentry.setContext('Conversation', {
+        id: conversationId,
+      });
+      Sentry.captureException(error);
+    } finally {
+      // we run the commit even if the request fails
+      // this ensures that the `attachment` variable is always present on chat
+      commit(types.SET_ALL_ATTACHMENTS, {
+        id: conversationId,
+        data: attachments,
+      });
+    }
+  },
+
+  syncActiveConversationMessages: async (
+    { commit, state, dispatch },
+    { conversationId }
+  ) => {
+    const { allConversations, syncConversationsMessages } = state;
+    const lastMessageId = syncConversationsMessages[conversationId];
+    const selectedChat = allConversations.find(
+      conversation => conversation.id === conversationId
+    );
+    if (!selectedChat) return;
+    try {
+      const { messages } = selectedChat;
+      // Fetch all the messages after the last message id
+      const {
+        data: { meta, payload },
+      } = await MessageApi.getPreviousMessages({
+        conversationId,
+        after: lastMessageId,
+      });
+      commit(`conversationMetadata/${types.SET_CONVERSATION_METADATA}`, {
+        id: conversationId,
+        data: meta,
+      });
+      // Find the messages that are not already present in the store
+      const missingMessages = payload.filter(
+        message => !messages.find(item => item.id === message.id)
+      );
+      selectedChat.messages.push(...missingMessages);
+      // Sort the messages by created_at
+      const sortedMessages = selectedChat.messages.sort((a, b) => {
+        return new Date(a.created_at) - new Date(b.created_at);
+      });
+      commit(types.SET_MISSING_MESSAGES, {
+        id: conversationId,
+        data: sortedMessages,
+      });
+      commit(types.SET_LAST_MESSAGE_ID_IN_SYNC_CONVERSATION, {
+        conversationId,
+        messageId: null,
+      });
+      dispatch('markMessagesRead', { id: conversationId }, { root: true });
+    } catch (error) {
+      // Handle error
+    }
+  },
+
+  setConversationLastMessageId: async (
+    { commit, state },
+    { conversationId }
+  ) => {
+    const { allConversations } = state;
+    const selectedChat = allConversations.find(
+      conversation => conversation.id === conversationId
+    );
+    if (!selectedChat) return;
+    const { messages } = selectedChat;
+    const lastMessage = messages.last();
+    if (!lastMessage) return;
+    commit(types.SET_LAST_MESSAGE_ID_IN_SYNC_CONVERSATION, {
+      conversationId,
+      messageId: lastMessage.id,
+    });
+  },
+
+  async setActiveChat({ commit, dispatch }, { data, after }) {
+    commit(types.SET_CURRENT_CHAT_WINDOW, data);
+    commit(types.CLEAR_ALL_MESSAGES_LOADED, data.id);
+    if (data.dataFetched === undefined) {
+      try {
+        await dispatch('fetchPreviousMessages', {
+          after,
+          // A conversation with no messages at all seeds an empty array.
+          // Without the cursor the finder returns the latest page instead, so
+          // the fetch still resolves and SET_CHAT_DATA_FETCHED runs — reading
+          // `.id` off `undefined` here used to throw and leave the chat stuck
+          // with `dataFetched` unset, which also blocks scroll pagination.
+          before: data.messages[0]?.id,
+          conversationId: data.id,
+        });
+        commit(types.SET_CHAT_DATA_FETCHED, data.id);
+      } catch (error) {
+        // Ignore error
+      }
+    }
+    ConversationApi.presenceSubscribe(data.id)?.catch(() => {});
+  },
+
+  // Owns both the optimistic write and its rollback. Callers used to commit the
+  // new assignee themselves and nobody ever undid it, so a rejected assignment
+  // (an inbox with `prevent_assignment_takeover` answers 409) left the agent
+  // looking at their own name and believing they owned the conversation.
+  assignAgent: async (
+    { commit, dispatch, getters },
+    { conversationId, assignee, assigneeType }
+  ) => {
+    const previousChat = getters.getConversationById(conversationId);
+    const previousAssignee = previousChat?.meta?.assignee ?? null;
+    const previousAssigneeType = previousChat?.meta?.assignee_type ?? null;
+
+    commit(types.ASSIGN_AGENT, { conversationId, assignee, assigneeType });
+
+    try {
+      const response = await ConversationApi.assignAgent({
+        conversationId,
+        agentId: assignee?.id ?? null,
+        assigneeType,
+      });
+      commit(types.ASSIGN_AGENT, {
+        conversationId,
+        assignee: response.data,
+        assigneeType,
+      });
+    } catch (error) {
+      commit(types.ASSIGN_AGENT, {
+        conversationId,
+        assignee: previousAssignee,
+        assigneeType: previousAssigneeType,
+      });
+      // The rollback restores what this client last knew, and during a
+      // concurrent claim that snapshot is exactly what went stale: the server
+      // handed the conversation to someone else while the request was in
+      // flight, so the local copy is either the wrong agent or nobody. Re-read
+      // it so the field ends up on the real owner.
+      if (error?.response?.status === 409) {
+        dispatch('getConversation', conversationId);
+      }
+      throw error;
+    }
+  },
+
+  // Owns the optimistic write and its rollback for the same reason assignAgent
+  // does. Picking a team that excludes the current assignee moves the assignee
+  // too (`ensure_assignee_is_from_team`), so a protected inbox answers 409 and
+  // the team must not stay changed on screen.
+  assignTeam: async (
+    { commit, dispatch, getters },
+    { conversationId, team }
+  ) => {
+    const previousTeam =
+      getters.getConversationById(conversationId)?.meta?.team ?? null;
+
+    commit(types.ASSIGN_TEAM, { team: team ?? null, conversationId });
+
+    try {
+      const response = await ConversationApi.assignTeam({
+        conversationId,
+        teamId: team?.id ?? 0,
+      });
+      commit(types.ASSIGN_TEAM, { team: response.data, conversationId });
+    } catch (error) {
+      commit(types.ASSIGN_TEAM, { team: previousTeam, conversationId });
+      if (error?.response?.status === 409) {
+        dispatch('getConversation', conversationId);
+      }
+      throw error;
+    }
+  },
+
+  toggleStatus: async (
+    { commit, dispatch },
+    { conversationId, status, snoozedUntil = null, customAttributes = null }
+  ) => {
+    try {
+      // Update custom attributes first if provided
+      if (customAttributes) {
+        await ConversationApi.updateCustomAttributes({
+          conversationId,
+          customAttributes,
+        });
+        commit(types.UPDATE_CONVERSATION_CUSTOM_ATTRIBUTES, {
+          conversationId,
+          customAttributes,
+        });
+      }
+
+      const {
+        data: {
+          payload: {
+            current_status: updatedStatus,
+            snoozed_until: updatedSnoozedUntil,
+          } = {},
+        } = {},
+      } = await ConversationApi.toggleStatus({
+        conversationId,
+        status,
+        snoozedUntil,
+      });
+      commit(types.CHANGE_CONVERSATION_STATUS, {
+        conversationId,
+        status: updatedStatus,
+        snoozedUntil: updatedSnoozedUntil,
+      });
+    } catch (error) {
+      // Reopening self-assigns the agent, so a protected inbox can refuse the
+      // whole request. Swallowing that left the caller announcing a status
+      // change that never happened.
+      if (error?.response?.status === 409) {
+        dispatch('getConversation', conversationId);
+      }
+      throw error;
+    }
+  },
+
+  createPendingMessageAndSend: async ({ dispatch }, data) => {
+    const pendingMessage = createPendingMessage(data);
+    dispatch('sendMessageWithData', pendingMessage);
+  },
+
+  sendMessageWithData: async ({ commit }, pendingMessage) => {
+    const { conversation_id: conversationId, id } = pendingMessage;
+    try {
+      commit(types.ADD_MESSAGE, {
+        ...pendingMessage,
+        status: MESSAGE_STATUS.PROGRESS,
+      });
+      const response = hasMessageFailedWithExternalError(pendingMessage)
+        ? await MessageApi.retry(conversationId, id)
+        : await MessageApi.create(pendingMessage);
+      commit(types.ADD_MESSAGE, {
+        ...response.data,
+        status: MESSAGE_STATUS.SENT,
+      });
+      commit(types.ADD_CONVERSATION_ATTACHMENTS, {
+        ...response.data,
+        status: MESSAGE_STATUS.SENT,
+      });
+    } catch (error) {
+      const errorMessage = error.response
+        ? error.response.data.error
+        : undefined;
+      commit(types.ADD_MESSAGE, {
+        ...pendingMessage,
+        meta: {
+          error: errorMessage,
+        },
+        status: MESSAGE_STATUS.FAILED,
+      });
+      throw error;
+    }
+  },
+
+  addMessage({ commit, rootGetters }, message) {
+    commit(types.ADD_MESSAGE, message);
+    if (message.message_type === MESSAGE_TYPE.INCOMING) {
+      commit(types.SET_CONVERSATION_CAN_REPLY, {
+        conversationId: message.conversation_id,
+        canReply: true,
+      });
+      commit(types.ADD_CONVERSATION_ATTACHMENTS, message);
+    }
+    handleVoiceCallCreated(
+      message,
+      rootGetters?.getCurrentUserID,
+      rootGetters?.getCurrentUserAvailability
+    );
+  },
+
+  updateMessage({ commit, rootGetters }, message) {
+    commit(types.ADD_MESSAGE, message);
+    handleVoiceCallUpdated(
+      commit,
+      message,
+      rootGetters?.getCurrentUserID,
+      rootGetters?.getCurrentUserAvailability
+    );
+  },
+
+  deleteMessage: async function deleteLabels(
+    { commit },
+    { conversationId, messageId }
+  ) {
+    try {
+      const { data } = await MessageApi.delete(conversationId, messageId);
+      commit(types.ADD_MESSAGE, data);
+      commit(types.DELETE_CONVERSATION_ATTACHMENTS, data);
+    } catch (error) {
+      throw new Error(error);
+    }
+  },
+
+  toggleMessageReaction: function toggleMessageReaction(
+    _context,
+    { conversationId, messageId, emoji, echoId }
+  ) {
+    // The optimistic Message is dispatched to the store by the caller.
+    // Backend echoes back the same echo_id via ActionCable MESSAGE_CREATED, and
+    // findPendingMessageIndex in the ADD_MESSAGE mutation swaps the fake for
+    // the real one. Returning the promise lets callers reconcile if the cable
+    // echo is delayed/missing.
+    return MessageApi.toggleReaction(conversationId, messageId, emoji, echoId);
+  },
+
+  editMessage: async function editMessage(
+    { commit },
+    { conversationId, messageId, content }
+  ) {
+    try {
+      const { data } = await MessageApi.editContent(
+        conversationId,
+        messageId,
+        content
+      );
+      commit(types.ADD_MESSAGE, data);
+      return data;
+    } catch (error) {
+      throw new Error(error);
+    }
+  },
+
+  deleteConversation: async ({ commit, dispatch }, conversationId) => {
+    try {
+      await ConversationApi.delete(conversationId);
+      commit(types.DELETE_CONVERSATION, conversationId);
+      dispatch('conversationStats/get', {}, { root: true });
+    } catch (error) {
+      throw new Error(error);
+    }
+  },
+
+  addConversation({ commit, state, dispatch, rootState }, conversation) {
+    const { currentInbox, appliedFilters } = state;
+    const {
+      inbox_id: inboxId,
+      meta: { sender },
+    } = conversation;
+    const hasAppliedFilters = !!appliedFilters.length;
+    const isMatchingInboxFilter =
+      !currentInbox || Number(currentInbox) === inboxId;
+    if (
+      !hasAppliedFilters &&
+      !isOnFoldersView(rootState) &&
+      !isOnMentionsView(rootState) &&
+      !isOnParticipatingView(rootState) &&
+      !isOnUnattendedView(rootState) &&
+      isMatchingInboxFilter
+    ) {
+      commit(types.ADD_CONVERSATION, conversation);
+      dispatch('contacts/setContact', sender);
+    }
+  },
+
+  addMentions({ dispatch, rootState }, conversation) {
+    if (isOnMentionsView(rootState)) {
+      dispatch('updateConversation', conversation);
+    }
+  },
+
+  addUnattended({ dispatch, rootState }, conversation) {
+    if (isOnUnattendedView(rootState)) {
+      dispatch('updateConversation', conversation);
+    }
+  },
+
+  updateConversation({ commit, dispatch, rootGetters }, conversation) {
+    const sender = conversation.meta?.sender;
+
+    commit(types.UPDATE_CONVERSATION, conversation);
+    syncConversationCallVisibility(conversation, rootGetters?.getCurrentUserID);
+
+    dispatch('conversationLabels/setConversationLabel', {
+      id: conversation.id,
+      data: conversation.labels,
+    });
+
+    if (sender) dispatch('contacts/setContact', sender);
+  },
+
+  updateConversationLastActivity(
+    { commit },
+    { conversationId, lastActivityAt }
+  ) {
+    commit(types.UPDATE_CONVERSATION_LAST_ACTIVITY, {
+      lastActivityAt,
+      conversationId,
+    });
+  },
+
+  setChatStatusFilter({ commit }, data) {
+    commit(types.CHANGE_CHAT_STATUS_FILTER, data);
+  },
+
+  setChatSortFilter({ commit }, data) {
+    commit(types.CHANGE_CHAT_SORT_FILTER, data);
+  },
+
+  setChatGroupTypeFilter({ commit }, data) {
+    commit(types.CHANGE_CHAT_GROUP_TYPE_FILTER, data);
+  },
+
+  updateAssignee({ commit }, data) {
+    commit(types.UPDATE_ASSIGNEE, data);
+  },
+
+  updateConversationContact({ commit }, data) {
+    if (data.id) {
+      commit(`contacts/${types.SET_CONTACT_ITEM}`, data);
+    }
+    commit(types.UPDATE_CONVERSATION_CONTACT, data);
+  },
+
+  handleScheduledMessageCreated({ dispatch }, scheduledMessage) {
+    dispatch('scheduledMessages/upsertFromEvent', scheduledMessage);
+  },
+
+  handleScheduledMessageUpdated({ dispatch }, scheduledMessage) {
+    dispatch('scheduledMessages/upsertFromEvent', scheduledMessage);
+  },
+
+  handleScheduledMessageDeleted({ dispatch }, scheduledMessage) {
+    dispatch('scheduledMessages/removeFromEvent', scheduledMessage);
+  },
+
+  handleRecurringScheduledMessageCreated(
+    { dispatch },
+    recurringScheduledMessage
+  ) {
+    dispatch(
+      'recurringScheduledMessages/upsertFromEvent',
+      recurringScheduledMessage
+    );
+  },
+
+  handleRecurringScheduledMessageUpdated(
+    { dispatch },
+    recurringScheduledMessage
+  ) {
+    dispatch(
+      'recurringScheduledMessages/upsertFromEvent',
+      recurringScheduledMessage
+    );
+  },
+
+  handleRecurringScheduledMessageDeleted(
+    { dispatch },
+    recurringScheduledMessage
+  ) {
+    dispatch(
+      'recurringScheduledMessages/removeFromEvent',
+      recurringScheduledMessage
+    );
+  },
+
+  setActiveInbox({ commit }, inboxId) {
+    commit(types.SET_ACTIVE_INBOX, inboxId);
+  },
+
+  muteConversation: async ({ commit }, conversationId) => {
+    try {
+      await ConversationApi.mute(conversationId);
+      commit(types.MUTE_CONVERSATION);
+    } catch (error) {
+      //
+    }
+  },
+
+  unmuteConversation: async ({ commit }, conversationId) => {
+    try {
+      await ConversationApi.unmute(conversationId);
+      commit(types.UNMUTE_CONVERSATION);
+    } catch (error) {
+      //
+    }
+  },
+
+  sendEmailTranscript: async (_, { conversationId, email }) => {
+    await ConversationApi.sendEmailTranscript({ conversationId, email });
+  },
+
+  updateCustomAttributes: async (
+    { commit },
+    { conversationId, customAttributes }
+  ) => {
+    try {
+      const response = await ConversationApi.updateCustomAttributes({
+        conversationId,
+        customAttributes,
+      });
+      const { custom_attributes } = response.data;
+      commit(types.UPDATE_CONVERSATION_CUSTOM_ATTRIBUTES, {
+        conversationId,
+        customAttributes: custom_attributes,
+      });
+    } catch (error) {
+      throw new Error(error);
+    }
+  },
+
+  setConversationFilters({ commit }, data) {
+    commit(types.SET_CONVERSATION_FILTERS, data);
+  },
+
+  clearConversationFilters({ commit }) {
+    commit(types.CLEAR_CONVERSATION_FILTERS);
+  },
+
+  setChatListFilters({ commit }, data) {
+    commit(types.SET_CHAT_LIST_FILTERS, data);
+  },
+
+  updateChatListFilters({ commit }, data) {
+    commit(types.UPDATE_CHAT_LIST_FILTERS, data);
+  },
+
+  assignPriority: async ({ dispatch }, { conversationId, priority }) => {
+    try {
+      await ConversationApi.togglePriority({
+        conversationId,
+        priority,
+      });
+
+      dispatch('setCurrentChatPriority', {
+        priority,
+        conversationId,
+      });
+    } catch (error) {
+      // Handle error
+    }
+  },
+
+  setCurrentChatPriority({ commit }, { priority, conversationId }) {
+    commit(types.ASSIGN_PRIORITY, { priority, conversationId });
+  },
+
+  setContextMenuChatId({ commit }, chatId) {
+    commit(types.SET_CONTEXT_MENU_CHAT_ID, chatId);
+  },
+
+  getInboxCaptainAssistantById: async ({ commit }, conversationId) => {
+    try {
+      const response = await ConversationApi.getInboxAssistant(conversationId);
+      commit(types.SET_INBOX_CAPTAIN_ASSISTANT, response.data);
+    } catch (error) {
+      // Handle error
+    }
+  },
+
+  ...messageReadActions,
+  ...messageTranslateActions,
+};
+
+export default actions;

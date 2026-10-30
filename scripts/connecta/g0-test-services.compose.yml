@@ -1,0 +1,43 @@
+# Serviços exclusivos de F5 (consolidação 2026-10-29). Não é o docker-compose.test.yaml do repo.
+# Projeto compose: conecta-consolidacao-20261029-f5. Não reutilizar recursos G0/connecta-e2e.
+# Portas publicadas só em 127.0.0.1 e fora das padrões (5432/6379). Dados sintéticos apenas.
+# Autenticação obrigatória nos dois serviços: a senha sintética é injetada pelo runner
+# (scripts/connecta/g0_test_env.sh --apply, em F5_SYNTHETIC_SECRET) e nunca fica neste arquivo.
+name: conecta-consolidacao-20261029-f5
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: "no"
+    environment:
+      POSTGRES_DB: conecta_consolidacao_20261029_f5
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${F5_SYNTHETIC_SECRET:?defina pelo runner scripts/connecta/g0_test_env.sh}
+    ports:
+      - "127.0.0.1:55439:5432"
+    volumes:
+      - f5_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d conecta_consolidacao_20261029_f5"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:alpine
+    restart: "no"
+    # Sem persistência: Redis descartável, sem volume. AUTH obrigatório também para outros containers da rede.
+    # REDISCLI_AUTH serve ao requirepass e ao healthcheck (redis-cli ping).
+    environment:
+      REDISCLI_AUTH: ${F5_SYNTHETIC_SECRET:?defina pelo runner scripts/connecta/g0_test_env.sh}
+    command: ["sh", "-c", "exec redis-server --save '' --appendonly no --requirepass \"$$REDISCLI_AUTH\""]
+    ports:
+      - "127.0.0.1:56389:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  f5_postgres:

@@ -1,0 +1,17 @@
+<p>{{ 'mailer.common.hello' | t }}</p>
+
+<p>{{ 'mailer.administrator_notifications.account_notifications.contact_import_complete.body' | t }}</p>
+
+<p>{{ 'mailer.administrator_notifications.account_notifications.contact_import_complete.imported_records' | t: 'count', meta['imported_contacts'] }}</p>
+
+<p>{{ 'mailer.administrator_notifications.account_notifications.contact_import_complete.failed_records' | t: 'count', meta['failed_contacts'] }}</p>
+
+{% if meta['failed_contacts'] == 0 %}
+  <p>
+    {{ 'mailer.administrator_notifications.account_notifications.contact_import_complete.click_to_view_imported' | t: 'url', action_url }}
+  </p>
+{% else %}
+  <p>
+    {{ 'mailer.administrator_notifications.account_notifications.contact_import_complete.click_to_view_failed' | t: 'url', action_url }}
+  </p>
+{% endif %}

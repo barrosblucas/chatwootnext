@@ -1,0 +1,9 @@
+?? .context/
+?? app/services/connecta/scope/
+?? scripts/
+?? spec/connecta/
+?? spec/requests/connecta/
+?? spec/support/connecta/
+--- rastreados alterados:
+--- stash count:
+0

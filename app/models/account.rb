@@ -1,0 +1,306 @@
+# == Schema Information
+#
+# Table name: accounts
+#
+#  id                    :integer          not null, primary key
+#  auto_resolve_duration :integer
+#  custom_attributes     :jsonb
+#  domain                :string(100)
+#  feature_flags         :bigint           default(0), not null
+#  feature_flags_ext_1   :bigint           default(0), not null
+#  internal_attributes   :jsonb            not null
+#  limits                :jsonb
+#  locale                :integer          default("en")
+#  name                  :string           not null
+#  settings              :jsonb
+#  status                :integer          default("active")
+#  support_email         :string(100)
+#  created_at            :datetime         not null
+#  updated_at            :datetime         not null
+#
+# Indexes
+#
+#  index_accounts_on_status  (status)
+#
+
+class Account < ApplicationRecord # rubocop:disable Metrics/ClassLength
+  # used for multi-flag bitset columns
+  include FlagShihTzu
+  include Reportable
+  include Featurable
+  include CacheKeys
+  include CaptainFeaturable
+  include AccountEmailRateLimitable
+  include AccountSettingsSchema
+
+  DEFAULT_QUERY_SETTING = {
+    flag_query_mode: :bit_operator,
+    check_for_column: false
+  }.freeze
+  SUSPENSION_CATEGORIES = %w[spam non_payment other].freeze
+
+  # Kept tighter than the avatar's 15 MB on purpose: this image is embedded in every outgoing
+  # email, where weight is the recipient's download and some clients refuse large payloads.
+  BRAND_LOGO_EMAIL_MAX_SIZE = 2.megabytes
+  BRAND_LOGO_EMAIL_CONTENT_TYPES = %w[image/png image/jpeg image/gif].freeze
+
+  attr_accessor :suspension_category, :suspension_reason
+
+  validates :name, presence: true
+  # `domain` is the inbound email domain used to construct reply addresses
+  # (see `inbound_email_domain`). Do not repurpose it for a website or any
+  # non-mail-related domain.
+  validates :domain, length: { maximum: 100 }
+  validates_with JsonSchemaValidator,
+                 schema: SETTINGS_PARAMS_SCHEMA,
+                 attribute_resolver: ->(record) { record.settings }
+  validate :validate_reporting_timezone
+  validate :validate_support_email_format, if: :will_save_change_to_support_email?
+  validate :validate_brand_logo_email, if: -> { brand_logo_email.changed? }
+  validate :validate_brand_url, if: -> { will_save_change_to_settings? }
+  validate :validate_brand_name, if: -> { will_save_change_to_settings? }
+
+  store_accessor :settings, :auto_resolve_after, :auto_resolve_message, :auto_resolve_ignore_waiting
+
+  store_accessor :settings, :audio_transcriptions, :auto_resolve_label
+  store_accessor :settings, :captain_models, :captain_features
+  store_accessor :settings, :reporting_timezone
+  store_accessor :settings, :keep_pending_on_bot_failure
+  store_accessor :settings, :captain_auto_resolve_mode, :captain_false_promise_harness_enabled
+  # Email only. The dashboard, favicon and PWA stay on the installation's brand; see Brand.
+  store_accessor :settings, :brand_name, :brand_url, :brand_color
+  include AccountAgentRestrictions
+  include AccountWhatsappProviders
+  include AccountCaptainAutoResolve
+  # After CacheKeys: it overrides `cache_keys` to say what the payload was built from.
+  include AccountInboxPayloadFingerprint
+
+  has_many :account_users, dependent: :destroy_async
+  has_many :agent_bot_inboxes, dependent: :destroy_async
+  has_many :agent_bot_observers, dependent: :destroy_async
+  has_many :agent_bots, dependent: :destroy_async
+  has_many :api_channels, dependent: :destroy_async, class_name: '::Channel::Api'
+  has_many :articles, dependent: :destroy_async, class_name: '::Article'
+  has_many :assignment_policies, dependent: :destroy_async
+  has_many :automation_rules, dependent: :destroy_async
+  has_many :automation_rule_pending_executions, dependent: :delete_all
+  has_many :macros, dependent: :destroy_async
+  has_many :campaigns, dependent: :destroy_async
+  has_many :canned_responses, dependent: :destroy_async
+  has_many :categories, dependent: :destroy_async, class_name: '::Category'
+  has_many :contacts, dependent: :destroy_async
+  has_many :conversations, dependent: :destroy_async
+  has_many :csat_survey_responses, dependent: :destroy_async
+  has_many :custom_attribute_definitions, dependent: :destroy_async
+  has_many :custom_filters, dependent: :destroy_async
+  has_many :dashboard_apps, dependent: :destroy_async
+  has_many :data_imports, dependent: :destroy_async
+  has_many :email_channels, dependent: :destroy_async, class_name: '::Channel::Email'
+  has_many :facebook_pages, dependent: :destroy_async, class_name: '::Channel::FacebookPage'
+  has_many :instagram_channels, dependent: :destroy_async, class_name: '::Channel::Instagram'
+  has_many :tiktok_channels, dependent: :destroy_async, class_name: '::Channel::Tiktok'
+  has_many :hooks, dependent: :destroy_async, class_name: 'Integrations::Hook'
+  has_many :inboxes, dependent: :destroy_async
+  has_many :internal_chat_categories, class_name: 'InternalChat::Category', dependent: :destroy_async
+  has_many :internal_chat_channels, class_name: 'InternalChat::Channel', dependent: :destroy_async
+  has_many :labels, dependent: :destroy_async
+  has_many :line_channels, dependent: :destroy_async, class_name: '::Channel::Line'
+  has_many :mentions, dependent: :destroy_async
+  has_many :messages, dependent: :destroy_async
+  has_many :notes, dependent: :destroy_async
+  has_many :notification_settings, dependent: :destroy_async
+  has_many :notifications, dependent: :destroy_async
+  has_many :portals, dependent: :destroy_async, class_name: '::Portal'
+  has_many :scheduled_messages, dependent: :destroy_async
+  has_many :recurring_scheduled_messages, dependent: :destroy_async
+  has_many :sms_channels, dependent: :destroy_async, class_name: '::Channel::Sms'
+  has_many :teams, dependent: :destroy_async
+  has_many :telegram_channels, dependent: :destroy_async, class_name: '::Channel::Telegram'
+  has_many :twilio_sms, dependent: :destroy_async, class_name: '::Channel::TwilioSms'
+  has_many :twitter_profiles, dependent: :destroy_async, class_name: '::Channel::TwitterProfile'
+  has_many :users, through: :account_users
+  has_many :web_widgets, dependent: :destroy_async, class_name: '::Channel::WebWidget'
+  has_many :webhooks, dependent: :destroy_async
+  has_many :whatsapp_channels, dependent: :destroy_async, class_name: '::Channel::Whatsapp'
+  has_many :working_hours, dependent: :destroy_async
+
+  has_one_attached :contacts_export
+  has_one_attached :brand_logo_email
+
+  enum :locale, LANGUAGES_CONFIG.map { |key, val| [val[:iso_639_1_code], key] }.to_h, prefix: true
+  enum :status, { active: 0, suspended: 1 }
+
+  scope :with_auto_resolve, -> { where("(settings ->> 'auto_resolve_after')::int IS NOT NULL") }
+
+  before_validation :validate_limit_keys
+  after_create_commit :notify_creation
+  after_create_commit :setup_internal_chat
+  after_update_commit :clear_unread_conversation_counts_cache, if: :saved_change_to_feature_conversation_unread_counts?
+  after_update :resume_delayed_automations, if: -> { saved_change_to_feature_delayed_automations? && feature_delayed_automations? }
+  after_destroy :remove_account_sequences
+
+  def agents
+    users.where(account_users: { role: :agent })
+  end
+
+  def administrators
+    users.where(account_users: { role: :administrator })
+  end
+
+  def all_conversation_tags
+    # returns array of tags
+    conversation_ids = conversations.pluck(:id)
+    ActsAsTaggableOn::Tagging.includes(:tag)
+                             .where(context: 'labels',
+                                    taggable_type: 'Conversation',
+                                    taggable_id: conversation_ids)
+                             .map { |tagging| tagging.tag.name }
+  end
+
+  def webhook_data
+    {
+      id: id,
+      name: name
+    }
+  end
+
+  def suspension_history
+    internal_attributes['suspensions'] || []
+  end
+
+  def inbound_email_domain
+    domain.presence || GlobalConfig.get('MAILER_INBOUND_EMAIL_DOMAIN')['MAILER_INBOUND_EMAIL_DOMAIN'] || ENV.fetch('MAILER_INBOUND_EMAIL_DOMAIN',
+                                                                                                                   false)
+  end
+
+  def support_email
+    super.presence || ENV.fetch('MAILER_SENDER_EMAIL') { GlobalConfig.get('MAILER_SUPPORT_EMAIL')['MAILER_SUPPORT_EMAIL'] }
+  end
+
+  def usage_limits
+    {
+      agents: ChatwootApp.max_limit.to_i,
+      inboxes: ChatwootApp.max_limit.to_i
+    }
+  end
+
+  def api_and_webhooks_enabled?
+    true
+  end
+
+  def locale_english_name
+    # the locale can also be something like pt_BR, en_US, fr_FR, etc.
+    # the format is `<locale_code>_<country_code>`
+    # we need to extract the language code from the locale
+    account_locale = locale&.split('_')&.first
+    ISO_639.find(account_locale)&.english_name&.downcase || 'english'
+  end
+
+  def onboarding_step
+    step = custom_attributes['onboarding_step']
+    return nil if step.blank?
+
+    enrichment_key = format(Redis::Alfred::ACCOUNT_ONBOARDING_ENRICHMENT, account_id: id)
+    Redis::Alfred.exists?(enrichment_key) ? 'enrichment' : step
+  end
+
+  def reset_cache_keys
+    super
+    clear_unread_conversation_counts_cache
+  end
+
+  private
+
+  def notify_creation
+    Rails.configuration.dispatcher.dispatch(ACCOUNT_CREATED, Time.zone.now, account: self)
+  end
+
+  def setup_internal_chat
+    InternalChat::DefaultChannelSetupService.new(account: self).perform
+  end
+
+  def clear_unread_conversation_counts_cache
+    ::Conversations::UnreadCounts::Store.clear_account!(id)
+  end
+
+  def resume_delayed_automations
+    AutomationRulePendingExecution.reschedule_paused(self)
+  end
+
+  trigger.after(:insert).for_each(:row) do
+    "execute format('create sequence IF NOT EXISTS conv_dpid_seq_%s', NEW.id);"
+  end
+
+  trigger.name('camp_dpid_before_insert').after(:insert).for_each(:row) do
+    "execute format('create sequence IF NOT EXISTS camp_dpid_seq_%s', NEW.id);"
+  end
+
+  def validate_limit_keys
+    # method overridden in enterprise module
+  end
+
+  def validate_reporting_timezone
+    return if reporting_timezone.blank? || ActiveSupport::TimeZone[reporting_timezone].present?
+
+    errors.add(:reporting_timezone, I18n.t('errors.account.reporting_timezone.invalid'))
+  end
+
+  def validate_support_email_format
+    value = attributes['support_email']
+    return if value.blank?
+
+    parsed = Mail::Address.new(value).address
+    errors.add(:support_email, I18n.t('errors.account.support_email.invalid')) if parsed.blank?
+  rescue Mail::Field::ParseError, Mail::Field::IncompleteParseError
+    errors.add(:support_email, I18n.t('errors.account.support_email.invalid'))
+  end
+
+  # The default layout escapes it, but a branded layout a customer already stored in
+  # email_templates does not, and this is the first time an account administrator rather than
+  # the installation owner writes the value.
+  # to_s because settings is jsonb and strong parameters keep a JSON scalar's type: a
+  # {"brand_name": 123} would otherwise reach match? as an Integer and turn a validation
+  # error into a 500. The schema validator flags the type, but it does not halt the chain.
+  def validate_brand_name
+    return if brand_name.blank?
+    return unless brand_name.to_s.match?(/[<>]/)
+
+    errors.add(:brand_name, I18n.t('errors.account.brand_name.invalid'))
+  end
+
+  # The value goes straight into the href of the email footer, where a relative one like
+  # "example.com" resolves against the mail client and lands nowhere.
+  def validate_brand_url
+    return if brand_url.blank?
+
+    uri = URI.parse(brand_url.to_s)
+    return if uri.is_a?(URI::HTTP) && uri.host.present?
+
+    errors.add(:brand_url, I18n.t('errors.account.brand_url.invalid'))
+  rescue URI::InvalidURIError
+    errors.add(:brand_url, I18n.t('errors.account.brand_url.invalid'))
+  end
+
+  def validate_brand_logo_email
+    return unless brand_logo_email.attached?
+
+    errors.add(:brand_logo_email, I18n.t('errors.account.brand_logo_email.too_big')) if
+      brand_logo_email.byte_size > BRAND_LOGO_EMAIL_MAX_SIZE
+
+    # SVG is deliberately absent: no mail client renders it, so accepting one here would only
+    # produce a broken image at the top of every email.
+    return if BRAND_LOGO_EMAIL_CONTENT_TYPES.include?(brand_logo_email.content_type)
+
+    errors.add(:brand_logo_email, I18n.t('errors.account.brand_logo_email.invalid_format'))
+  end
+
+  def remove_account_sequences
+    ActiveRecord::Base.connection.exec_query("drop sequence IF EXISTS camp_dpid_seq_#{id}")
+    ActiveRecord::Base.connection.exec_query("drop sequence IF EXISTS conv_dpid_seq_#{id}")
+  end
+end
+
+Account.prepend_mod_with('Account')
+Account.prepend_mod_with('Account::PlanUsageAndLimits')
+Account.include_mod_with('Concerns::Account')
+Account.include_mod_with('Audit::Account')

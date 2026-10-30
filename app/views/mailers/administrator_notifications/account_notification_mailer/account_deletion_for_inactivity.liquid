@@ -1,0 +1,19 @@
+<p>{{ 'mailer.common.hello_there' | t }}</p>
+
+<p>{{ 'mailer.administrator_notifications.account_notifications.account_deletion_for_inactivity.body' | t: 'brand_name', global_config['BRAND_NAME'], 'account_name', meta.account_name, 'deletion_date', meta.deletion_date }}</p>
+
+<p><strong>{{ 'mailer.administrator_notifications.account_notifications.account_deletion_for_inactivity.how_to_keep' | t }}</strong></p>
+
+<p>{{ 'mailer.administrator_notifications.account_notifications.account_deletion_for_inactivity.how_to_keep_body' | t: 'brand_name', global_config['BRAND_NAME'], 'deletion_date', meta.deletion_date, 'url', action_url }}</p>
+
+<p><strong>{{ 'mailer.administrator_notifications.account_notifications.account_deletion_for_inactivity.what_if_no_cancel' | t }}</strong></p>
+
+<p>{{ 'mailer.administrator_notifications.account_notifications.account_deletion_for_inactivity.what_if_no_cancel_body' | t: 'deletion_date', meta.deletion_date }}</p>
+
+<p><strong>{{ 'mailer.administrator_notifications.account_notifications.account_deletion_for_inactivity.why_doing_this' | t }}</strong></p>
+
+<p>{{ 'mailer.administrator_notifications.account_notifications.account_deletion_for_inactivity.why_doing_this_body' | t }}</p>
+
+<p>{{ 'mailer.administrator_notifications.account_notifications.account_deletion_for_inactivity.contact_us' | t: 'email', 'hello@chatwoot.com' }}</p>
+
+<p>{{ 'mailer.common.the_chatwoot_team' | t: 'brand_name', global_config['BRAND_NAME'] }}</p>

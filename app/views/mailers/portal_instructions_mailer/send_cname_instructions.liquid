@@ -1,0 +1,31 @@
+<tr>
+  <td>
+    <p>{{ 'mailer.portal.cname_instructions.greeting' | t }}</p>
+    {% assign domain = cname_record | split: ' ' | first %}
+    <p>{{ 'mailer.portal.cname_instructions.intro' | t: 'domain', domain }}</p>
+    <p>{{ 'mailer.portal.cname_instructions.add_cname' | t }}</p>
+  </td>
+</tr>
+
+<tr>
+  <td>
+    <p><strong>{{ cname_record }}</strong></p>
+  </td>
+</tr>
+
+<tr>
+  <td>
+    <p>{{ 'mailer.portal.cname_instructions.steps_title' | t }}</p>
+
+    <ol>
+      <li>{{ 'mailer.portal.cname_instructions.step_1' | t }}</li>
+      <li>{{ 'mailer.portal.cname_instructions.step_2' | t }}</li>
+      <li>{{ 'mailer.portal.cname_instructions.step_3' | t }}</li>
+      <li>{{ 'mailer.portal.cname_instructions.step_4' | t }}</li>
+    </ol>
+
+    <p>{{ 'mailer.portal.cname_instructions.ssl_notice' | t }}</p>
+
+    <p>{{ 'mailer.portal.cname_instructions.support_message' | t }}</p>
+  </td>
+</tr>

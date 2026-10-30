@@ -1,0 +1,43 @@
+# Serviços exclusivos dos testes G0 (Connecta/Baileys). Não é o docker-compose.test.yaml do repo.
+# Projeto compose: conecta-baileys-g0-test. Volume próprio; nunca reutilizar volumes existentes.
+# Portas publicadas só em 127.0.0.1 e fora das padrões (5432/6379). Dados sintéticos apenas.
+# Autenticação obrigatória nos dois serviços: a senha sintética é injetada pelo runner
+# (scripts/connecta/g0_test_env.sh --apply, em G0_SYNTHETIC_SECRET) e nunca fica neste arquivo.
+name: conecta-baileys-g0-test
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: "no"
+    environment:
+      POSTGRES_DB: conecta_baileys_g0_test
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${G0_SYNTHETIC_SECRET:?defina pelo runner scripts/connecta/g0_test_env.sh}
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - g0_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d conecta_baileys_g0_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:alpine
+    restart: "no"
+    # Sem persistência: Redis descartável, sem volume. AUTH obrigatório também para outros containers da rede.
+    # REDISCLI_AUTH serve ao requirepass e ao healthcheck (redis-cli ping).
+    environment:
+      REDISCLI_AUTH: ${G0_SYNTHETIC_SECRET:?defina pelo runner scripts/connecta/g0_test_env.sh}
+    command: ["sh", "-c", "exec redis-server --save '' --appendonly no --requirepass \"$$REDISCLI_AUTH\""]
+    ports:
+      - "127.0.0.1:56379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  g0_postgres:

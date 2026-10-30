@@ -1,0 +1,50 @@
+parameters:
+  - $ref: '#/components/parameters/account_id'
+  - name: id
+    in: path
+    required: true
+    schema:
+      type: number
+    description: ID of the group contact
+  - name: inbox_id
+    in: query
+    required: false
+    schema:
+      type: number
+    description: >-
+      Which inbox the action is performed as. A group contact is account-scoped, so the
+      same WhatsApp group can belong to two inboxes of one account. Optional while a
+      group is in a single inbox; required once it is in more than one, since there is
+      otherwise no way to tell which number should act. An inbox the group is not in, or
+      one the caller is not a member of, is refused. Accepted in the request body as well
+      as on the query string.
+
+get:
+  tags:
+    - Groups
+  operationId: contact-group-join-requests-list
+  summary: List Group Join Requests
+  description: Retrieves the list of pending join requests for the WhatsApp group.
+  security:
+    - userApiKey: []
+  responses:
+    '200':
+      description: Success
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              payload:
+                type: array
+                items:
+                  type: object
+                  description: A pending join request from the provider
+    '401':
+      description: Unauthorized
+    '422':
+      description: Provider unavailable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/bad_request_error'

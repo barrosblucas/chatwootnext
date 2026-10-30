@@ -1,0 +1,14 @@
+<p>{{ 'mailer.common.hello_there' | t }}</p>
+
+<p>{{ 'mailer.administrator_notifications.account_notifications.account_deletion_user_initiated.body' | t: 'brand_name', global_config['BRAND_NAME'], 'account_name', meta.account_name, 'deletion_date', meta.deletion_date }}</p>
+
+<p><strong>{{ 'mailer.administrator_notifications.account_notifications.account_deletion_user_initiated.what_happens_next' | t }}</strong></p>
+
+<ul>
+  <li>{{ 'mailer.administrator_notifications.account_notifications.account_deletion_user_initiated.remains_accessible' | t }}</li>
+  <li>{{ 'mailer.administrator_notifications.account_notifications.account_deletion_user_initiated.data_permanently_removed' | t }}</li>
+</ul>
+
+<p>{{ 'mailer.administrator_notifications.account_notifications.account_deletion_user_initiated.cancel_request' | t: 'url', action_url }}</p>
+
+<p>{{ 'mailer.common.the_chatwoot_team' | t: 'brand_name', global_config['BRAND_NAME'] }}</p>

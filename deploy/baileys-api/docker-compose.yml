@@ -1,0 +1,91 @@
+# Manifesto do transporte baileys-api (T7.1) — homologação/estudo.
+# NÃO EXECUTADO: nenhum `docker compose` foi rodado, nenhuma imagem foi baixada.
+# O fork (Chatwootnext) alcança este serviço pela variável REAL do código:
+#   BAILEYS_PROVIDER_DEFAULT_URL  (app/services/whatsapp/providers/whatsapp_baileys_service.rb)
+#   + BAILEYS_PROVIDER_DEFAULT_API_KEY (cabeçalho `x-api-key`)
+# com chamadas a `GET /status`, `GET /status/auth` e `/connections/:phone/*`.
+# NÃO existe `CONNECTA_BAILEYS_URL` no fork: essa variável não deve ser usada
+# nem documentada como alternativa válida ao BAILEYS_PROVIDER_DEFAULT_URL.
+name: connecta-baileys-api
+
+services:
+  baileys-api:
+    # Imagem do vendor fazer-ai (GHCR), release v1.21.0 (semver estável mais recente
+    # listada em 2026-10-25). Digest = índice multi-arquitetura (amd64 + arm64).
+    # Verificação: docker buildx imagetools inspect ghcr.io/fazer-ai/baileys-api:v1.21.0
+    image: ghcr.io/fazer-ai/baileys-api:v1.21.0@sha256:738477885d5e1f7a01a03a1940ee2292ec24bf634e3e2cf49ae11bfa19e0fb8e
+    restart: unless-stopped
+    # Imagem fazer-ai usa Bun; sem argumentos o Bun só imprime a ajuda e sai (código 0).
+    # O script "start" do package.json da imagem é `bun src/index.ts`.
+    command: ['bun', 'src/index.ts']
+    expose:
+      - '3000'
+    # Publicação somente em loopback do host (127.0.0.1), para o fork (processo no host)
+    # alcançar a API. NÃO é exposição pública: nunca 0.0.0.0. Ver deploy/baileys-api/README.md.
+    ports:
+      - '127.0.0.1:3025:3000'
+    # Permite que o baileys entregue webhooks ao fork (processo no host) via
+    # host.docker.internal, sem depender do IP do gateway da bridge.
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: '3000'
+      # A senha do Redis chega por variável (nunca literal). O compose exige
+      # BAILEYS_REDIS_PASSWORD preenchida; vazio = falha rápida no boot.
+      REDIS_URL: redis://:${BAILEYS_REDIS_PASSWORD:?defina BAILEYS_REDIS_PASSWORD no .env}@redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      # baileys-internal: acesso ao Redis (rede interna, sem saída).
+      # baileys-edge: única rede com saída; usada só para o bind de loopback do host.
+      - baileys-internal
+      - baileys-edge
+    healthcheck:
+      # /status responde 200 sem x-api-key (verificado no container em 2026-10-25).
+      test: ['CMD-SHELL', "node -e \"fetch('http://127.0.0.1:' + (process.env.PORT || 3000) + '/status').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  redis:
+    # Digest do índice multi-arquitetura de redis:7-alpine (Docker Hub, library/redis).
+    # Verificação: docker buildx imagetools inspect redis:7-alpine
+    image: redis:7-alpine@sha256:57e4255cc971b1c8d6f8a6ca283ac01bc3ecdd914273ef6bfaede87aaecd6541
+    restart: unless-stopped
+    expose:
+      - '6379'
+    env_file:
+      - .env
+    environment:
+      # REDISCLI_AUTH serve ao requirepass e ao healthcheck via redis-cli.
+      REDISCLI_AUTH: ${BAILEYS_REDIS_PASSWORD:?defina BAILEYS_REDIS_PASSWORD no .env}
+    command:
+      - sh
+      - '-c'
+      # Persistência ligada (AOF) + senha obrigatória; sem senha o serviço recusa subir.
+      - exec redis-server --appendonly yes --requirepass "$${REDISCLI_AUTH}"
+    volumes:
+      - baileys-redis-data:/data
+    networks:
+      - baileys-internal
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+
+networks:
+  baileys-internal:
+    driver: bridge
+    internal: true
+  baileys-edge:
+    driver: bridge
+
+volumes:
+  baileys-redis-data:

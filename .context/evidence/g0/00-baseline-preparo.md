@@ -1,0 +1,30 @@
+# G0 — baseline dos arquivos de preparo (antes de qualquer mudança adicional)
+
+- Registrado em (UTC): 2026-10-22T14:39:23Z
+- Worktree: `/home/thanos/chatwootnext-connecta-g0-prep`
+- Branch: `feat/connecta-g0-prep`
+- HEAD: `7a46faca94d69fa18bbff1c71b2518e70b993980`
+- Estado git no momento do registro: os 16 arquivos abaixo aparecem como não rastreados (`??`); nenhum arquivo rastreado estava modificado (`git status --porcelain` listou apenas `??`).
+- Algoritmo: `sha256sum`
+- Escopo: baseline a partir deste instante. Os arquivos não são versionados, então o git não os recupera; este manifest registra apenas hashes, não o conteúdo. Não é prova histórica de como estavam antes.
+
+| SHA256 | Caminho |
+|---|---|
+| d127c068f94e86dc94c0e7df8fcea839174eaf8855046da86754370845460d43 | `.context/AI-GOVERNANCE.md` |
+| b0111ab819d1ca08717b8f4544abebf67a3fa22787354f371914b9c0752d7012 | `.context/PROJECT_STATE.md` |
+| 612b0a0110399aa881fe328ee50a6276c41b40a6cee90f739439104de2493a06 | `.context/README.md` |
+| 573d1d0a28543c74c10bd681d028fc668a6cb20a351da8dfed50f3aced5c71c6 | `.context/REPOMAP.md` |
+| b06aa576693ad3ba8ee488dc9ac40a07184b2a5d2b7d0d05d073e2833374bac7 | `.context/architecture.md` |
+| f20d32c3d3b2feec110d0e9cb06a60c101529be61ae3a616c884ce5674624520 | `.context/archive/README.md` |
+| 30ae32326541654f2ef0bc6b43bea5750d2336ef92ee04dd37fb28880e03e22b | `.context/changelog/CHANGELOG_2026_10_22.md` |
+| 4563a105428afc3619e9d520787c2225fb972a77a61b3f466c136a7f04557f7e | `.context/changelog/README.md` |
+| 61d94f9f5ac900c2878757ef376eed235be017e3eb5f69bf67faea335ccc9576 | `.context/decisions/000-template.md` |
+| 0ff5b0c758fc96d141e56c270f5a814b4fef42f2e70f496acc27a6aaee52cf32 | `.context/decisions/README.md` |
+| 168d5808eeb8c2e494fbc53fe622caedab0c31aaa69ee0e61c815bfd247ee4ca | `.context/gotchas.md` |
+| 4142ea9de4807b7496cd162d5bd061777ed89c107cc2438730e24f1b246bd5d0 | `.context/plans/README.md` |
+| 13f230ac14a3dd2bdacb010106143d229c629ce55ddaa0eb79edf28a00baaa48 | `scripts/connecta/g0-test-services.compose.yml` |
+| 89d790c74c69a9e09bd9a81bbf2add058470253b2eecfa773f3599a09a1c740f | `scripts/connecta/g0_test_env.sh` |
+| c44ed186cd22b9f7e4348bdd6800f04ad29b80c316cb220765f706271dd547b8 | `spec/requests/connecta/route_inventory_spec.rb` |
+| 8a53a04bdd930df7ce84ada6fd1b6515680437f58f6d858041542dd76aa0c370 | `spec/support/connecta/g0_target_guard.rb` |
+
+Verificação futura: `sha256sum -c` contra `00-baseline-sha256.txt` (`sha256sum -c 00-baseline-sha256.txt`, a partir da raiz do worktree) mostra quais arquivos mudaram depois deste registro.

@@ -1,0 +1,266 @@
+# Turns a canonical InboundMessage into the Chatwoot message row (or rows, for shared
+# contacts). Every provider in the session family goes through this one writer, so the
+# stored shape does not depend on who delivered the message.
+#
+# Media is not downloaded here: the bytes are fetched by MediaFetchJob and attached
+# afterwards. Downloading inline would stall the consumer thread that keeps a session's
+# events in order, and the attachment lands within seconds either way.
+class Whatsapp::Session::Inbound::MessageWriter
+  attr_reader :conversation, :inbound, :sender, :imported
+
+  # `imported` marks a row the history import is writing rather than one that just
+  # arrived. It changes two things and deliberately nothing else: the row is dated to when
+  # it was sent, and WhatsApp is not told it was received.
+  def initialize(conversation:, inbound:, sender: nil, imported: false)
+    @conversation = conversation
+    @inbound = inbound
+    @sender = sender
+    @imported = imported
+  end
+
+  # The media an inbound message carries, whichever shape holds it, or nil. Says nothing
+  # about whether its bytes are reachable: a media message published with no `ref` is one
+  # whose file did not come with it, and `media.download_failed` is what explains that.
+  def self.media_in(inbound)
+    content = inbound.content
+    media = content if content&.wire_type == 'media'
+    media ||= content.media if content&.wire_type == 'rich'
+    media.presence
+  end
+
+  # Queues the fetch for a message that is already stored.
+  #
+  # The row is committed before the job is queued, so an attempt that failed in between
+  # (the job transport is its own Redis, and it goes down on its own schedule) leaves a
+  # message that will never be asked for again: every retry finds the stored source_id
+  # and reports a duplicate. So the duplicate path comes back through here, and this
+  # stands down when the bytes are already attached or the fetch has given up.
+  def self.fetch_media_for(message, inbound)
+    media = media_in(inbound)
+    # A media message with no reference has no bytes to collect yet, and asking for them
+    # here would ask on behalf of every file that is gone for good as well. The failure
+    # that follows this message is what knows the difference, and Handlers::
+    # MediaDownloadFailed queues the fetch for the one file worth asking about.
+    return if media.nil? || media.ref.blank?
+    return if message.attachments.any? || message.content_attributes['is_unsupported']
+
+    Whatsapp::Session::MediaFetchJob.perform_later(message, media.to_h, inbound.chat&.to_h)
+  end
+
+  def perform
+    return build_contact_messages if content_type == 'contacts'
+
+    message = conversation.messages.build(content: message_content, **message_attributes)
+    attach_location(message)
+    message.save!
+    enqueue_media_fetch(message)
+    acknowledge([message])
+    message
+  end
+
+  private
+
+  def inbox = conversation.inbox
+  def content = inbound.content
+  def incoming? = inbound.incoming?
+
+  # The kind of content, as the string the contract names it by. Never as a class: a
+  # class captured before a reload no longer matches the payload's own, and every branch
+  # below would fall through in silence.
+  def content_type = content&.wire_type
+
+  def message_attributes
+    attributes = {
+      account_id: inbox.account_id,
+      inbox_id: inbox.id,
+      source_id: inbound.id,
+      sender: incoming? ? sender : nil,
+      message_type: incoming? ? :incoming : :outgoing,
+      # WhatsApp already has an echo: it is the phone reporting what it sent. Leaving it
+      # at the default `sent` would show the agent a message stuck on one tick that no
+      # receipt is ever going to move.
+      status: incoming? ? :sent : :delivered,
+      content_attributes: content_attributes
+    }
+    # Dated to when it was sent, not to when it was filed. The thread renders in
+    # `created_at` order, so an import written at today's timestamp would stack a year of
+    # conversation on top of this morning's, in whatever order it was imported. It is also
+    # the clock Inbound::Coverage reads to decide what a later import already had eyes on.
+    attributes[:created_at] = inbound.sent_at if imported
+    attributes
+  end
+
+  def message_content
+    case content_type
+    when 'text' then convert_mentions(content.body)
+    when 'media' then content.caption
+    when 'rich' then content.preview_text
+    end
+  end
+
+  def content_attributes
+    {
+      external_created_at: inbound.timestamp && (inbound.timestamp / 1000),
+      # An outgoing message stored without a sender was written on the phone, not by an
+      # agent; the dashboard needs a name to show in the bubble, and `human_response?`
+      # needs the flag to count the reply as one, so it clears `waiting_since` and
+      # registers a first response like an agent's own message would. Anything Chatwoot
+      # itself sent was matched by its reserved id and never reaches this writer.
+      external_echo: (true unless incoming?),
+      external_sender_name: ('WhatsApp' unless incoming?),
+      in_reply_to_external_id: inbound.quoted_id.presence,
+      referral: inbound.referral.presence,
+      is_unsupported: (true if unsupported?),
+      pending_media: pending_media,
+      # Not the same statement as `external_created_at`, which every session message
+      # carries: this one says the row was filed after the fact, which is what a report
+      # excluding backfilled traffic, or a bubble explaining an old date, has to read.
+      imported: (true if imported),
+      rich: (content.to_content_attribute if content_type == 'rich')
+    }.compact
+  end
+
+  # What the file was, for a media message whose bytes did not come with it.
+  #
+  # The provider says on the `media.download_failed` that follows whether they can still
+  # be fetched, and by then this row is the only place the file's own description
+  # survives: the event that carried it does not come again, and there is no attachment
+  # to read it off. Without it a recoverable file could be asked for and then not
+  # attached, because nothing would know what kind of attachment to build.
+  #
+  # Only what a later fetch reads. The caption is already this message's content and the
+  # preview is a data URI worth kilobytes, so neither is copied into a column nothing
+  # renders from.
+  def pending_media
+    media = self.class.media_in(inbound)
+    return if media.nil? || media.ref.present?
+
+    Whatsapp::Session::Model::Content::Media.new(
+      kind: media.kind, mime: media.mime, filename: media.filename, voice_note: media.voice_note
+    ).to_h
+  end
+
+  # A rich card with no text and no media header renders as an empty bubble, which is
+  # what the unsupported flag exists for.
+  def unsupported?
+    return true if content_type == 'unsupported'
+
+    content_type == 'rich' && content.preview_text.blank? && content.media.blank?
+  end
+
+  def convert_mentions(text)
+    return text if text.blank? || inbound.mentions.blank?
+
+    Whatsapp::MentionConverterService.convert_incoming_mentions(
+      text, { mentionedJid: Array(inbound.mentions).map(&:to_jid) }, inbox.account, inbox
+    )
+  end
+
+  # Location carries no downloadable bytes: the coordinates are the attachment.
+  def attach_location(message)
+    return unless content_type == 'location'
+
+    name = [content.name, content.address].compact_blank.join(', ')
+    message.attachments.build(
+      account_id: inbox.account_id,
+      file_type: :location,
+      coordinates_lat: content.latitude,
+      coordinates_long: content.longitude,
+      fallback_title: name.presence
+    )
+  end
+
+  # A rich card carries its header image, video or document in `media`, which is the
+  # same downloadable reference a plain media message has: without this the card is
+  # stored with its text and no attachment.
+  def enqueue_media_fetch(message)
+    self.class.fetch_media_for(message, inbound)
+  end
+
+  # One message per shared contact, each with a native contact attachment, so the
+  # dashboard renders them in the contact bubble instead of as plain text.
+  # One transaction for the whole share, as the Cloud path wraps its own message
+  # creation: a card failing to save after its siblings were committed would leave the
+  # event's source id stored, and the redelivery would then be read as a duplicate and
+  # drop the cards that never landed.
+  def build_contact_messages
+    messages = ActiveRecord::Base.transaction do
+      Array(content.contacts).filter_map { |card| build_contact_message(card) }
+    end
+    return acknowledge(messages).last if messages.present?
+
+    unsupported_contact_message
+  end
+
+  # Tells WhatsApp the message was received, which is what puts the second tick on the
+  # contact's screen and, when the inbox asks for it, marks the chat read. The Baileys
+  # and Z-API writers both do this for every incoming row; without it every message this
+  # layer stores stays unread on the contact's phone forever.
+  def acknowledge(messages)
+    # Never for an import. These are messages the contact sent long ago, or while nobody
+    # was watching, and reading them is an agent's act: acknowledging on their behalf puts
+    # the second tick on the contact's screen for a message no human has opened, and with
+    # `mark_as_read` on it empties the unread badge of the whole chat on the phone.
+    return messages if imported
+    return messages unless incoming? && messages.present?
+
+    inbox.channel.received_messages(messages, conversation)
+    messages
+  rescue Whatsapp::Session::Errors::NotSupported
+    # The backend cannot acknowledge, or has not shipped yet. Storing the message is what
+    # matters; the tick on the contact's screen is not worth failing the event over.
+    messages
+  end
+
+  # An empty share, or one whose cards carry no name, no phone and no vCard, leaves
+  # nothing to render, but the conversation has already been opened by the caller and
+  # nothing would hold the inbound source id: the thread would sit empty and every
+  # redelivery would walk the same path again. The unsupported bubble is what the agent
+  # should see anyway, and storing it is what closes the deduplication.
+  def unsupported_contact_message
+    attributes = message_attributes
+    attributes[:content_attributes] = attributes[:content_attributes].merge(is_unsupported: true)
+    message = conversation.messages.create!(content: nil, **attributes)
+    acknowledge([message])
+    message
+  end
+
+  def build_contact_message(card)
+    card = card.stringify_keys
+    # `display_name` is what the contract calls it. Reading `name` found nothing, so a
+    # card with a phone lost its name and a name-only card was dropped entirely, leaving
+    # the conversation that had just been opened with no message in it. Both fields are
+    # optional on the wire and a card may arrive as nothing but its vCard, which is why
+    # that is read too rather than dropping the share.
+    phone = card['phone'].presence || vcard_phone(card['vcard'])
+    name = card['display_name'].presence || vcard_name(card['vcard'])
+    return if phone.blank? && name.blank?
+
+    message = conversation.messages.build(content: contact_line(name, phone), **message_attributes)
+    message.attachments.build(
+      account_id: inbox.account_id, file_type: :contact,
+      fallback_title: phone || name, meta: { firstName: name }.compact
+    )
+    message.save!
+    message
+  end
+
+  # The WhatsApp vCard TEL line is `...;waid=<digits>:<formatted phone>`, so the
+  # formatted number is preferred and the waid digits are the fallback. Same reading the
+  # Baileys layer does, kept here so a card with nothing else still lands.
+  def vcard_phone(vcard)
+    vcard = vcard.to_s
+    vcard[/waid=\d+:\s*([^\r\n]+)/, 1]&.strip.presence || vcard[/waid=(\d+)/, 1].presence
+  end
+
+  def vcard_name(vcard)
+    vcard.to_s[/^FN[^:]*:\s*([^\r\n]+)/, 1]&.strip.presence
+  end
+
+  def contact_line(name, phone)
+    return name if phone.blank?
+    return phone if name.blank? || name.start_with?('+')
+
+    "#{name} - #{phone}"
+  end
+end

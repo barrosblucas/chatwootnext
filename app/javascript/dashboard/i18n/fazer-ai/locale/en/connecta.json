@@ -1,0 +1,32 @@
+{
+  "CONNECTA": {
+    "STATUS": {
+      "PENDING_ACTIVATION": "Transfer committed. The destination is waiting for platform confirmation.",
+      "ACTIVATION_STUCK": "Transfer activation needs an administrator.",
+      "TRANSFERRING": "Transfer is in progress. Sending is paused.",
+      "PARKED": "This message was not sent because the conversation transferred.",
+      "UNCERTAIN": "Message delivery is uncertain. An administrator must reconcile it before transfer.",
+      "RECEPTION": "Reception: type and send to start serving in your sector.",
+      "PARKED_HELD": "This message is held: the conversation is not admitted to the sector yet. Send a message to start serving.",
+      "PARKED_TRANSFER": "This message was not sent because the conversation transferred."
+    },
+    "SETTINGS": {
+      "TITLE": "Municipal account",
+      "LINK_TITLE": "Link municipal account",
+      "LINK_DESCRIPTION": "Enter the one-time code provided by the municipal attendance system. The link uses this Chatwoot user account.",
+      "LINK_CODE": "One-time code",
+      "LINK_ACTION": "Link account",
+      "LINK_SUCCESS": "Municipal account linked.",
+      "LINK_ERROR": "Could not link municipal account.",
+      "DISPATCH_TITLE": "Outgoing message reconciliation",
+      "DISPATCH_DESCRIPTION": "Uncertain messages must be checked by an administrator before a transfer can continue.",
+      "DISPATCH_ERROR": "Could not load or update dispatch status.",
+      "REFRESH": "Refresh",
+      "NO_DISPATCHES": "There are no messages waiting for reconciliation.",
+      "DISPATCH_ROW": "Conversation {conversation} · {state}",
+      "CONNECTOR_ID": "Connector message ID",
+      "CONFIRM_ACCEPTED": "Confirm sent",
+      "CONFIRM_FAILED": "Confirm not sent"
+    }
+  }
+}

@@ -1,0 +1,12 @@
+## depois-2 2026-10-22T15:45:45Z
+containers: bf784eeeb8cb f0461ddc9f3e
+redes: fdc1efdf74dd
+volume_criado_em: 2026-10-22T14:45:09Z
+segredo_stat(inode mtime modo tamanho): 3276892 1792680309 600 64
+canario=g0-canario-sintetico-2026-10-22
+migracoes=185
+tabelas_public=112
+views=2
+schema_sha1=d72f597351eaa262b6ef3ba0bb85eba0c175e524
+extensoes=pg_stat_statements,pg_trgm,pgcrypto,plpgsql,unaccent,vector
+schema_dump_sem_restrict_sha256=80ced235b4842e0ceb79412f44f11d14abeb1386b0f8361d0a7a7b4717665fc9

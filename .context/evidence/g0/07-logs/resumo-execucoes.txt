@@ -1,0 +1,16 @@
+Resumo das execuções da parte B1 (T0.2). Logs brutos ficam fora do repo (~/.cache/connecta-g0-test/logs/); aqui só os totais.
+Todas via scripts/connecta/g0_test_env.sh (alvo G0 guardado), com Ruby 3.4.4 do cache na frente do PATH.
+
+1. --spec --apply spec/connecta/scope_policy_query_spec.rb (baseline, código original)  -> 30 exemplos, 0 falhas   (07-baseline-spec.log)
+2. --spec --apply (dois specs, código original, primeiro conjunto de expectativas)      -> 62 exemplos, 47 falhas     (07-antes-fix.log)
+   Causa principal das falhas do spec novo: create(:message)/create(:conversation) com round-robin no MockRedis (corrigido no fixture: assignee membro).
+3. --spec --apply spec/connecta/scope_http_filter_spec.rb (código original, fixture corrigido) -> 32 exemplos, 19 falhas (07-antes-fix-http.log)
+   Falhas reais: 401 onde era 404/403; PATCH/DELETE/PUT de gestor com 200; transferência legada 500; criação via source_id (Conversation.count 8 -> 9).
+   Falhas de teste (corrigidas, não de produto): let(:json) memoizado em paginação e busca.
+4. --spec --apply (dois specs, código corrigido)                                          -> 62 exemplos, 0 falhas      (07-depois-fix-2.log)
+5. --spec --apply: scope A + scope B1 + route_inventory (T0.1) + agent_bot_delivery (T0.4/T0.5) + attachment_access (T0.5)
+                                                                                        -> 96 exemplos, 0 falhas, 1 min 12 s  (07-final-combinado.log)
+6. RuboCop (env -i, Ruby 3.4.4) em app/services/connecta/scope/, app/services/conversations/, specs de escopo e fixture -> 43 arquivos, sem ofensas (07-rubocop.log)
+7. Banco (somente leitura, depois): canário preservado, 185 migrações, 119 tabelas base, 2 views, 0 linhas de negócio (../07-baseline-logs/state-depois.txt)
+
+Dry-run do launcher (--spec sem --apply) depois de ajustar o PATH do Ruby: todos os itens 'ok'.

@@ -1,0 +1,15 @@
+## antes 2026-10-22T16:09:31Z
+canario=g0-canario-sintetico-2026-10-22
+migracoes=185
+tabelas_public=112
+views=2
+schema_sha1=d72f597351eaa262b6ef3ba0bb85eba0c175e524
+extensoes=pg_stat_statements,pg_trgm,pgcrypto,plpgsql,unaccent,vector
+tabelas_connecta_g0=0
+contas=0
+usuarios=0
+inboxes=0
+conversas=0
+account_users=0
+schema_dump_sem_restrict_sha256=80ced235b4842e0ceb79412f44f11d14abeb1386b0f8361d0a7a7b4717665fc9
+repeticao_identica=sim

@@ -1,0 +1,122 @@
+# Stack E2E local (WP + fork Chatwoot). Bancos e baileys ficam fora deste arquivo:
+# estão no projeto "connecta-e2e" e entram na rede externa "connecta-e2e-net".
+# Ver deploy/e2e/README.md. Valores ficam em wp.env / fork.env (ignorados pelo git).
+name: connecta-e2e
+
+services:
+  wp:
+    image: connecta-e2e-wp:local
+    container_name: connecta-e2e-wp
+    env_file: wp.env
+    ports:
+      - '192.168.1.32:3005:3005'
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:3005/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - connecta-e2e-net
+
+  # Painel Next.js (apps/whatsapp-platform/admin, porta 6700 no container). Fala com a API do wp pela rede interna.
+  wp-admin:
+    image: connecta-e2e-wp-admin:local
+    container_name: connecta-e2e-wp-admin
+    environment:
+      ADMIN_API_URL: http://connecta-e2e-wp:3005/admin/api
+    ports:
+      - '192.168.1.32:3007:6700'
+    restart: unless-stopped
+    depends_on:
+      - wp
+    networks:
+      - connecta-e2e-net
+
+  fork-web:
+    image: connecta-e2e-fork:local
+    container_name: connecta-e2e-fork-web
+    working_dir: /app
+    command: ['bundle', 'exec', 'rails', 's', '-b', '0.0.0.0', '-p', '3000']
+    env_file: fork.env
+    volumes:
+      - fork_storage:/app/storage
+    ports:
+      # 3006 é a porta padrão. Ver README: durante a troca do puma do host usa-se outra porta.
+      - '192.168.1.32:${FORK_WEB_HOST_PORT:-3006}:3000'
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:3000/api']
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 120s
+    networks:
+      - connecta-e2e-net
+
+  fork-worker:
+    image: connecta-e2e-fork:local
+    container_name: connecta-e2e-fork-worker
+    working_dir: /app
+    command: ['bundle', 'exec', 'sidekiq', '-C', 'config/sidekiq.yml']
+    env_file: fork.env
+    volumes:
+      - fork_storage:/app/storage
+    restart: unless-stopped
+    networks:
+      - connecta-e2e-net
+
+  # Baileys (WhatsApp). Imagem pinada por digest (latest = 3.7.3). Ver deploy/baileys-api/README.md.
+  # Valores (REDIS_URL, senha) ficam em baileys.env (ignorado pelo git, modo 600).
+  baileys-redis:
+    image: redis:7-alpine@sha256:57e4255cc971b1c8d6f8a6ca283ac01bc3ecdd914273ef6bfaede87aaecd6541
+    container_name: connecta-e2e-baileys-redis-1
+    env_file: baileys.env
+    command: ['sh', '-c', 'exec redis-server --appendonly yes --requirepass "$$REDISCLI_AUTH"']
+    volumes:
+      - baileys-redis-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+    networks:
+      - baileys-internal
+
+  baileys-api:
+    image: ghcr.io/fazer-ai/baileys-api:latest@sha256:3b85a133185de031bb506d4152640b626853d14112901fd031efed16b6fc8285
+    container_name: connecta-e2e-baileys-api-1
+    command: ['bun', 'src/index.ts']
+    env_file: baileys.env
+    ports:
+      # Somente loopback do host. Nunca 0.0.0.0.
+      - '127.0.0.1:3025:3000'
+    restart: unless-stopped
+    depends_on:
+      baileys-redis:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', "node -e \"fetch('http://127.0.0.1:' + (process.env.PORT || 3000) + '/status').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      # connecta-e2e-net: alcança o fork e tem saída para o WhatsApp.
+      - connecta-e2e-net
+      # baileys-internal: acesso ao Redis (rede sem saída).
+      - baileys-internal
+
+volumes:
+  fork_storage:
+  baileys-redis-data:
+
+networks:
+  connecta-e2e-net:
+    external: true
+  baileys-internal:
+    driver: bridge
+    internal: true

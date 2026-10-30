@@ -1,0 +1,32 @@
+{
+  "CONNECTA": {
+    "STATUS": {
+      "PENDING_ACTIVATION": "Transferência confirmada localmente; o destino aguarda confirmação da plataforma.",
+      "ACTIVATION_STUCK": "A ativação da transferência precisa de um administrador.",
+      "TRANSFERRING": "Transferência em andamento. Os envios estão pausados.",
+      "PARKED": "Esta mensagem não foi enviada porque a conversa foi transferida.",
+      "UNCERTAIN": "Não foi possível confirmar o envio. Um administrador precisa conciliá-lo antes da transferência.",
+      "RECEPTION": "Atendimento em recepção: escreva e envie para iniciar o atendimento no seu setor.",
+      "PARKED_HELD": "Esta mensagem está retida: a conversa ainda não foi admitida no setor. Envie uma mensagem para iniciar o atendimento.",
+      "PARKED_TRANSFER": "Esta mensagem não foi enviada porque a conversa foi transferida."
+    },
+    "SETTINGS": {
+      "TITLE": "Conta municipal",
+      "LINK_TITLE": "Vincular conta municipal",
+      "LINK_DESCRIPTION": "Informe o código de uso único fornecido pelo sistema municipal de atendimento. O vínculo usa esta conta do Chatwoot.",
+      "LINK_CODE": "Código de uso único",
+      "LINK_ACTION": "Vincular conta",
+      "LINK_SUCCESS": "Conta municipal vinculada.",
+      "LINK_ERROR": "Não foi possível vincular a conta municipal.",
+      "DISPATCH_TITLE": "Conciliação de mensagens enviadas",
+      "DISPATCH_DESCRIPTION": "Um administrador deve verificar mensagens incertas antes de continuar a transferência.",
+      "DISPATCH_ERROR": "Não foi possível carregar ou atualizar o estado do envio.",
+      "REFRESH": "Atualizar",
+      "NO_DISPATCHES": "Não há mensagens aguardando conciliação.",
+      "DISPATCH_ROW": "Conversa {conversation} · {state}",
+      "CONNECTOR_ID": "ID da mensagem no conector",
+      "CONFIRM_ACCEPTED": "Confirmar envio",
+      "CONFIRM_FAILED": "Confirmar que não foi enviada"
+    }
+  }
+}
