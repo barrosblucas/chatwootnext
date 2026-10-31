@@ -1,0 +1,47 @@
+# Override de TESTE — Chatwootnext (host de teste local, porta 3000) <-> Baileys de teste.
+# Uso: docker compose -f /home/thanos/chatwootnext/docker-compose.teste-lan.yml
+#                    -f docker-compose.teste-lan.baileys-override.yml up -d rails sidekiq
+# Requer no ambiente: BAILEYS_PROVIDER_DEFAULT_API_KEY=<mesmo valor de BAILEYS_API_KEY do runtime>
+# (exportado em memória a partir do .env privado 0600; nunca literal aqui).
+# Mantém imagem atual (chatwootnext:teste), volumes e rede default; sem db prepare/migrações.
+# Entrypoint do rails sobrescrito para pular `rake db:chatwoot_prepare` preservando
+# pré-requisitos: limpeza de pid/cache, espera do Postgres e `bundle check`.
+services:
+  rails:
+    environment:
+      - BAILEYS_PROVIDER_DEFAULT_URL=http://baileys-api:3000
+      - BAILEYS_PROVIDER_DEFAULT_API_KEY=${BAILEYS_PROVIDER_DEFAULT_API_KEY:?defina BAILEYS_PROVIDER_DEFAULT_API_KEY no ambiente (valor do .env privado do runtime)}
+      - BAILEYS_PROVIDER_DEFAULT_CLIENT_NAME=Chatwoot-Connecta-Teste
+    entrypoint:
+      - sh
+      - -c
+      - |
+        set -x
+        rm -rf /app/tmp/pids/server.pid
+        rm -rf /app/tmp/cache/*
+        echo "Waiting for postgres to become ready...."
+        $$(docker/entrypoints/helpers/pg_database_url.rb)
+        PG_READY="pg_isready -h $$POSTGRES_HOST -p $$POSTGRES_PORT -U $$POSTGRES_USERNAME"
+        until $$PG_READY; do sleep 2; done
+        echo "Database ready to accept connections."
+        echo "Skipping db:chatwoot_prepare (test override, no migrations)."
+        until bundle check; do sleep 2; done
+        exec "$$@"
+      - sh
+    networks:
+      - default
+      - baileys-edge
+
+  sidekiq:
+    environment:
+      - BAILEYS_PROVIDER_DEFAULT_URL=http://baileys-api:3000
+      - BAILEYS_PROVIDER_DEFAULT_API_KEY=${BAILEYS_PROVIDER_DEFAULT_API_KEY:?defina BAILEYS_PROVIDER_DEFAULT_API_KEY no ambiente (valor do .env privado do runtime)}
+      - BAILEYS_PROVIDER_DEFAULT_CLIENT_NAME=Chatwoot-Connecta-Teste
+    networks:
+      - default
+      - baileys-edge
+
+networks:
+  baileys-edge:
+    external: true
+    name: chatwootnext-baileys-teste_baileys-edge

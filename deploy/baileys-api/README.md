@@ -84,11 +84,11 @@ Nenhum segredo real consta neste diretório: o compose referencia variáveis e
 o `.env.example` traz só placeholders óbvios. O `.env` real (copiado do
 `.env.example` e preenchido fora do git) está coberto pelo `.gitignore`.
 
-## Procedência da imagem (fixada em 2026-10-25)
+## Procedência da imagem (fixada em 2026-10-25, atualizada para v3.7.3 em 2026-10-31)
 
 | Serviço | Imagem fixada | Procedência |
 |---|---|---|
-| `baileys-api` | `ghcr.io/fazer-ai/baileys-api:v1.21.0@sha256:738477885d5e1f7a01a03a1940ee2292ec24bf634e3e2cf49ae11bfa19e0fb8e` | Repositório GHCR do vendor `fazer-ai` (workflow `publish_github_package.yml` do repo `fazer-ai/baileys-api`). Maior tag semântica estável listada no registry em 2026-10-25 (`latest` não usada). Digest do índice multi-arquitetura (amd64 + arm64). |
+| `baileys-api` | `ghcr.io/fazer-ai/baileys-api:v3.7.3@sha256:3b85a133185de031bb506d4152640b626853d14112901fd031efed16b6fc8285` | Repositório GHCR do vendor `fazer-ai` (workflow `publish_github_package.yml` do repo `fazer-ai/baileys-api`). Release estável oficial `v3.7.3` (última estável, SDK `7.0.0-rc14`; anterior `v1.21.0` em 2026-10-25). Digest do índice multi-arquitetura (amd64 + arm64). |
 | `redis` | `redis:7-alpine@sha256:57e4255cc971b1c8d6f8a6ca283ac01bc3ecdd914273ef6bfaede87aaecd6541` | Docker Hub `library/redis`, tag `7-alpine`. Digest do índice multi-arquitetura. |
 
 Comandos usados (somente leitura de metadados de registry; nenhuma camada baixada, nenhum container iniciado):
@@ -98,7 +98,7 @@ Comandos usados (somente leitura de metadados de registry; nenhuma camada baixad
 TOKEN=$(curl -s "https://ghcr.io/token?scope=repository:fazer-ai/baileys-api:pull&service=ghcr.io" | sed -E 's/.*"token":"([^"]+)".*/\1/')
 curl -s -H "Authorization: Bearer $TOKEN" https://ghcr.io/v2/fazer-ai/baileys-api/tags/list
 # digests
-docker buildx imagetools inspect ghcr.io/fazer-ai/baileys-api:v1.21.0
+docker buildx imagetools inspect ghcr.io/fazer-ai/baileys-api:v3.7.3
 docker buildx imagetools inspect redis:7-alpine
 ```
 
@@ -107,9 +107,11 @@ Tentativas descartadas: `ghcr.io/chatwoot/baileys-api` responde `DENIED: invalid
 O fork não usa fork de terceiro: a escolha segue o vendor que o provider Baileys espera.
 
 **Autorização da versão:** a tag `v1.21.0` foi **autorizada pelo humano em 2026-10-25**
-(a escolha da tag deixou de estar pendente). Ressalva: isto autoriza apenas a versão
+e a tag `v3.7.3` foi **autorizada pelo humano em 2026-10-31** (pedido explícito de
+atualização para a última estável oficial). Ressalva: isto autoriza apenas a versão
 fixada no manifesto. O **deploy não foi executado** e continua exigindo autorização
-humana específica com servidor e escopo nomeados.
+humana específica com servidor e escopo nomeados. `stop_grace_period: 45s` no
+`baileys-api` (exigência das notas do release: lease de 30s).
 
 Ao atualizar a imagem, repetir os comandos acima, conferir a tag no registry e registrar
 aqui a nova tag, o digest e a data.

@@ -116,6 +116,38 @@ RSpec.describe Channel::Whatsapp do
         .to_return(status: 200, body: { data: [{ id: 'another_phone_id' }] }.to_json, headers: { 'Content-Type' => 'application/json' })
       expect(channel.save).to be(false)
     end
+
+    context 'with the baileys provider' do
+      let(:channel) do
+        build(:channel_whatsapp, provider: 'baileys', account: create(:account)).tap do |baileys_channel|
+          baileys_channel.provider_config = baileys_channel.provider_config.merge('provider_url' => provider_url)
+        end
+      end
+
+      context 'when the Baileys API URL is missing' do
+        let(:provider_url) { '' }
+
+        it 'fails with the URL message instead of Invalid Credentials and no HTTP request' do
+          expect(HTTParty).not_to receive(:get)
+
+          expect(channel.save).to be(false)
+          expect(channel.errors[:provider_config]).to include(I18n.t('errors.inboxes.channel.baileys_url_not_configured'))
+          expect(channel.errors[:provider_config].join).not_to include('Invalid Credentials')
+        end
+      end
+
+      context 'when the API refuses the credentials' do
+        let(:provider_url) { 'https://baileys.api' }
+
+        it 'keeps the existing Invalid Credentials error' do
+          stub_request(:get, 'https://baileys.api/status/auth').to_return(status: 401, body: 'unauthorized')
+          allow(Rails.logger).to receive(:error)
+
+          expect(channel.save).to be(false)
+          expect(channel.errors[:provider_config]).to include('Invalid Credentials')
+        end
+      end
+    end
   end
 
   describe 'webhook_verify_token' do

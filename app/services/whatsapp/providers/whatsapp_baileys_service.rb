@@ -390,6 +390,8 @@ class Whatsapp::Providers::WhatsappBaileysService < Whatsapp::Providers::BaseSer
   end
 
   def validate_provider_config?
+    raise_invalid_provider_url_error unless valid_provider_url?(provider_url)
+
     response = HTTParty.get(
       "#{provider_url}/status/auth",
       headers: api_headers
@@ -732,6 +734,25 @@ class Whatsapp::Providers::WhatsappBaileysService < Whatsapp::Providers::BaseSer
 
   def provider_url
     whatsapp_channel.provider_config['provider_url'].presence || DEFAULT_URL
+  end
+
+  # A missing, blank, hostless or non-HTTP(S) Baileys URL is a setup problem, not a
+  # provider answer: interpolating it into "#{provider_url}/status/auth" produces a
+  # hostless request that raises Errno::ECONNREFUSED (nil port 80) out of the model
+  # validation and surfaces as a 500 on inbox creation. Raising the existing
+  # InvalidConfig instead tells the operator what to fix (the URL, not the key):
+  # the model rescues it into a controlled 422, without ever logging the URL or key.
+  # Kept out of `with_error_handling` on purpose: this is not a sick connection.
+  def valid_provider_url?(url)
+    uri = URI.parse(url.to_s.strip)
+    %w[http https].include?(uri.scheme) && uri.host.present?
+  rescue URI::InvalidURIError
+    false
+  end
+
+  def raise_invalid_provider_url_error
+    Rails.logger.error 'Baileys provider URL is not configured or invalid'
+    raise Whatsapp::Session::Errors::InvalidConfig, I18n.t('errors.inboxes.channel.baileys_url_not_configured')
   end
 
   def api_key

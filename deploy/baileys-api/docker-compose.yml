@@ -10,11 +10,13 @@ name: connecta-baileys-api
 
 services:
   baileys-api:
-    # Imagem do vendor fazer-ai (GHCR), release v1.21.0 (semver estável mais recente
-    # listada em 2026-10-25). Digest = índice multi-arquitetura (amd64 + arm64).
-    # Verificação: docker buildx imagetools inspect ghcr.io/fazer-ai/baileys-api:v1.21.0
-    image: ghcr.io/fazer-ai/baileys-api:v1.21.0@sha256:738477885d5e1f7a01a03a1940ee2292ec24bf634e3e2cf49ae11bfa19e0fb8e
+    # Imagem do vendor fazer-ai (GHCR), release v3.7.3 (estável oficial, SDK 7.0.0-rc14).
+    # Digest = índice multi-arquitetura (amd64 + arm64).
+    # Verificação: docker buildx imagetools inspect ghcr.io/fazer-ai/baileys-api:v3.7.3
+    image: ghcr.io/fazer-ai/baileys-api:v3.7.3@sha256:3b85a133185de031bb506d4152640b626853d14112901fd031efed16b6fc8285
     restart: unless-stopped
+    # Lease de sessão de 30s nas notas do release exige grace >35s no stop.
+    stop_grace_period: 45s
     # Imagem fazer-ai usa Bun; sem argumentos o Bun só imprime a ajuda e sai (código 0).
     # O script "start" do package.json da imagem é `bun src/index.ts`.
     command: ['bun', 'src/index.ts']

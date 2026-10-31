@@ -1041,6 +1041,71 @@ describe Whatsapp::Providers::WhatsappBaileysService do
         expect(Rails.logger).to have_received(:error)
       end
     end
+
+    context 'when the provider URL is missing or unusable' do
+      it 'raises InvalidConfig without an HTTP request when both config and default URL are blank' do
+        whatsapp_channel.provider_config = whatsapp_channel.provider_config.merge('provider_url' => '')
+        stub_const('Whatsapp::Providers::WhatsappBaileysService::DEFAULT_URL', nil)
+        expect(HTTParty).not_to receive(:get)
+        allow(Rails.logger).to receive(:error)
+
+        expect do
+          service.validate_provider_config?
+        end.to raise_error(Whatsapp::Session::Errors::InvalidConfig,
+                           I18n.t('errors.inboxes.channel.baileys_url_not_configured'))
+        expect(Rails.logger).to have_received(:error).with('Baileys provider URL is not configured or invalid')
+      end
+
+      it 'raises InvalidConfig without an HTTP request when the URL has no host' do
+        whatsapp_channel.provider_config = whatsapp_channel.provider_config.merge('provider_url' => '/status/auth')
+        stub_const('Whatsapp::Providers::WhatsappBaileysService::DEFAULT_URL', nil)
+        expect(HTTParty).not_to receive(:get)
+
+        expect do
+          service.validate_provider_config?
+        end.to raise_error(Whatsapp::Session::Errors::InvalidConfig)
+      end
+
+      it 'raises InvalidConfig without an HTTP request when the URL is malformed' do
+        whatsapp_channel.provider_config = whatsapp_channel.provider_config.merge('provider_url' => 'http://exa mple.com')
+        stub_const('Whatsapp::Providers::WhatsappBaileysService::DEFAULT_URL', nil)
+        expect(HTTParty).not_to receive(:get)
+
+        expect do
+          service.validate_provider_config?
+        end.to raise_error(Whatsapp::Session::Errors::InvalidConfig)
+      end
+
+      it 'raises InvalidConfig without an HTTP request when the URL scheme is not HTTP(S)' do
+        whatsapp_channel.provider_config = whatsapp_channel.provider_config.merge('provider_url' => 'ftp://baileys.internal')
+        stub_const('Whatsapp::Providers::WhatsappBaileysService::DEFAULT_URL', nil)
+        expect(HTTParty).not_to receive(:get)
+
+        expect do
+          service.validate_provider_config?
+        end.to raise_error(Whatsapp::Session::Errors::InvalidConfig)
+      end
+
+      it 'validates against DEFAULT_URL when the inbox carries no provider_url override' do
+        whatsapp_channel.provider_config = whatsapp_channel.provider_config.except('provider_url')
+        stub_const('Whatsapp::Providers::WhatsappBaileysService::DEFAULT_URL', 'https://baileys.default')
+        stub_request(:get, 'https://baileys.default/status/auth')
+          .with(headers: stub_headers(whatsapp_channel))
+          .to_return(status: 200, body: '', headers: {})
+
+        expect(service.validate_provider_config?).to be(true)
+      end
+
+      it 'raises InvalidConfig when the inbox carries no override and DEFAULT_URL is missing' do
+        whatsapp_channel.provider_config = whatsapp_channel.provider_config.except('provider_url')
+        stub_const('Whatsapp::Providers::WhatsappBaileysService::DEFAULT_URL', nil)
+        expect(HTTParty).not_to receive(:get)
+
+        expect do
+          service.validate_provider_config?
+        end.to raise_error(Whatsapp::Session::Errors::InvalidConfig)
+      end
+    end
   end
 
   describe '#fetch_reachout_timelock' do

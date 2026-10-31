@@ -468,6 +468,8 @@ class Channel::Whatsapp < ApplicationRecord # rubocop:disable Metrics/ClassLengt
 
   def validate_provider_config
     errors.add(:provider_config, 'Invalid Credentials') unless provider_service.validate_provider_config?
+  rescue Whatsapp::Session::Errors::InvalidConfig => e
+    errors.add(:provider_config, e.message)
   end
 
   # Logs only the embedded signup → manual migration (the save drops the
