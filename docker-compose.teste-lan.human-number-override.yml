@@ -1,0 +1,23 @@
+# Override TESTE human-number Saude por unidades (nao secreto; valores via ambiente em memoria).
+# Uso: BAILEYS_PROVIDER_DEFAULT_API_KEY + CONNECTA_* exportados em memoria (nunca literal),
+# docker compose -f docker-compose.teste-lan.yml -f docker-compose.teste-lan.baileys-override.yml -f docker-compose.teste-lan.human-number-override.yml up -d --no-deps rails sidekiq
+# Preserva override Baileys (URL/key default) e pula migrations (entrypoint do override Baileys).
+# AVISO: recriar Rails/Sidekiq somente com os 2 composes antigos remove as flags human-number/HMAC/recepcao;
+# usar sempre os 3 composes acima enquanto o modo Saude por unidades estiver ativo.
+services:
+  rails:
+    environment:
+      - CONNECTA_HUMAN_NUMBER_ENABLED=true
+      - CONNECTA_ACCOUNT_ID=2
+      - CONNECTA_PLATFORM_URL=http://192.168.1.32:9090
+      - CONNECTA_RECEPTION_ORG_UNIT_ID=ea975324-f4f9-4fe0-889f-c146c8ac41b5
+      - CONNECTA_PLATFORM_TO_FORK_SECRET=${CONNECTA_PLATFORM_TO_FORK_SECRET:?defina em memoria a partir do secrets privado}
+      - CONNECTA_FORK_TO_PLATFORM_SECRET=${CONNECTA_FORK_TO_PLATFORM_SECRET:?defina em memoria a partir do secrets privado}
+  sidekiq:
+    environment:
+      - CONNECTA_HUMAN_NUMBER_ENABLED=true
+      - CONNECTA_ACCOUNT_ID=2
+      - CONNECTA_PLATFORM_URL=http://192.168.1.32:9090
+      - CONNECTA_RECEPTION_ORG_UNIT_ID=ea975324-f4f9-4fe0-889f-c146c8ac41b5
+      - CONNECTA_PLATFORM_TO_FORK_SECRET=${CONNECTA_PLATFORM_TO_FORK_SECRET:?defina em memoria a partir do secrets privado}
+      - CONNECTA_FORK_TO_PLATFORM_SECRET=${CONNECTA_FORK_TO_PLATFORM_SECRET:?defina em memoria a partir do secrets privado}

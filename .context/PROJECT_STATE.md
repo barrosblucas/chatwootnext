@@ -2,6 +2,73 @@
 
 Estado atual: fase, entregas, próximos marcos e pendências. Criado em 2026-10-22.
 
+## Correcao 21:36Z — transferir na origem + override persistente (8 grants; sem funcional)
+
+- Grants 6→8 diretos (4/QA): QA3 transfere Farmácia+Hospital lendo só Farmácia; QA4 simétrico. `attendance_outbox` 11→13 `delivered`, heartbeat 21:35:33 `fresh`, TTL120. Override Saude existe no HOST (1601 bytes, placeholders, ignorado `.runtime/`); Chatwoot override com aviso de 3 composes. Serviços `healthy`, restarts 0, sem recriação. Detalhe em `changelog/CHANGELOG_2026_11_01.md`.
+
+## Saude por unidades pronta para teste humano — 2026-11-01 ~21:28Z (candidata ativa, HMAC/ACL/binding/membership; sem teste funcional)
+
+- Saude `wb-saude-backend:latest` = candidata `b8dd0ff5be03` (`f422dcc-compat-src44e261e55953`, `external_number` + `parsePgSafePositiveId`/`parsePgEpoch`); rollbacks `rollback-5d6a159a050f` (=`5d6a159a050f`) + `rollback-aa906eaf735a` preservados. Chatwoot `chatwootnext:teste` `d539778b0ff0`, 187 migrations, coluna presente, inbox2 única conta2.
+- HMAC pareado direto nas duas direções em memória (sem troca, sem valor em repo/log): Rails/Sidekiq `HUMAN_NUMBER_ENABLED=true`, `ACCOUNT_ID=2`, `PLATFORM_URL` local, `RECEPTION_ORG_UNIT_ID=ea975324...`, restarts 0. Saude `external_number`, `account2/inbox2/hs_inbox2`, `individual/enforce`, token User2 existente em memória (`AccessToken` 4), número Baileys em memória, `/health`+`/ready` 200.
+- Projeção: 3 unidades, 2 vínculos QA 3/4 verificados, 6 grants diretos sem leitura cruzada, heartbeat 4 ciclos (21:21:58→21:27:18), `verified/fresh true`, `admin false`, TTL 120. Binding inbox2 `enforce`, webhook conta2 `.../chatwoot/webhook` (`message_created,conversation_status_changed`), `InboxMember` [2,3,4]. Nenhum atendimento/transferência/protocolo criado pelo agente. Humano testa. Detalhe em `changelog/CHANGELOG_2026_11_01.md`.
+
+## Drift de inbox corrigido (só 20260814120000) — 2026-11-01 ~21:10Z (backup novo válido; inbox API 200; sem restart; sem outras migrations)
+
+- Backup privado novo pré-migração: `.../backups/chatwoot-pre-20260814120000-20261101T210946Z.dump` (506292 bytes, 0600, dir 0700; `pg_restore --list` 1284 entradas, sem restaurar). Backups anteriores preservados.
+- Preflight: DB `chatwoot`, imagem ativa `chatwootnext:teste` `d539778b0ff0`, migration file idêntico host/imagem, versão ausente (0), coluna ausente (23 cols), total 186, 29 downs incluindo o alvo. Pós `db:migrate:up VERSION=20260814120000` (rc=0): total 187 (só o alvo), `20261024000001` segue pendente (0), coluna boolean default false NOT NULL, 24 cols, inboxes 1, members 1, downs 29→28.
+- API com token existente de User2 só em memória (sem rotação/arquivo/log; `AccessToken` 4→4): `profile` 200 id=2, `account2` 200 id=2, inbox index 200 (1, ids=2, com `prevent_assignment_takeover`), inbox show 200 (id=2, `pat=false`). Detalhe técnico: `User.find(2)` é STI `SuperAdmin` sem `access_tokens`; token lido via `AccessToken.where(owner_id: 2)` dentro do runner.
+- Sem restart (Rails/Sidekiq running, restarts 0, mesma imagem; API 200 prova schema recarregado). Health 200; QA 3/4 agents sem inbox; `connecta_*` 10 tabelas todas 0 (sem binding/grant); flags desligadas (transfer ausente, gateway vazio, secret ausente). Detalhe em `changelog/CHANGELOG_2026_11_01.md`.
+
+## Token User2 validado em memória — 2026-11-01 ~21:05Z (perfil+conta 200; inbox API 500 por drift, não por auth; sem rotação)
+
+- Token existente de User2 (admin conta 2) validado sem expor segredo/PII: `GET /api/v1/profile` 200 (`id==2`), `GET /api/v1/accounts/2` 200 (`id==2`), `token_present=true`, `AccessToken` 4→4 sem mutação. APTO à reutilização em memória na próxima etapa; NÃO escrito no Saúde. Token de usuário (alcance por memberships), não dedicado à conta.
+- `GET /api/v1/accounts/2/inboxes/2` e índice → 500 com corpo só `{status,error}`: auth passou, view `_inbox.json.jbuilder:15` (`prevent_assignment_takeover`) quebrou porque o DB do runtime não tem a coluna (23 cols, `has_col=false`), embora `db/schema.rb` tenha. Inbox 2 existe (`Channel::Whatsapp`, 1 membro User2). Integração Saúde segue NÃO configurada.
+- Health 200; sem rotação/criação, sem membership/flag/grant/binding, sem restart/migration/build. Detalhe em `changelog/CHANGELOG_2026_11_01.md`.
+
+## Checkpoint Saúde por unidades — 2026-11-01 ~20:50Z (setup parcial; BLOQUEADO com 3 decisões faltantes)
+
+- Backup Saúde válido: `.../backups/saude-pre-humanservice-20261101T204606Z.dump` (0600, `pg_restore --list` 559 entradas, sem restaurar). Backup Chatwoot preservado.
+- Base reconciliada: somente `20261024000000`; `20261024000001` redundante (enforcement já existe com default+NOT NULL); 10 tabelas Connecta vazias; QA 3/4 agents sem inbox membership; Rails/Sidekiq sem `CONNECTA_*`, sem restart.
+- Criado no municipal: 3 `org_units` (`saude.recepcao` raiz, `saude.farmacia`/`saude.hospital` filhas, todas accepts_cases) + 2 staff sintéticos operator (senha inutilizável). Links 0, grants 0, outbox `acl.sync` 0. Fail-closed intacto.
+- B1 LACUNA passo2 (sem fix autorizado): R2 `confirmIdentityLinkAndPublish` aborta (`invalid_acl_sync_chatwoot_user_id`; BIGINT pg vira string); R3 publicaria `false` silencioso. B2: API token atual do Saúde dá 401 na conta 2. B3: boot exige `CHATWOOT_INBOX_IDENTIFIER`, Baileys não tem. Saúde segue em conta1/inbox1, sem `HUMAN_SERVICE_*`.
+- Próximo: humano decide (B1) fix de coerção + autorização, (B2) novo token conta 2, (B3) identifier. Só então: HMAC nos dois runtimes, sync/heartbeat, binding, membership por último. Detalhe em `changelog/CHANGELOG_2026_11_01.md`.
+
+## Base local Connecta (modo Saúde por unidades) — 2026-11-01 (migração aditiva aplicada; QA criado sem inbox; enforce DESLIGADO)
+
+- Backup privado pré-migração: `/home/thanos/.local/state/chatwootnext-connecta/backups/chatwoot-pre-20261024000000-20261101T200927Z.dump` (`pg_dump -Fc` do banco `chatwoot`; diretório 0700, arquivo 0600; `pg_restore --list` OK, 1194 entradas; não restaurado). Caminho também em `.../chatwootnext-connecta/LAST_PRE_MIGRATION_BACKUP.path`.
+- Migração aplicada: somente `20261024000000` (`db:migrate:up VERSION=20261024000000`, rc=0). Criadas 10 tabelas `connecta_*` (o briefing dizia 11; o arquivo cria 10) e 23 índices/PKs. `gen_random_uuid()` disponível (PG 16). `schema_migrations` 185 → 186. `20261024000001` (add enforcement) continua PENDENTE e não foi aplicada: não rodar `db:migrate` genérico sem decidir sobre ela.
+- Agentes QA sintéticos (conta 2, role agent, confirmados, sem super admin): `user_id` 3 e 4, `account_user_id` 3 e 4 (e-mails `*@example.invalid`). Criados sem convite e sem e-mail de confirmação (`skip_confirmation!`). Inbox membership: 0 (única `inbox_members` existente é a do administrador atual, inbox 2, inalterada).
+- Efeitos colaterais do callback de criação tratados: (a) `Avatar::AvatarFromGravatarJob` agendado 30 s à frente (HTTP externo ao gravatar.com) removido do Sidekiq antes de rodar, 0 restante; (b) inscrição automática nos canais públicos de chat interno removida para os dois QA (0 restante; canais e membros atuais inalterados). Nenhum job de e-mail/Devise encontrado no Sidekiq nem nos logs.
+- Segredos locais (valores nunca impressos): `/home/thanos/.local/state/chatwootnext-connecta/secrets/connecta-hmac.secrets` (campos `CONNECTA_PLATFORM_TO_FORK_SECRET` e `CONNECTA_FORK_TO_PLATFORM_SECRET`, 64 hex cada, gerados agora porque ausentes no env e no `installation_configs`). Credenciais QA em `.../secrets/qa-agents.secrets` (campos `QA_FARMACIA_*` e `QA_HOSPITAL_*`: `_EMAIL`, `_NAME`, `_PASSWORD`). Diretório 0700, arquivos 0600, fora do Git.
+- Não aplicado: segredos HMAC ainda não estão no runtime (Rails/Sidekiq sem as variáveis); sem restart; `CONNECTA_TRANSFER_ENABLED` segue false; nenhuma unidade/grant/binding criada.
+- Saúde: `/health` HTTP 200 (192.168.1.32:3000); Rails e Sidekiq com `RestartCount` 0 e mesma imagem `d539778b0ff0`.
+- Próximo passo (microetapa separada, com autorização): aplicar o par HMAC ao runtime (env das duas apps) e reiniciar só quando autorizado; decidir `20261024000001`; criar unidades/grants e a inbox 2 membership dos QA só quando o enforce/ACL estiverem válidos. Detalhe em `changelog/CHANGELOG_2026_11_01.md`.
+
+## Runtime de teste — 2026-11-01 (imagem nova ATIVA em `:teste`; Rails/Sidekiq no ar; sem migrações)
+
+- `chatwootnext:teste` promovido para `sha256:d539778b0ff0…` (revisão `a661537d4`). Rollback preservado: `chatwootnext:rollback-20261101-236e2c96` = `sha256:236e2c966cb3…`, sem alteração.
+- Rails (`/health` HTTP 200 em 192.168.1.32:3000) e Sidekiq em `running`, 0 restarts, mesma imagem. Recriados só `rails` e `sidekiq` com o Compose base + override home, `--no-deps`; override pula `db:chatwoot_prepare` e migrações.
+- Postgres, Redis e Baileys-redis iniciados com volumes existentes; Baileys-api `healthy` (Docker healthcheck). Volumes preservados; `schema_migrations` = 185, sem migração nova.
+- Gate de transferência (somente leitura): `CONNECTA_TRANSFER_ENABLED` = false; `CONNECTA_GATEWAY_URL` vazio; `CONNECTA_TRANSFER_SECRET` ausente; `CONNECTA_HUMAN_NUMBER_ENABLED` ausente no env do Rails (default false). Nenhuma configuração por conta (`connecta_gateway_url`). Backend municipal: nenhum configurado. Transferência segue desligada e não validada.
+- Auth Baileys verificada (2026-11-01, GET somente): 1 inbox Baileys, sem chave própria, usa default key e default URL (`http://baileys-api:3000`); `GET /status/auth` → 200 com a chave efetiva; controles sem chave e com chave inválida → 401. A ressalva anterior de mismatch (chave do container Rails antigo) fica superada pela verificação efetiva. Detalhe em `changelog/CHANGELOG_2026_11_01.md`.
+- Não validado: handoff, protocolo, envio de mensagem. Nenhum teste mutante executado. Detalhe em `changelog/CHANGELOG_2026_11_01.md`.
+
+## Build local da main — 2026-11-01 (CONCLUÍDO com teto de 10 GiB; sem deploy; apps paradas)
+
+- Imagem nova `chatwootnext:main-a661537d4-20261101`, ID `sha256:d539778b0ff0…`, revisão `a661537d45961aa678c688d0f6922465e8013c52` (código igual a `03c55d2b9`). Build rc=0 em 2409 s com `--load`.
+- Limites do builder `chatwootnext-limited` verificados no cgroup: 2 CPUs (200000/100000), memória 10 GiB, swap extra 0, `--oci-max-parallelism=1`. Cache preservado com `--keep-state`.
+- Monitoramento: MemAvailable mínimo ~2,9 GiB (limiar de interrupção 1,5 GiB não atingido); pico do builder ~8,8 GiB; `oom_kill` 0.
+- Assets: Vite concluiu em `/app/public/vite`. Ressalva: initializer registrou erro de conexão Postgres durante `assets:precompile`, sem falhar o passo.
+- Não ativada: tags `:teste`/`:local` e rollback seguem em `236e2c966cb3`. Apps: 0 running / 67 exited. Builder parado. Nenhum deploy.
+- Próxima decisão humana: promover ou não a imagem nova para `:teste`, em autorização separada. Detalhe em `changelog/CHANGELOG_2026_11_01.md`.
+
+## Build local da main — 2026-11-01 (FALHOU por OOM; sem imagem nova; apps paradas)
+
+- Base `main` `a661537d4` (docs sobre `03c55d2b9`; código de build idêntico). Builder dedicado `chatwootnext-limited` com 2 CPUs (`cpu.max` 200000/100000), 6 GiB RAM e swap 0 (verificado no cgroup), `--oci-max-parallelism=1`. Default global intocado.
+- `docker buildx build --load` parou em `bundle install -j 4` (Dockerfile:69) com `cannot allocate memory` e `oom_kill 1` após 583 s. Nenhuma imagem `chatwootnext:main-a661537d4-20261101` criada. Tags `:teste`, `:local`, `:rollback-20261101-236e2c96` (ID `236e2c966cb3`) intactas.
+- Aplicações: 0 running / 67 exited, nada subido. Builder `chatwootnext-limited0` parado, cache preservado.
+- Próxima decisão humana: (A) elevar o limite do builder acima de 6 GiB, ou (B) reduzir `-j 4` no Dockerfile. Nenhuma das duas executada. Detalhe em `changelog/CHANGELOG_2026_11_01.md`.
+
 ## Main consolidada — 2026-11-01 (merge fix Baileys 422, sem build/deploy)
 
 - `main` em `03c55d2b9` após fast-forward de `fix/baileys-missing-url-422` sobre `1772a68a3` (13 arquivos, sem perda). Diretório canônico: `/home/thanos/chatwootnext` (branch `main`).
