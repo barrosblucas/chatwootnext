@@ -2,6 +2,14 @@
 
 Estado atual: fase, entregas, próximos marcos e pendências. Criado em 2026-10-22.
 
+## Main consolidada — 2026-11-01 (merge fix Baileys 422, sem build/deploy)
+
+- `main` em `03c55d2b9` após fast-forward de `fix/baileys-missing-url-422` sobre `1772a68a3` (13 arquivos, sem perda). Diretório canônico: `/home/thanos/chatwootnext` (branch `main`).
+- Worktree temporária `/tmp/opencode/chatwootnext-baileys-422` removida (`git worktree remove`, sem `--force`); branch `fix/baileys-missing-url-422` preservada como referência histórica. `/tmp/opencode/chatwootnext-baileys-runtime` (API Baileys) não tocado.
+- Override de teste canônico: `/home/thanos/chatwootnext/docker-compose.teste-lan.baileys-override.yml`. Comando seguro para futuras operações de teste (a partir do diretório canônico):
+  `docker compose -f /home/thanos/chatwootnext/docker-compose.teste-lan.yml -f docker-compose.teste-lan.baileys-override.yml up -d rails sidekiq`.
+- Ressalvas: labels Compose históricos dos containers de teste ainda apontam para o override no caminho temporário (metadados; nada recriado); código do fix ainda NÃO buildado/ativado no runtime (imagem `chatwootnext:teste` anterior ao fix); docs desta etapa commitadas em commit documental posterior a `03c55d2b9` e publicadas em `origin/main` em 2026-11-01 (autorizado pelo usuário; o push também publica `03c55d2b9`). Detalhe em `.context/changelog/CHANGELOG_2026_11_01.md`.
+
 ## Consolidação de produção — 2026-10-29 (F3)
 
 - F2 aceito em `bb4dcce72f8d07e7469cfa9641cf38fce0755c4e`. F3 compara somente os nove SRC de E com C, sem merge/reaplicação de E. Não há hunk funcional E faltante: dois arquivos são duplicados byte a byte em C e seis de código/spec são superados pela evolução negrito-itálico de C.
