@@ -2,6 +2,13 @@
 
 Estado atual: fase, entregas, próximos marcos e pendências. Criado em 2026-10-22.
 
+## Envio em recepção só pelo bot + parked visível — 2026-11-02 ~04:15Z (imagem reception-20261102 ativa no teste; specs novas não executadas)
+
+- Imagem `chatwootnext:teste` = `8026ae16c98b` (`chatwootnext:reception-20261102`); backup `chatwootnext:teste-pre-reception` (=`d539778b0ff0`); rollback = retag + recriar rails/sidekiq. Rails/Sidekiq recriados (Up, health 200, var `CONNECTA_RECEPTION_SENDER_USER_IDS=5` nos dois, inbox 2 Baileys open, logs sem erros).
+- Regra: em inbox marcada, recepção libera envio só de `sender_type='User'` com `sender_id` em `CONNECTA_RECEPTION_SENDER_USER_IDS` (checado no SQL pelos campos persistidos, nunca content_attributes); demais remetentes (inclusive admin) seguem parked. Claim parked (scope ausente/reception/transferring) marca a mensagem `failed` com erro em português; manutenção não marca (fluxo 409 preservado). Decisão em `.context/decisions/004-reception-sender-parked-visivel.md`.
+- CLAIM_CHECK (só leitura): predicado true para user 5, false para user 2, na conversa 1 (reception). Detalhe em `changelog/CHANGELOG_2026_11_02.md`.
+- Pendente: executar `spec/connecta/outbound_dispatch_spec.rb` (+8 exemplos) quando houver ambiente de spec funcional; teste humano do "oi" → menu.
+
 ## Correcao 21:36Z — transferir na origem + override persistente (8 grants; sem funcional)
 
 - Grants 6→8 diretos (4/QA): QA3 transfere Farmácia+Hospital lendo só Farmácia; QA4 simétrico. `attendance_outbox` 11→13 `delivered`, heartbeat 21:35:33 `fresh`, TTL120. Override Saude existe no HOST (1601 bytes, placeholders, ignorado `.runtime/`); Chatwoot override com aviso de 3 composes. Serviços `healthy`, restarts 0, sem recriação. Detalhe em `changelog/CHANGELOG_2026_11_01.md`.
