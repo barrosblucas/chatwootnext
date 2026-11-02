@@ -7,16 +7,24 @@
 services:
   rails:
     environment:
+      # somente teste LAN; produção usará allowlist restrita
+      - SAFE_FETCH_ALLOW_PRIVATE_NETWORK=true
       - CONNECTA_HUMAN_NUMBER_ENABLED=true
       - CONNECTA_ACCOUNT_ID=2
+      # usuário de serviço "Conecta Cidade Bot" (id 5, conta 2): único liberado a enviar em conversas em recepção
+      - CONNECTA_RECEPTION_SENDER_USER_IDS=5
       - CONNECTA_PLATFORM_URL=http://192.168.1.32:9090
       - CONNECTA_RECEPTION_ORG_UNIT_ID=ea975324-f4f9-4fe0-889f-c146c8ac41b5
       - CONNECTA_PLATFORM_TO_FORK_SECRET=${CONNECTA_PLATFORM_TO_FORK_SECRET:?defina em memoria a partir do secrets privado}
       - CONNECTA_FORK_TO_PLATFORM_SECRET=${CONNECTA_FORK_TO_PLATFORM_SECRET:?defina em memoria a partir do secrets privado}
   sidekiq:
     environment:
+      # somente teste LAN; produção usará allowlist restrita
+      - SAFE_FETCH_ALLOW_PRIVATE_NETWORK=true
       - CONNECTA_HUMAN_NUMBER_ENABLED=true
       - CONNECTA_ACCOUNT_ID=2
+      # usuário de serviço "Conecta Cidade Bot" (id 5, conta 2): único liberado a enviar em conversas em recepção
+      - CONNECTA_RECEPTION_SENDER_USER_IDS=5
       - CONNECTA_PLATFORM_URL=http://192.168.1.32:9090
       - CONNECTA_RECEPTION_ORG_UNIT_ID=ea975324-f4f9-4fe0-889f-c146c8ac41b5
       - CONNECTA_PLATFORM_TO_FORK_SECRET=${CONNECTA_PLATFORM_TO_FORK_SECRET:?defina em memoria a partir do secrets privado}
