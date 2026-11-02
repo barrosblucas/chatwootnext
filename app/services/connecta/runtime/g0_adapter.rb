@@ -47,8 +47,10 @@ class Connecta::Runtime::G0Adapter
       SET state = CASE WHEN EXISTS (
             SELECT 1 FROM connecta_conversation_scopes AS s
             JOIN connecta_scoped_inboxes AS i ON i.inbox_id = s.inbox_id
-            WHERE s.conversation_id = d.conversation_id AND s.state = 'active'
+            JOIN messages AS m ON m.id = d.message_id
+            WHERE s.conversation_id = d.conversation_id
               AND i.enforcement = 'enforce' AND i.maintenance = false
+              AND (s.state = 'active' OR (s.state = 'reception' AND m.sender_type = 'User' AND m.sender_id IN (?)))
           ) THEN 'dispatching' ELSE 'parked' END,
           attempted_at = now(), updated_at = now()
       WHERE d.message_id = ? AND d.state = 'queued'

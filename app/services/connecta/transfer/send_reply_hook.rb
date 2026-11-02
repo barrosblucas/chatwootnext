@@ -7,7 +7,10 @@ module Connecta::Transfer::SendReplyHook
     return super unless Connecta::Transfer::OutboundDispatch.dispatchable?(message)
 
     Connecta::Transfer::OutboundDispatch.enqueue!(message)
-    return unless Connecta::Transfer::OutboundDispatch.claim!(message)
+    unless Connecta::Transfer::OutboundDispatch.claim!(message)
+      Connecta::Transfer::OutboundDispatch.mark_parked_visible!(message)
+      return
+    end
 
     begin
       super

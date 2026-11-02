@@ -5,15 +5,26 @@ class Connecta::Transfer::OutboundDispatch
 
   Result = Data.define(:parked, :wait)
 
+  # Texto visível no Chatwoot quando o claim estaciona por falta de setor
+  # (scope ausente, reception sem permissão, transferring). Manutenção NÃO usa
+  # este texto (ver mark_parked_visible!): o fluxo de manutenção nega na
+  # superfície HTTP (409) e o parked do claim é barreira temporária.
+  PARKED_VISIBLE_ERROR = 'Mensagem não enviada: o atendimento ainda não tem setor definido (recepção) ou está em transferência.'.freeze
+
   # Uma instrução só: a troca de estado e a checagem do escopo acontecem juntas, então não há janela entre elas.
   # T3.9: em maintenance, o claim vira parked (não despacha); a superfície HTTP traduz em 409.
+  # Recepção: libera só mensagem cujo remetente persistido (sender_type/sender_id
+  # da linha messages, nunca content_attributes) é um usuário de serviço
+  # configurado (CONNECTA_RECEPTION_SENDER_USER_IDS, vazio = nada liberado).
   CLAIM_SQL = <<~SQL.squish.freeze
     UPDATE connecta_g0_outbound_dispatches AS d
     SET state = CASE WHEN EXISTS (
           SELECT 1 FROM connecta_g0_conversation_scopes AS s
           JOIN connecta_g0_scoped_inboxes AS i ON i.inbox_id = s.inbox_id
-          WHERE s.conversation_id = d.conversation_id AND s.state = 'active'
+          JOIN messages AS m ON m.id = d.message_id
+          WHERE s.conversation_id = d.conversation_id
             AND i.maintenance = false AND i.enforcement <> 'maintenance'
+            AND (s.state = 'active' OR (s.state = 'reception' AND m.sender_type = 'User' AND m.sender_id IN (?)))
         ) THEN 'dispatching' ELSE 'parked' END,
         attempted_at = now(), updated_at = now()
     WHERE d.message_id = ? AND d.state = 'queued'
@@ -37,11 +48,30 @@ class Connecta::Transfer::OutboundDispatch
     end
 
     # Verdadeiro só para quem trocou queued por dispatching; com o escopo fora de active a linha vira parked.
+    # Os ids de remetente entram como parâmetro (IN (?); vazio vira IN (NULL) e nunca libera a recepção).
     def claim!(message)
       state = Connecta::Transfer::OutboundDispatchRecord.connection.select_value(
-        ActiveRecord::Base.sanitize_sql_array([CLAIM_SQL, message.id])
+        ActiveRecord::Base.sanitize_sql_array([CLAIM_SQL, Connecta::Runtime::Feature.reception_sender_user_ids, message.id])
       )
       state == 'dispatching'
+    end
+
+    # Parked visível: mensagem estacionada por falta de setor aparece como falha
+    # no Chatwoot (status failed + external_error), para o agente ver e reenviar
+    # depois da definição do setor. Manutenção NÃO marca: o fluxo de manutenção
+    # nega na superfície HTTP (409) e o parked do claim é barreira temporária —
+    # marcar failed quebraria esse fluxo (a mensagem pareceria erro do agente).
+    def mark_parked_visible!(message)
+      return if maintenance_parked?(message)
+
+      Messages::StatusUpdateService.new(message, 'failed', PARKED_VISIBLE_ERROR).perform
+    rescue StandardError => e
+      Rails.logger.error("Connecta outbound dispatch could not mark parked message #{message.id} as failed: #{e.class}: #{e.message}")
+    end
+
+    def maintenance_parked?(message)
+      inbox = Connecta::Scope::ScopedInbox.find_by(inbox_id: message.inbox_id)
+      inbox.present? && inbox.maintenance_mode?
     end
 
     # Grava o resultado do conector. Nunca reenvia: só o claim tira uma linha de queued.

@@ -118,6 +118,113 @@ RSpec.describe 'Connecta G0 · despacho de saída e barreira de transferência (
   end
 end
 
+RSpec.describe 'Connecta G0 · envio em recepção só pelo usuário de serviço (CONNECTA_RECEPTION_SENDER_USER_IDS)' do
+  include_context 'with connecta g0 scope fixture'
+
+  let(:connector) { instance_double(Whatsapp::SendOnWhatsappService, perform: nil) }
+  let(:dispatches) { Connecta::Transfer::OutboundDispatchRecord }
+  let(:origin_scope) { Connecta::Scope::ConversationScope.find_by!(conversation_id: conv_a.id) }
+  let(:bot_user) { create(:user, account: account) }
+  let(:admin_user) { create(:user, :administrator, account: account) }
+  let(:parked_error) { Connecta::Transfer::OutboundDispatch::PARKED_VISIBLE_ERROR }
+
+  before do
+    allow(Whatsapp::SendOnWhatsappService).to receive(:new).and_return(connector)
+    origin_scope.update!(state: 'reception')
+  end
+
+  it 'reception + usuário configurado: o job chama o conector uma vez e a linha vira accepted' do
+    with_modified_env('CONNECTA_RECEPTION_SENDER_USER_IDS' => bot_user.id.to_s) do
+      message = create(:message, account: account, conversation: conv_a, message_type: :outgoing, sender: bot_user, content: 'menu')
+
+      SendReplyJob.perform_now(message.id)
+
+      expect(connector).to have_received(:perform).once
+      expect(dispatches.find_by!(message_id: message.id).state).to eq('accepted')
+      expect(message.reload.failed?).to be(false)
+    end
+  end
+
+  it 'reception + outro usuário (inclusive admin): não envia, vira parked e a mensagem aparece como falha' do
+    with_modified_env('CONNECTA_RECEPTION_SENDER_USER_IDS' => bot_user.id.to_s) do
+      message = create(:message, account: account, conversation: conv_a, message_type: :outgoing, sender: admin_user, content: 'resposta')
+
+      SendReplyJob.perform_now(message.id)
+
+      expect(connector).not_to have_received(:perform)
+      expect(dispatches.find_by!(message_id: message.id).state).to eq('parked')
+      expect(message.reload.failed?).to be(true)
+      expect(message.external_error).to eq(parked_error)
+    end
+  end
+
+  it 'reception + config vazia: nada liberado, parked com falha visível' do
+    with_modified_env('CONNECTA_RECEPTION_SENDER_USER_IDS' => '') do
+      message = create(:message, account: account, conversation: conv_a, message_type: :outgoing, sender: bot_user, content: 'menu')
+
+      SendReplyJob.perform_now(message.id)
+
+      expect(connector).not_to have_received(:perform)
+      expect(dispatches.find_by!(message_id: message.id).state).to eq('parked')
+      expect(message.reload.failed?).to be(true)
+      expect(message.external_error).to eq(parked_error)
+    end
+  end
+
+  it 'transferring: continua parked, agora com falha visível para o agente' do
+    with_modified_env('CONNECTA_RECEPTION_SENDER_USER_IDS' => bot_user.id.to_s) do
+      origin_scope.update!(state: 'transferring')
+      message = create(:message, account: account, conversation: conv_a, message_type: :outgoing, sender: bot_user, content: 'menu')
+
+      SendReplyJob.perform_now(message.id)
+
+      expect(connector).not_to have_received(:perform)
+      expect(dispatches.find_by!(message_id: message.id).state).to eq('parked')
+      expect(message.reload.failed?).to be(true)
+      expect(message.external_error).to eq(parked_error)
+    end
+  end
+
+  it 'manutenção: parked sem marcar falha (fluxo de manutenção preservado)' do
+    with_modified_env('CONNECTA_RECEPTION_SENDER_USER_IDS' => bot_user.id.to_s) do
+      origin_scope.update!(state: 'active')
+      marked_inbox.update!(maintenance: true)
+      message = create(:message, account: account, conversation: conv_a, message_type: :outgoing, sender: bot_user, content: 'menu')
+
+      SendReplyJob.perform_now(message.id)
+
+      expect(connector).not_to have_received(:perform)
+      expect(dispatches.find_by!(message_id: message.id).state).to eq('parked')
+      expect(message.reload.failed?).to be(false)
+    end
+  end
+end
+
+RSpec.describe Connecta::Runtime::Feature do
+  describe '.reception_sender_user_ids' do
+    it 'lê a lista de ids separados por vírgula' do
+      with_modified_env('CONNECTA_RECEPTION_SENDER_USER_IDS' => '5, 7') do
+        expect(described_class.reception_sender_user_ids).to eq([5, 7])
+      end
+    end
+
+    it 'vazia ou ausente = nada liberado' do
+      with_modified_env('CONNECTA_RECEPTION_SENDER_USER_IDS' => '') do
+        expect(described_class.reception_sender_user_ids).to eq([])
+      end
+      with_modified_env('CONNECTA_RECEPTION_SENDER_USER_IDS' => nil) do
+        expect(described_class.reception_sender_user_ids).to eq([])
+      end
+    end
+
+    it 'ignora valores inválidos e não positivos' do
+      with_modified_env('CONNECTA_RECEPTION_SENDER_USER_IDS' => '5, abc, -3, 0, 5') do
+        expect(described_class.reception_sender_user_ids).to eq([5])
+      end
+    end
+  end
+end
+
 # Sem transação externa (use_transactional_tests = false): cada thread usa a própria conexão. A limpeza remove só as linhas
 # criadas por este exemplo; os dados são únicos por execução.
 RSpec.describe 'Connecta G0 · claim concorrente do mesmo envio (T0.7b)' do # rubocop:disable RSpec/DescribeClass

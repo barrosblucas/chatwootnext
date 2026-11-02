@@ -11,4 +11,15 @@ class Connecta::Runtime::Feature
   rescue KeyError, ArgumentError
     raise ArgumentError, 'CONNECTA_ACCOUNT_ID is required'
   end
+
+  # Ids de usuários de serviço (ex.: o usuário do bot de triagem) autorizados a
+  # enviar em conversas no estado 'reception' de inboxes marcadas. Lista de ids
+  # separados por vírgula; vazia ou ausente = nada liberado (comportamento atual).
+  def self.reception_sender_user_ids
+    ENV.fetch('CONNECTA_RECEPTION_SENDER_USER_IDS', '').split(',').map(&:strip).filter_map do |raw|
+      Integer(raw, 10)
+    rescue ArgumentError
+      nil
+    end.select(&:positive?).uniq
+  end
 end
