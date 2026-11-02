@@ -23,6 +23,8 @@ module Connecta::Scope::ConversationHttpHook
   def connecta_scope_write_guard!
     return if request.get? || action_name == 'transcript' || @conversation.nil? || !Connecta::Scope::Projection.marked?(@conversation.inbox_id)
     return connecta_scope_maintenance_guard! if connecta_scope_maintenance_denial?
+    return if connecta_scope_resolved_reopen_allowed?
+    return connecta_scope_resolved_guard! if connecta_scope_resolved_denial?
     return connecta_scope_team_guard! if Connecta::Scope::Gate.new(Current.user).write?(@conversation, access_path: connecta_scope_access_path)
 
     raise Connecta::Scope::Denied, :forbidden
@@ -45,6 +47,36 @@ module Connecta::Scope::ConversationHttpHook
     Connecta::Scope::AccessAudit.create!(user_id: Current.user.id, conversation_id: @conversation.id, surface: 'conversation',
                                          access_path: "#{connecta_scope_access_path}_maintenance", decision: 'deny')
     raise Connecta::Scope::Denied, :conflict
+  end
+
+  # Conversa resolvida (decisão 005): toda escrita nega com 403, inclusive para
+  # administrador nativo e usuário de serviço — só a reabertura explícita
+  # (toggle_status para open, com leitura ou admin nativo) passa. A mensagem de
+  # negação segue a do Denied (:forbidden). Leitura continua permitida (o show é
+  # GET e `closed` está em READ_STATES).
+  def connecta_scope_resolved_denial?
+    @conversation.resolved? && Connecta::Runtime::Feature.enabled?
+  end
+
+  def connecta_scope_resolved_guard!
+    Connecta::Scope::AccessAudit.create!(user_id: Current.user.id, conversation_id: @conversation.id, surface: 'conversation',
+                                         access_path: "#{connecta_scope_access_path}_resolved", decision: 'deny')
+    raise Connecta::Scope::Denied, :forbidden
+  end
+
+  # Reabertura explícita pelo operador: toggle_status para open em conversa
+  # resolvida, por quem tem leitura no atendimento (grant com `closed` legível)
+  # ou admin nativo same-account. Qualquer outra escrita em resolvida nega.
+  def connecta_scope_resolved_reopen_allowed?
+    return false unless @conversation.resolved?
+    return false unless action_name == 'toggle_status'
+    return false unless Connecta::Runtime::Feature.enabled?
+
+    target = params[:status].presence || @conversation.toggled_status.to_s
+    return false unless target == 'open'
+
+    Connecta::Scope::NativeAdmin.authorized_for?(Current.user, @conversation) ||
+      Connecta::Scope::Gate.new(Current.user).read?(@conversation, access_path: "#{connecta_scope_access_path}_reopen")
   end
 
   def connecta_scope_maintenance_denial?

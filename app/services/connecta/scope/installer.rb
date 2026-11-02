@@ -37,6 +37,12 @@ module Connecta::Scope::Installer
       controller.prepend(Connecta::Scope::ConversationHttpHook)
       controller.before_action(:connecta_scope_write_guard!)
     end
+    # Ciclo de vida da resolução (decisão 005): reabertura automática nativa
+    # nunca reabre conversa resolvida de inbox marcada; mudança de status
+    # resolved↔open move o escopo closed↔active via after_update_commit.
+    ::Message.prepend(Connecta::Scope::ConversationResolution::MessageHook) unless
+      ::Message <= Connecta::Scope::ConversationResolution::MessageHook
+    install_resolution_hook!
     # Reuso "abrir existente" no ConversationBuilder (micro passo 1b): roda
     # depois dos before_actions nativos (conta/inbox/contact/contact_inbox
     # resolvidos e inbox show? autorizada) e antes do create/after_create.
@@ -134,6 +140,15 @@ module Connecta::Scope::Installer
   # Negação autenticada vira 404 (leitura) ou 403 (escrita). O bloco roda no contexto do controller, então `render` funciona.
   def self.install_denied_rendering_for!(controller)
     controller.rescue_from(Connecta::Scope::Denied) { |error| render json: { error: error.message }, status: error.status }
+  end
+
+  def self.install_resolution_hook!
+    return if @connecta_resolution_hook_installed
+
+    Conversation.prepend(Connecta::Scope::ConversationResolution::ConversationHook) unless
+      Conversation <= Connecta::Scope::ConversationResolution::ConversationHook
+    Conversation.after_update_commit(:connecta_resolution_after_status_change)
+    @connecta_resolution_hook_installed = true
   end
 
   def self.install_denied_rendering!
