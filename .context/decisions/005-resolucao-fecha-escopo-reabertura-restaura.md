@@ -1,0 +1,26 @@
+# 005 — Ciclo de vida do escopo na resolução/reabertura (closed terminal)
+
+## Contexto
+Conversa resolvida (Resolvido) mantinha o escopo Connecta em `active`: na mensagem seguinte do cidadão, o `IncomingHook`/`ConversationReuse` (que procuram escopo NÃO-terminal do par) reutilizavam a conversa antiga e o `Message#reopen_resolved_conversation` nativo a reabria — quando o esperado é conversa NOVA com menu de triagem. Além disso o operador conseguia enviar mensagem em conversa resolvida (admin nativo passa pelo Gate por bypass), e ela continuava resolvida. Sintoma do ensaio: conversa 2 resolvida com `connecta_conversation_scopes.state='active'` (case_version 1); inbox 1 com `lock_to_single_conversation=false`. Decisões humanas: só o operador reabre (clicando em reabrir); cidadão com chamado fechado recebe triagem nova; escrita em resolvida é negada.
+
+## Decisão
+1. **Novo estado `closed` (terminal, legível)**: `STATES` ganha `closed`; `READ_STATES` ganha `closed` (leitura de resolvida continua para quem tem grant); `NON_TERMINAL_STATES` NÃO muda (reuso/entrada/índice parcial único seguem iguais, então `closed` nunca é reutilizado e nunca conflita). Sem migração: a coluna `state` não tem CHECK no banco (só validação no modelo) e o índice parcial único cobre só NON_TERMINAL.
+2. **Resolver fecha o escopo** (`Connecta::Scope::ConversationResolution.resolve_scope!`, via `after_update_commit` registrado pelo `Installer`): transição que ENTRA em `resolved` move escopo `reception`/`active` a `closed` (mantém setor/protocolo/versão; carimba `closed_at`). Estados da máquina de transferência (`transferring`, `pending_activation`, `activation_stuck`) NÃO são tocados (o transfer continua dono deles; a origem transferida vai a `transferred_out` via `update_column`, sem callbacks). Sem escopo (conversa legada) ou já terminal: nada faz. Idempotente.
+3. **Entrante após resolver cria conversa nova**: com o escopo `closed`, `IncomingHook` e `ConversationReuse.resolve` caem no fluxo nativo, que com `lock_to_single_conversation=false` cria conversa nova (esta ganha `reception` via `ReceptionScopeCreator` e o bot envia o menu). Defesa em profundidade: `MessageHook` (prepend em `Message`) bloqueia o `reopen_resolved_conversation` nativo em inbox marcada com runtime ligado; snoozed→open e inbox não marcada seguem nativos.
+4. **Reabertura explícita restaura o mesmo atendimento** (`reopen_scope!`, na saída resolved→open): `closed` volta a `active` (ou `reception`, quando nunca ativado: case_version zero), mesmo setor/protocolo, `closed_at` limpo. Se já existir atendimento não-terminal mais novo do mesmo par, mantém `closed` e só registra em log (reabrir criaria dois não-terminais e violaria o índice parcial único) — opção documentada: permitir sem bloquear, sem 500; o operador resolve o duplicado manualmente.
+5. **Escrita em resolvida nega 403 para todos** (guard em `ConversationHttpHook`, antes do Gate): operador com grant, administrador nativo (decisão: resolvida só reabre, sem bypass) e usuário de serviço do bot. Exceção única: `toggle_status` para `open` por quem tem leitura no atendimento ou admin nativo (a reabertura). Mensagem de negação segue a do `Denied` (`:forbidden`, sem i18n). Notas privadas em resolvida também negam (opção documentada: negar tudo, mais simples). Manutenção (409) continua checada antes.
+6. **Sem regressão no despacho**: escopo `closed` não satisfaz o `CLAIM_SQL` (só `active`/recepção liberada), então envio em resolvida estaciona (`parked` → falha visível, exceto manutenção) como já acontece com `transferring`.
+7. **Proteção por flag**: tudo (fechar, reabrir, guarda de auto-reabertura, negação de escrita em resolvida) exige `CONNECTA_HUMAN_NUMBER_ENABLED=true` + inbox marcada; fora disso, comportamento nativo. Conversas existentes sem escopo terminal seguem compatíveis (backfill de `resolved`+`active` legado é reparo manual futuro, fora do código).
+
+## Consequências
+- `app/services/connecta/scope/conversation_scope.rb`: `closed` em `STATES` e `READ_STATES`.
+- `app/services/connecta/scope/conversation_resolution.rb` (novo): `resolve_scope!`/`reopen_scope!`/`after_conversation_status_commit` + `MessageHook` + `ConversationHook`.
+- `app/services/connecta/scope/conversation_http_hook.rb`: negação de escrita em resolvida + carve-out de reabertura.
+- `app/services/connecta/scope/installer.rb`: instala `MessageHook` e `after_update_commit` (vale para teste G0 e runtime de produção, via `install_conversations!`).
+- `spec/connecta/scope_conversation_resolution_spec.rb`: 12 exemplos (AC1–AC4, idempotência, inbox não marcada, flag desligada).
+- Reparo manual no banco de teste: conversa 2 (`resolved` + `active`) → mesma transição via rotina nova.
+
+## Alternativas consideradas
+- Reutilizar `transferred_out` como terminal de resolvida: rejeitado; ele significa "origem transferida, sem acesso" (fora de READ_STATES) e a resolvida deve continuar legível ao setor.
+- Bloquear a reabertura quando há conversa mais nova (erro 4xx): rejeitado; mais simples e seguro manter `closed` com aviso em log (sem 500, sem travar a UI), documentando a escolha.
+- Mensagem de negação em português via i18n no `Denied`: rejeitado; `Denied` não tem i18n e a resposta segue a existente (`You are not authorized...`).

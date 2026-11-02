@@ -28,6 +28,12 @@ curl -sS -H "x-api-key: $KEY" "$BASE/status/auth"
 # Esperado: 2xx com payload de auth. 401/403 = chave errada ou sessão não autorizada.
 ```
 
+> **Redis novo (confirmado no ensaio do zero 2026-11-02):** com volume Redis recriado, NENHUMA chave existe e `/status/auth` devolve `401 {"error":"Unauthorized","message":"Valid API key required"}` mesmo com a chave correta no `.env`. Registrar antes de qualquer diagnóstico:
+> ```sh
+> docker exec <baileys-api> bun scripts/manage-api-keys.ts create user "$BAILEYS_API_KEY"
+> ```
+> (chaves vivem em `@baileys-api:api-keys:<chave>` no Redis, `{"role":"user"}`; ver `scripts/manage-api-keys.ts` na imagem).
+
 Campo de evidência: [ ] data/hora: ____ · `/status` → HTTP ____ · `/status/auth` → HTTP ____ · operador: ____
 
 ## 2. Sinais de desconexão e quarentena (o que observar)
@@ -113,6 +119,18 @@ Campo de evidência: [ ] escalado para: ____ · motivo: ____ · horário: ____
 
 Campo de evidência: [ ] TTL fork: ____ s · MAX_AGE WP: ____ s · iguais: sim/não · operador: ____
 
+## 5.2 Pré-requisito de autorização para (re)parear (`admin_nominal`)
+
+- Em inbox marcada `enforce`, `setup_channel_provider` (QR novo), `disconnect` e a criação de inbox WhatsApp passam pelo guard Connecta (`app/services/connecta/scope/inbox_hook.rb`), que exige `Projection#admin?` = usuário verificado + grant `admin_nominal`. O papel nativo `administrator` sozinho é negado com 403 (o modal "Vincular dispositivo" dispara o setup sozinho ao abrir e mostra o 403).
+- O sync ACL do bot nunca cria esse grant (só `acompanhar`/`atender`/`transferir`); sem rotina oficial, o bootstrap é manual no banco de teste (idempotente, sem tocar no provedor; ver `deploy/e2e/README.md` § "Permissão para criar inbox WhatsApp" e o roteiro de implantação do número humano §B):
+```sh
+docker exec <rails> bin/rails runner 'u=User.find(<ADMIN_USER_ID>); puts Connecta::Scope::Projection.new(u).admin?'
+# esperado: true antes de abrir o modal; false para agente
+```
+- O `qr_data_url` com `qr_updated_at` antigo e `connection=close` é obsoleto: nunca parear QR antigo — abrir o modal com o grant válido faz nascer QR fresco.
+
+Campo de evidência: [ ] `Projection#admin?` do operador: ____ · `qr_updated_at`: ____ · operador: ____
+
 ## 6. O que NÃO fazer (proibido)
 
 1. **NUNCA expor QR (`qr_data_url`) a agente ou gestor** — QR + `status` de conexão
@@ -125,3 +143,4 @@ Campo de evidência: [ ] TTL fork: ____ s · MAX_AGE WP: ____ s · iguais: sim/n
    e sem admin presente (destrói pareamento e derruba o número).
 5. Não confundir `reconnecting` transitório (pós-restart) com sessão morta:
    só `strikes >= 3` sem `open` caracteriza `rejected_session?`.
+6. Não herdar segredos `CONNECTA_*` do shell: segredos CONNECTA_* devem vir de um arquivo de ambiente (--env-file) comum, nunca herdados do shell; recriar rails/sidekiq com valores diferentes do bot causa 401 na ativação e protocolo nunca anunciado (ensaio 2026-11-02: `POST /connecta/v1/scopes/3/activate` 401 → 200 após `--env-file`, escopo `active`).

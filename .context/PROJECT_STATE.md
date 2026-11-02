@@ -2,6 +2,12 @@
 
 Estado atual: fase, entregas, próximos marcos e pendências. Criado em 2026-10-22.
 
+## Resolução fecha o escopo; reabertura restaura; escrita em resolvida negada — 2026-11-02 (código pronto; build/deploy pendentes)
+
+- Correção 06 do ensaio: conversa resolvida mantinha escopo `active` e o entrante seguinte a reabria. Novo estado terminal legível `closed` (READ, fora de NON_TERMINAL, sem migração); resolver move `reception`/`active`→`closed` (transfer não tocado); entrante após resolver cria conversa nova em `reception` (fluxo nativo com `lock_to_single=false` + `MessageHook` anti-reabertura); reabrir (toggle→open) restaura `active` no mesmo atendimento; escrita em resolvida nega 403 para todos (inclusive admin nativo e bot), só reabertura passa. Tudo sob `CONNECTA_HUMAN_NUMBER_ENABLED` + inbox marcada. Decisão em `.context/decisions/005-resolucao-fecha-escopo-reabertura-restaura.md`; specs em `spec/connecta/scope_conversation_resolution_spec.rb` (12 exemplos, não executados — sem Ruby local, imagem sem gems de teste, specs exigem ambiente F5).
+- Pendente nesta frente: build da imagem + backup/rollback, recriar rails/sidekiq, validar (Up, 200, envs, Baileys open), reparo da conversa 2 (`resolved`+`active`→`closed` via rotina nova), changelog.
+- Lacuna registrada (sem implementar): ícone/banner "WhatsApp não conectado" na UI.
+
 ## Envio em recepção só pelo bot + parked visível — 2026-11-02 ~04:15Z (imagem reception-20261102 ativa no teste; specs novas não executadas)
 
 - Imagem `chatwootnext:teste` = `8026ae16c98b` (`chatwootnext:reception-20261102`); backup `chatwootnext:teste-pre-reception` (=`d539778b0ff0`); rollback = retag + recriar rails/sidekiq. Rails/Sidekiq recriados (Up, health 200, var `CONNECTA_RECEPTION_SENDER_USER_IDS=5` nos dois, inbox 2 Baileys open, logs sem erros).
