@@ -1,4 +1,8 @@
 class Connecta::Runtime::TransferCommitJob < ApplicationJob
+  # Resposta de commit fora do contrato de fio v1 §9.4 (sem `to_session_ref`):
+  # falha fechado, sem degradar para nil silencioso.
+  class InvalidCommitResponse < StandardError; end
+
   queue_as :default
   retry_on Connecta::Runtime::PlatformClient::Error, wait: 10.seconds, attempts: 24
 
@@ -15,6 +19,16 @@ class Connecta::Runtime::TransferCommitJob < ApplicationJob
         committed_at: Time.current.iso8601, provider: 'chatwoot'
       )
       case_version = Integer(response.fetch('case_version'))
+      # §9.4: o commit cria a sessão destino no WP e devolve `to_session_ref`
+      # (string estável do id real); o prepare nunca pode fornecê-lo. Persiste
+      # no registro ANTES da cópia para o escopo destino. Replay idempotente
+      # devolve a mesma referência: nunca recobre ref gravada (nem com nil) e
+      # resposta sem o campo falha fechado em vez de gravar nil silencioso.
+      to_session_ref = response.is_a?(Hash) ? response['to_session_ref'] : nil
+      if to_session_ref.blank?
+        raise InvalidCommitResponse, "Platform commit response is missing to_session_ref (transfer_id=#{transfer.id})"
+      end
+      transfer.update!(platform_session_ref: to_session_ref.to_s) if transfer.platform_session_ref.blank?
       origin = Connecta::Scope::ConversationScope.find_by!(conversation_id: transfer.source_conversation_id)
       local = Connecta::Transfer::LocalTransaction.new(
         scope: origin, destination_org_unit: Connecta::Scope::OrgUnit.find(transfer.destination_org_unit_id)
