@@ -85,7 +85,7 @@ RSpec.describe 'Connecta runtime · claim de autoridade do admin nativo (F2)', t
 
   def stub_prepare
     stub_request(:post, "#{wire_platform}/attendance/v1/transfers/prepare")
-      .to_return(status: 200, body: { 'case_version' => 2, 'to_session_ref' => 'sess-f2' }.to_json,
+      .to_return(status: 200, body: { 'case_version' => 1, 'to_session_ref' => 'sess-f2' }.to_json,
                  headers: { 'Content-Type' => 'application/json' })
   end
 

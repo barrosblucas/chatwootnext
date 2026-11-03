@@ -175,7 +175,7 @@ describe('prependAgentName', () => {
 describe('prependAgentName with the Baileys option', () => {
   it('uses the bold-italic prefix only when baileys is true', () => {
     expect(prependAgentName('Maria Silva', 'Oi', { baileys: true })).toBe(
-      '*_Maria Silva_*:\nOi'
+      '**_Maria Silva_**:\nOi'
     );
     expect(prependAgentName('Maria Silva', 'Oi', {})).toBe(
       '*Maria Silva*:\nOi'
@@ -185,7 +185,16 @@ describe('prependAgentName with the Baileys option', () => {
   it('normalizes the legacy same-sender prefix once', () => {
     expect(
       prependAgentName('Maria Silva', '*Maria Silva*:\nOi', { baileys: true })
-    ).toBe('*_Maria Silva_*:\nOi');
+    ).toBe('**_Maria Silva_**:\nOi');
+  });
+
+  it('upgrades the interim single-star prefix once', () => {
+    expect(
+      prependAgentName('Maria Silva', '*_Maria Silva_*:\nOi', { baileys: true })
+    ).toBe('**_Maria Silva_**:\nOi');
+    expect(
+      prependAgentName('Maria Silva', '*_Maria Silva_*:', { baileys: true })
+    ).toBe('**_Maria Silva_**:');
   });
 });
 

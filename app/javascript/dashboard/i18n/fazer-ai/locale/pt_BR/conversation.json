@@ -13,7 +13,12 @@
     "REPLYBOX": {
       "SCHEDULE_SEND": "Agendar envio",
       "ATTACHMENT_DISCARDED_ON_MODE_CHANGE": "O anexo foi descartado porque a conversa alternou entre nota e resposta.",
-      "RECORDING_DISCARDED_ON_MODE_CHANGE": "A gravação foi descartada porque a conversa alternou entre nota e resposta."
+      "RECORDING_DISCARDED_ON_MODE_CHANGE": "A gravação foi descartada porque a conversa alternou entre nota e resposta.",
+      "AUDIO_INIT_INSECURE_CONTEXT": "A gravação de voz precisa de uma conexão segura (HTTPS ou localhost). Abra esta página via HTTPS ou localhost para gravar áudio.",
+      "AUDIO_INIT_UNAVAILABLE": "A gravação de voz não está disponível neste navegador. Use uma versão recente do Chrome, Edge, Firefox ou Safari.",
+      "AUDIO_INIT_PERMISSION_DENIED": "O acesso ao microfone foi negado. Permita o acesso ao microfone na barra de endereços do navegador e tente novamente.",
+      "AUDIO_INIT_DEVICE_UNAVAILABLE": "Nenhum microfone foi encontrado. Conecte um microfone e tente novamente.",
+      "AUDIO_INIT_FAILED": "Não foi possível iniciar a gravação de voz. Tente novamente."
     },
     "ASSIGNMENT_CONFLICT": {
       "TITLE": "Conversa já atribuída",

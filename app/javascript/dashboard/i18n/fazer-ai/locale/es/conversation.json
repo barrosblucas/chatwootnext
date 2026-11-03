@@ -13,7 +13,12 @@
     "REPLYBOX": {
       "SCHEDULE_SEND": "Programar envío",
       "ATTACHMENT_DISCARDED_ON_MODE_CHANGE": "El archivo adjunto se descartó porque la conversación cambió entre nota y respuesta.",
-      "RECORDING_DISCARDED_ON_MODE_CHANGE": "La grabación se descartó porque la conversación cambió entre nota y respuesta."
+      "RECORDING_DISCARDED_ON_MODE_CHANGE": "La grabación se descartó porque la conversación cambió entre nota y respuesta.",
+      "AUDIO_INIT_INSECURE_CONTEXT": "La grabación de voz necesita una conexión segura (HTTPS o localhost). Abra esta página por HTTPS o localhost para grabar audio.",
+      "AUDIO_INIT_UNAVAILABLE": "La grabación de voz no está disponible en este navegador. Use una versión reciente de Chrome, Edge, Firefox o Safari.",
+      "AUDIO_INIT_PERMISSION_DENIED": "El acceso al micrófono fue denegado. Permita el acceso al micrófono en la barra de direcciones del navegador e inténtelo de nuevo.",
+      "AUDIO_INIT_DEVICE_UNAVAILABLE": "No se encontró ningún micrófono. Conecte un micrófono e inténtelo de nuevo.",
+      "AUDIO_INIT_FAILED": "No se pudo iniciar la grabación de voz. Inténtelo de nuevo."
     },
     "ASSIGNMENT_CONFLICT": {
       "TITLE": "La conversación ya está asignada",

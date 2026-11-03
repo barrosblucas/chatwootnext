@@ -378,11 +378,15 @@ class Messages::MessageBuilder # rubocop:disable Metrics/ClassLength
   end
 
   def prepend_baileys_agent_name(name, safe_name, content)
-    new_prefix = "*_#{safe_name}_*:"
+    new_prefix = "**_#{safe_name}_**:"
     return content if content.start_with?("#{new_prefix}\n") || content == new_prefix
 
-    legacy_prefix = "*#{sanitize_agent_name(name)}*:"
-    return normalize_legacy_agent_prefix(new_prefix, legacy_prefix, content) if legacy_same_sender_prefix?(legacy_prefix, content)
+    legacy_prefixes = ["*_#{safe_name}_*:", "*#{sanitize_agent_name(name)}*:"].uniq
+    legacy_prefixes.each do |legacy_prefix|
+      next unless legacy_same_sender_prefix?(legacy_prefix, content)
+
+      return normalize_legacy_agent_prefix(new_prefix, legacy_prefix, content)
+    end
 
     "#{new_prefix}\n#{content}"
   end

@@ -2,19 +2,24 @@
 import { computed } from 'vue';
 import BaseBubble from './Base.vue';
 import FormattedContent from './Text/FormattedContent.vue';
+import { useProtectedAttachmentUrl } from 'dashboard/composables/useProtectedAttachmentUrl';
 import { useMessageContext } from '../provider.js';
 
 const { attachments, content } = useMessageContext();
 
 const attachment = computed(() => attachments.value?.[0] || {});
-const url = computed(
+const rawUrl = computed(
   () => attachment.value.dataUrl || attachment.value.data_url
 );
+const { resolvedUrl, fileName: resolvedFileName } =
+  useProtectedAttachmentUrl(rawUrl);
+const url = computed(() => resolvedUrl.value);
 const title = computed(
   () =>
     attachment.value.fallbackTitle ||
     attachment.value.fallback_title ||
-    url.value
+    resolvedFileName.value ||
+    rawUrl.value
 );
 </script>
 

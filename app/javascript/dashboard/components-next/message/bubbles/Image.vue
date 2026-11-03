@@ -1,14 +1,15 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useAlert } from 'dashboard/composables';
 import { useLoadWithRetry } from 'dashboard/composables/loadWithRetry';
+import { useProtectedAttachmentUrl } from 'dashboard/composables/useProtectedAttachmentUrl';
+import { downloadAttachmentFile } from 'dashboard/helper/connectaProtectedMedia';
 import BaseBubble from './Base.vue';
 import Button from 'next/button/Button.vue';
 import Icon from 'next/icon/Icon.vue';
 import { useSnakeCase } from 'dashboard/composables/useTransformKeys';
 import { useMessageContext } from '../provider.js';
-import { downloadFile } from '@chatwoot/utils';
 
 import GalleryView from 'dashboard/components/widgets/conversation/components/GalleryView.vue';
 
@@ -24,20 +25,35 @@ const { isLoaded, hasError, loadWithRetry } = useLoadWithRetry({
   type: 'image',
 });
 
+const {
+  resolvedUrl,
+  resolveError,
+  fileName: resolvedFileName,
+} = useProtectedAttachmentUrl(() => attachment.value?.dataUrl);
+
+const showLoadError = computed(() => hasError.value || !!resolveError.value);
+
+watch(
+  resolvedUrl,
+  url => {
+    if (url) loadWithRetry(url);
+  },
+  { immediate: true }
+);
+
 const showGallery = ref(false);
 const isDownloading = ref(false);
-
-onMounted(() => {
-  if (attachment.value?.dataUrl) {
-    loadWithRetry(attachment.value.dataUrl);
-  }
-});
 
 const downloadAttachment = async () => {
   const { fileType, dataUrl, extension } = attachment.value;
   try {
     isDownloading.value = true;
-    await downloadFile({ url: dataUrl, type: fileType, extension });
+    await downloadAttachmentFile({
+      url: dataUrl,
+      fileType,
+      extension,
+      fileName: resolvedFileName.value || undefined,
+    });
   } catch (error) {
     useAlert(t('GALLERY_VIEW.ERROR_DOWNLOADING'));
   } finally {
@@ -56,16 +72,22 @@ const handleImageError = () => {
     data-bubble-name="image"
     @click="showGallery = true"
   >
-    <div v-if="hasError" class="flex items-center gap-1 text-center rounded-lg">
+    <div
+      v-if="showLoadError"
+      class="flex items-center gap-1 text-center rounded-lg"
+    >
       <Icon icon="i-lucide-circle-off" class="text-n-slate-11" />
       <p class="mb-0 text-n-slate-11">
         {{ $t('COMPONENTS.MEDIA.IMAGE_UNAVAILABLE') }}
       </p>
     </div>
-    <div v-else-if="isLoaded" class="relative group rounded-lg overflow-hidden">
+    <div
+      v-else-if="resolvedUrl && isLoaded"
+      class="relative group rounded-lg overflow-hidden"
+    >
       <img
         class="skip-context-menu"
-        :src="attachment.dataUrl"
+        :src="resolvedUrl"
         :width="attachment.width"
         :height="attachment.height"
       />

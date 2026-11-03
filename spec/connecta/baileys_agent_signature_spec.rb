@@ -34,7 +34,7 @@ RSpec.describe 'Connecta Baileys agent signature (S.1a)' do # rubocop:disable RS
       before { user.update!(ui_settings: { 'channel_whatsapp_signature_enabled' => true }) }
 
       it 'prepends the agent name in bold-italic' do
-        expect(built_message.content).to eq("*_Agente Ficticio_*:\nOlá, como posso ajudar?")
+        expect(built_message.content).to eq("**_Agente Ficticio_**:\nOlá, como posso ajudar?")
       end
     end
 
@@ -96,13 +96,13 @@ RSpec.describe 'Connecta Baileys agent signature (S.1a)' do # rubocop:disable RS
 
     context 'when content is already prefixed with the new format' do
       let(:params) do
-        ActionController::Parameters.new({ content: "*_Agente Ficticio_*:\nOlá, como posso ajudar?" })
+        ActionController::Parameters.new({ content: "**_Agente Ficticio_**:\nOlá, como posso ajudar?" })
       end
 
       before { user.update!(ui_settings: { 'channel_whatsapp_signature_enabled' => true }) }
 
       it 'does not double-prefix' do
-        expect(built_message.content).to eq("*_Agente Ficticio_*:\nOlá, como posso ajudar?")
+        expect(built_message.content).to eq("**_Agente Ficticio_**:\nOlá, como posso ajudar?")
       end
     end
 
@@ -114,7 +114,7 @@ RSpec.describe 'Connecta Baileys agent signature (S.1a)' do # rubocop:disable RS
       before { user.update!(ui_settings: { 'channel_whatsapp_signature_enabled' => true }) }
 
       it 'normalizes to bold-italic once, preserving the body bytes' do
-        expect(built_message.content).to eq("*_Agente Ficticio_*:\nOlá, como posso ajudar?")
+        expect(built_message.content).to eq("**_Agente Ficticio_**:\nOlá, como posso ajudar?")
       end
     end
 
@@ -126,7 +126,47 @@ RSpec.describe 'Connecta Baileys agent signature (S.1a)' do # rubocop:disable RS
       before { user.update!(ui_settings: { 'channel_whatsapp_signature_enabled' => true }) }
 
       it 'normalizes the standalone prefix without fabricating a body' do
-        expect(built_message.content).to eq('*_Agente Ficticio_*:')
+        expect(built_message.content).to eq('**_Agente Ficticio_**:')
+      end
+    end
+
+    context 'when content carries the interim single-star prefix for the same sender' do
+      let(:params) do
+        ActionController::Parameters.new({ content: "*_Agente Ficticio_*:\nOlá, como posso ajudar?" })
+      end
+
+      before { user.update!(ui_settings: { 'channel_whatsapp_signature_enabled' => true }) }
+
+      it 'upgrades to CommonMark bold-italic once, preserving the body bytes' do
+        expect(built_message.content).to eq("**_Agente Ficticio_**:\nOlá, como posso ajudar?")
+      end
+    end
+
+    context 'when the interim single-star prefix is standalone for the same sender' do
+      let(:params) do
+        ActionController::Parameters.new({ content: '*_Agente Ficticio_*:' })
+      end
+
+      before { user.update!(ui_settings: { 'channel_whatsapp_signature_enabled' => true }) }
+
+      it 'upgrades the standalone prefix without fabricating a body' do
+        expect(built_message.content).to eq('**_Agente Ficticio_**:')
+      end
+    end
+
+    context 'when the message carries a caption with an attachment' do
+      let(:params) do
+        ActionController::Parameters.new({
+                                          content: 'foto da recepção',
+                                          attachments: [Rack::Test::UploadedFile.new('spec/assets/avatar.png', 'image/png')]
+                                        })
+      end
+
+      before { user.update!(ui_settings: { 'channel_whatsapp_signature_enabled' => true }) }
+
+      it 'signs the caption with the new prefix and keeps the attachment on the first message' do
+        expect(built_message.content).to eq("**_Agente Ficticio_**:\nfoto da recepção")
+        expect(built_message.attachments.size).to eq(1)
       end
     end
 
@@ -138,7 +178,7 @@ RSpec.describe 'Connecta Baileys agent signature (S.1a)' do # rubocop:disable RS
       before { user.update!(ui_settings: { 'channel_whatsapp_signature_enabled' => true }) }
 
       it 'keeps the foreign prefix and prepends the current sender' do
-        expect(built_message.content).to eq("*_Agente Ficticio_*:\n*Outro Ficticio*:\nOlá")
+        expect(built_message.content).to eq("**_Agente Ficticio_**:\n*Outro Ficticio*:\nOlá")
       end
     end
 
@@ -193,7 +233,7 @@ RSpec.describe 'Connecta Baileys agent signature (S.1a)' do # rubocop:disable RS
       end
 
       it 'strips asterisks, underscores and surrounding whitespace before prefixing' do
-        expect(built_message.content).to eq("*_Agente Ficticio_*:\nOlá, como posso ajudar?")
+        expect(built_message.content).to eq("**_Agente Ficticio_**:\nOlá, como posso ajudar?")
       end
     end
 

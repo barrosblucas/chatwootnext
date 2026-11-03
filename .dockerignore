@@ -15,3 +15,5 @@ vendor/bundle
 .DS_Store
 *.swp
 *~
+# TLS de ensaio LAN: configs/certs/chaves locais fora da imagem app (proxy monta externamente)
+deploy/ensaio-tls/

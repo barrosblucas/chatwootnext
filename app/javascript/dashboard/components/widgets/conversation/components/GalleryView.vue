@@ -6,8 +6,14 @@ import { useAlert } from 'dashboard/composables';
 import { useStoreGetters } from 'dashboard/composables/store';
 import { useKeyboardEvents } from 'dashboard/composables/useKeyboardEvents';
 import { useImageZoom } from 'dashboard/composables/useImageZoom';
+import { useProtectedAttachmentUrl } from 'dashboard/composables/useProtectedAttachmentUrl';
+import {
+  downloadAttachmentFile,
+  fileNameFromUrl,
+  withMediaFragment,
+  withMediaTimestamp,
+} from 'dashboard/helper/connectaProtectedMedia';
 import { messageTimestamp } from 'shared/helpers/timeHelper';
-import { downloadFile } from '@chatwoot/utils';
 
 import NextButton from 'dashboard/components-next/button/Button.vue';
 import Avatar from 'next/avatar/Avatar.vue';
@@ -51,6 +57,18 @@ const activeImageIndex = ref(
 );
 
 const imageRef = useTemplateRef('imageRef');
+
+// The active item can point at a protected download URL; resolve it
+// through the authenticated session. Switching items re-resolves and
+// revokes the previous ObjectURL; plain URLs pass through untouched.
+const { resolvedUrl, fileName: resolvedFileName } = useProtectedAttachmentUrl(
+  () => activeAttachment.value?.data_url
+);
+
+// Fragments/timestamps bust stale caches on plain URLs; resolved blob:
+// URLs already carry fresh bytes and must stay untouched.
+const videoSrc = computed(() => withMediaFragment(resolvedUrl.value));
+const audioSrc = computed(() => withMediaTimestamp(resolvedUrl.value));
 
 const {
   imageWrapperStyle,
@@ -104,11 +122,9 @@ const senderDetails = computed(() => {
 });
 
 const fileNameFromDataUrl = computed(() => {
+  if (resolvedFileName.value) return resolvedFileName.value;
   const { data_url: dataUrl } = activeAttachment.value;
-  if (!dataUrl) return '';
-
-  const fileName = dataUrl.split('/').pop();
-  return fileName ? decodeURIComponent(fileName) : '';
+  return fileNameFromUrl(dataUrl);
 });
 
 const onClose = () => emit('close');
@@ -135,7 +151,12 @@ const onClickDownload = async () => {
 
   try {
     isDownloading.value = true;
-    await downloadFile({ url, type, extension });
+    await downloadAttachmentFile({
+      url,
+      fileType: type,
+      extension,
+      fileName: resolvedFileName.value || undefined,
+    });
   } catch (error) {
     useAlert(t('GALLERY_VIEW.ERROR_DOWNLOADING'));
   } finally {
@@ -294,9 +315,10 @@ onMounted(() => {
               }"
             >
               <img
+                v-if="resolvedUrl"
                 ref="imageRef"
                 :key="activeAttachment.message_id"
-                :src="activeAttachment.data_url"
+                :src="resolvedUrl"
                 :style="imageStyle"
                 class="max-h-full max-w-full object-contain duration-100 ease-in-out transform select-none"
                 @click.stop
@@ -308,9 +330,9 @@ onMounted(() => {
             </div>
 
             <video
-              v-if="isVideo"
+              v-if="isVideo && resolvedUrl"
               :key="activeAttachment.message_id"
-              :src="activeAttachment.data_url"
+              :src="videoSrc"
               controls
               playsInline
               :autoplay="autoPlay"
@@ -319,14 +341,14 @@ onMounted(() => {
             />
 
             <audio
-              v-if="isAudio"
+              v-if="isAudio && resolvedUrl"
               :key="activeAttachment.message_id"
               controls
               :autoplay="autoPlay"
               class="w-full max-w-md"
               @click.stop
             >
-              <source :src="`${activeAttachment.data_url}?t=${Date.now()}`" />
+              <source :src="audioSrc" />
             </audio>
           </div>
 

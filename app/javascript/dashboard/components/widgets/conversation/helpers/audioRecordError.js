@@ -1,0 +1,17 @@
+// Init failures the AudioRecorder reports with an explicit code on its
+// recordError event. Anything without one of these codes is a conversion
+// failure from the record-end path, which keeps blaming the conversion
+// exactly as before.
+export const AUDIO_RECORD_INIT_ERROR_KEYS = {
+  INSECURE_CONTEXT: 'CONVERSATION.REPLYBOX.AUDIO_INIT_INSECURE_CONTEXT',
+  API_UNAVAILABLE: 'CONVERSATION.REPLYBOX.AUDIO_INIT_UNAVAILABLE',
+  PERMISSION_DENIED: 'CONVERSATION.REPLYBOX.AUDIO_INIT_PERMISSION_DENIED',
+  DEVICE_UNAVAILABLE: 'CONVERSATION.REPLYBOX.AUDIO_INIT_DEVICE_UNAVAILABLE',
+  UNKNOWN: 'CONVERSATION.REPLYBOX.AUDIO_INIT_FAILED',
+};
+
+export const AUDIO_RECORD_CONVERSION_ERROR_KEY =
+  'CONVERSATION.REPLYBOX.AUDIO_CONVERSION_FAILED';
+
+export const resolveRecordErrorKey = code =>
+  AUDIO_RECORD_INIT_ERROR_KEYS[code] || AUDIO_RECORD_CONVERSION_ERROR_KEY;

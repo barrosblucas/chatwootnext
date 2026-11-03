@@ -52,11 +52,41 @@ const getRecordPluginOptions = audioFormat => {
   };
   if (
     audioFormat === 'audio/ogg' &&
+    typeof MediaRecorder !== 'undefined' &&
     MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')
   ) {
     options.mimeType = 'audio/ogg;codecs=opus';
   }
   return options;
+};
+
+// Why these exist: startRecording can fail before any audio is captured
+// (insecure HTTP origin, missing browser API, denied permission, no device).
+// The code travels with the recordError event so the composer can tell the
+// agent what actually happened instead of blaming the audio conversion.
+const RECORD_ERROR_CODES = {
+  INSECURE_CONTEXT: 'INSECURE_CONTEXT',
+  API_UNAVAILABLE: 'API_UNAVAILABLE',
+  PERMISSION_DENIED: 'PERMISSION_DENIED',
+  DEVICE_UNAVAILABLE: 'DEVICE_UNAVAILABLE',
+  CONVERSION_FAILED: 'CONVERSION_FAILED',
+  UNKNOWN: 'UNKNOWN',
+};
+
+const classifyStartError = error => {
+  const name = error?.name || '';
+  if (name === 'NotAllowedError' || name === 'SecurityError') {
+    return RECORD_ERROR_CODES.PERMISSION_DENIED;
+  }
+  if (
+    name === 'NotFoundError' ||
+    name === 'OverconstrainedError' ||
+    name === 'NotReadableError' ||
+    name === 'AbortError'
+  ) {
+    return RECORD_ERROR_CODES.DEVICE_UNAVAILABLE;
+  }
+  return RECORD_ERROR_CODES.UNKNOWN;
 };
 
 const initWaveSurfer = () => {
@@ -109,7 +139,10 @@ const initWaveSurfer = () => {
     } catch (error) {
       isRecording.value = false;
       hasRecording.value = false;
-      emit('recordError', { error });
+      emit('recordError', {
+        code: RECORD_ERROR_CODES.CONVERSION_FAILED,
+        error,
+      });
     }
   });
 
@@ -119,15 +152,44 @@ const initWaveSurfer = () => {
 };
 
 const stopRecording = () => {
-  if (isRecording.value) {
-    record.value.stopRecording();
-    isRecording.value = false;
+  // A stop without a running capture is a no-op: the init may have failed
+  // and already reported, and a second stop must not throw or re-emit.
+  if (!isRecording.value) return;
+  isRecording.value = false;
+  try {
+    record.value?.stopRecording();
+  } catch {
+    // State is already "stopped", so there is nothing left to report.
   }
 };
 
-const startRecording = () => {
-  record.value.startRecording();
-  isRecording.value = true;
+// Async on purpose: the Record plugin requests the microphone here, which
+// rejects on insecure origins, missing APIs, denied permission or absent
+// devices. isRecording flips only after the mic is actually open, so the
+// composer never shows a frozen 00:00 for a capture that never started.
+const startRecording = async () => {
+  if (isRecording.value) return;
+  // getUserMedia is gated to secure contexts; on plain HTTP there is no
+  // prompt and no recording, so report it instead of simulating one.
+  if (typeof window !== 'undefined' && window.isSecureContext === false) {
+    emit('recordError', { code: RECORD_ERROR_CODES.INSECURE_CONTEXT });
+    return;
+  }
+  if (!navigator?.mediaDevices?.getUserMedia) {
+    emit('recordError', { code: RECORD_ERROR_CODES.API_UNAVAILABLE });
+    return;
+  }
+  try {
+    // Awaiting covers both a synchronous throw and a rejected promise.
+    await record.value.startRecording();
+    isRecording.value = true;
+  } catch (error) {
+    isRecording.value = false;
+    emit('recordError', {
+      code: classifyStartError(error),
+      error,
+    });
+  }
 };
 
 const playPause = () => {
@@ -137,18 +199,34 @@ const playPause = () => {
   }
 };
 
-onMounted(() => {
-  initWaveSurfer();
-  startRecording();
+onMounted(async () => {
+  try {
+    initWaveSurfer();
+    await startRecording();
+  } catch (error) {
+    // startRecording already reports its own failures; this only guards the
+    // init path so a setup throw never becomes an unhandled rejection.
+    isRecording.value = false;
+    emit('recordError', { code: classifyStartError(error), error });
+  }
 });
 
 onUnmounted(() => {
+  try {
+    if (isRecording.value) {
+      isRecording.value = false;
+      record.value?.stopRecording();
+    }
+  } catch {
+    // Teardown must not throw after the component is already gone.
+  }
   if (recordedAudioUrl.value) {
     URL.revokeObjectURL(recordedAudioUrl.value);
     recordedAudioUrl.value = null;
   }
   if (wavesurfer.value) {
     wavesurfer.value.destroy();
+    wavesurfer.value = null;
   }
 });
 

@@ -2,6 +2,8 @@
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { getFileInfo } from '@chatwoot/utils';
+import { useProtectedAttachmentUrl } from 'dashboard/composables/useProtectedAttachmentUrl';
+import { isProtectedAttachmentUrl } from 'dashboard/helper/connectaProtectedMedia';
 
 import FileIcon from 'next/icon/FileIcon.vue';
 import Icon from 'next/icon/Icon.vue';
@@ -15,11 +17,33 @@ const { attachment } = defineProps({
 
 const { t } = useI18n();
 
+const isProtected = computed(() =>
+  isProtectedAttachmentUrl(attachment?.dataUrl)
+);
+
+const { resolvedUrl, fileName: resolvedFileName } = useProtectedAttachmentUrl(
+  () => attachment?.dataUrl
+);
+
+// Protected download URLs end in a literal `/download` segment, so they
+// carry no usable name until the authenticated fetch returns the
+// Content-Disposition filename; until then show the generic label.
+const effectiveName = computed(() => {
+  if (resolvedFileName.value) return resolvedFileName.value;
+  if (isProtected.value) return '';
+  return attachment?.dataUrl || '';
+});
+
+const linkHref = computed(() => resolvedUrl.value || attachment?.dataUrl);
+
 const fileDetails = computed(() => {
-  return getFileInfo(attachment?.dataUrl || '');
+  return getFileInfo(effectiveName.value);
 });
 
 const displayFileName = computed(() => {
+  if (isProtected.value && !resolvedFileName.value) {
+    return t('CONVERSATION.UNKNOWN_FILE_TYPE');
+  }
   const { base, type } = fileDetails.value;
   const truncatedName = (str, maxLength, hasExt) =>
     str.length > maxLength
@@ -70,7 +94,7 @@ const textColorClass = computed(() => {
     <a
       v-tooltip="t('CONVERSATION.DOWNLOAD')"
       class="flex-shrink-0 size-9 grid place-content-center cursor-pointer text-n-slate-11 hover:text-n-slate-12 transition-colors"
-      :href="attachment.dataUrl"
+      :href="linkHref"
       rel="noreferrer noopener nofollow"
       target="_blank"
     >

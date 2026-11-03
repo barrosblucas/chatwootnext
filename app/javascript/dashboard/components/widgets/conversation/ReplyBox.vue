@@ -68,6 +68,7 @@ import ConversationResolveAttributesModal from 'dashboard/components-next/Conver
 import { useKbd } from 'dashboard/composables/utils/useKbd';
 import { isFileTypeAllowedForChannel } from 'shared/helpers/FileHelper';
 import { isInboxAdminInGroup } from 'dashboard/helper/phoneHelper';
+import { resolveRecordErrorKey } from './helpers/audioRecordError';
 
 import { LOCAL_STORAGE_KEYS } from 'dashboard/constants/localStorage';
 import { FEATURE_FLAGS } from 'dashboard/featureFlags';
@@ -1338,9 +1339,11 @@ export default {
       };
       return file && this.stageFile(autoRecordedFile);
     },
-    onRecordError() {
-      this.toggleAudioRecorder();
-      useAlert(this.$t('CONVERSATION.REPLYBOX.AUDIO_CONVERSION_FAILED'));
+    onRecordError(payload) {
+      // Guarded: a late failure arriving after the agent already closed the
+      // recorder must not flip it back open.
+      if (this.isRecordingAudio) this.toggleAudioRecorder();
+      useAlert(this.$t(resolveRecordErrorKey(payload?.code)));
     },
     toggleTyping(status) {
       const conversationId = this.currentChat.id;

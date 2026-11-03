@@ -2,6 +2,14 @@
 
 Estado atual: fase, entregas, próximos marcos e pendências. Criado em 2026-10-22.
 
+## HTTPS só no ensaio LAN (Chatwoot 3443 + painel 3444) — 2026-11-02 (ativo; sem build/deploy de app)
+
+- Proxy `chatwootnext-tls-proxy-1` (Caddy oficial 2.11.7, `caddy:2-alpine@sha256:e70b...`, Up, 0 restarts, 128m/0.5cpu, sem socket/privileged): binds host só `192.168.1.32:3443→rails:3000` e `:3444→wb-saude-admin:6700` (redes `chatwootnext_default`+`wb-saude_default`); `Valid configuration` (sintaxe conferida na doc oficial via Context7 + `caddy validate`); logs só startup, sem query token.
+- `FRONTEND_URL=https://192.168.1.32:3443` em rails+sidekiq (recriados, mesma imagem `d2bd...`, Up, health ok); `FORCE_SSL` segue false; HTTP legado 3000/6700 intacto (200); sem mutação DB (`schema_migrations`=215, scopes=6).
+- CA local (`deploy/ensaio-tls/certs/`, ignorado, 0700/0600; proxy monta só server crt/key readonly, nunca a chave da CA): `openssl verify` OK, SAN `IP:192.168.1.32`+localhost; `curl --cacert` 3443/health 200, 3444 raiz 307, 3444/login 200 (sem `-k`).
+- Trust real do navegador: CA importada no NSS do usuário (`sql:~/.local/share/pki/nssdb`, trust `C,,`, rc=0 com o Chrome aberto; profile de automação sem DB próprio, usa o compartilhado); Chrome de automação (PID 1128713, executável/profile exatos, pai MCP) preservado — validação F12/`isSecureContext` fica para o Explorer em tarefa posterior. CA pública p/ workstation: `deploy/ensaio-tls/certs/ensaio-ca.crt`. Rollback restrito em `deploy/ensaio-tls/README.md`.
+- Limite: imagem vigente segue sem o build da mídia protegida; nada aqui alega correção na imagem antiga. Decisão em `.context/decisions/006-https-ensaio-lan.md`.
+
 ## Resolução fecha o escopo; reabertura restaura; escrita em resolvida negada — 2026-11-02 (código pronto; build/deploy pendentes)
 
 - Correção 06 do ensaio: conversa resolvida mantinha escopo `active` e o entrante seguinte a reabria. Novo estado terminal legível `closed` (READ, fora de NON_TERMINAL, sem migração); resolver move `reception`/`active`→`closed` (transfer não tocado); entrante após resolver cria conversa nova em `reception` (fluxo nativo com `lock_to_single=false` + `MessageHook` anti-reabertura); reabrir (toggle→open) restaura `active` no mesmo atendimento; escrita em resolvida nega 403 para todos (inclusive admin nativo e bot), só reabertura passa. Tudo sob `CONNECTA_HUMAN_NUMBER_ENABLED` + inbox marcada. Decisão em `.context/decisions/005-resolucao-fecha-escopo-reabertura-restaura.md`; specs em `spec/connecta/scope_conversation_resolution_spec.rb` (12 exemplos, não executados — sem Ruby local, imagem sem gems de teste, specs exigem ambiente F5).
@@ -228,3 +236,40 @@ Decididas pelo humano em 2026-10-22. Não reabrir sem nova instrução.
 - Frontend: suite completa com 5 falhas; 3 preexistentes em EA (TransferAction), 2 tratadas (revogação alvo-específica; seletor de teste). Commit `853bbbf59`.
 - Backend: sintaxe válida; rubocop e RSpec pendentes por ausência de gems no toolchain (exige autorização para `bundle install`).
 - F5/H1 e MessageBuilder fora da allowlist: não executados.
+
+## Mídia protegida no dashboard via sessão autenticada — 2026-11-02 (código pronto; sem backend/commit/deploy)
+
+- N3/N4/N5a (frontend): helper `connectaProtectedMedia.js` + composable `useProtectedAttachmentUrl` + wrapper `ProtectedMediaSrc.vue`; 11 telas (bolhas Image/Video/File/Fallback, chips Image/Video/Audio/File, GalleryView, SharedAttachments Media/Files) resolvem bytes via axios da sessão (ObjectURL, revoga/cancela/corrida tratados) e baixam Blob autenticado com nome do servidor; URL comum segue caminho legado sem novos headers. Backend/ACL/widget/mailers intocados.
+- Validação: 49 exemplos Vitest novos (0 falhas), eslint próprio limpo, `git diff --check` limpo; sem RSpec (sem backend). Detalhe em `.context/changelog/CHANGELOG_2026_11_02.md`.
+- Pendente: `ContactMedia.vue` (window.open cru, fora do escopo); rodada E2E após as frentes; deploy. Imagem do ensaio segue antiga até o deploy.
+
+## Release ensaio midias protegidas ativo — 2026-11-02 ~23:05Z
+
+- Imagem `chatwootnext:teste` = `9119dd15b325` (`ensaio-midias-20261102-2259`); backup `teste-pre-midias-20261102-2259` = `d2bd7a3908e1`; rollback = retag + recriar rails/sidekiq (4 composes/env TLS). Rails/Sidekiq Up mesma imagem nova, `FRONTEND_URL=https://192.168.1.32:3443`, health 3000/3443 200; DB intacto (215/6/16/16 antes=depois); proxy TLS continuo; builder `chatwootnext-limited` parado ao final. E2E pendente (Explorer/F12). Detalhe em `changelog/CHANGELOG_2026_11_02.md`.
+
+## Release ensaio correcoes realtime+envelope+assinatura ativo — 2026-11-03 ~01:05Z
+
+- Imagem `chatwootnext:teste` = `8f2b004b1ba6` (`ensaio-correcoes-20261103-0100`); backup `teste-pre-correcoes-20261103-0100` = `9119dd15b325`; rollback = retag + recriar rails/sidekiq (4 composes/env TLS). Rails/Sidekiq Up mesma imagem nova, `FRONTEND_URL=https://192.168.1.32:3443` + `INTERNAL_HOST_URL=http://rails:3000` + `USE_INTERNAL_HOST_URL=true`, healths 3000/3443/3444/bot 200; DB intacto (215/7/34/34, conv 6/msgs 139 antes=depois); proxy/Baileys intocados; builder parado ao final. GET destinations user3 conv6 200 com 2 (Hospital Municipal, Recepcao Saude), sem transfer. Frontend novo exige reload; RSpec pendente CI; homologacao UI pendente. Detalhe em `changelog/CHANGELOG_2026_11_03.md`.
+
+## Release ensaio N1 version/compensation ativo; round-trip BLOQUEADO por estado — 2026-11-03 ~01:50Z
+
+- Imagem `chatwootnext:teste` = `787713081471` (`ensaio-n1-version-20261103-0147`); backup `teste-pre-n1-20261103-0147` = `8f2b004b1ba6`; rollback = retag + recriar rails/sidekiq (4 composes/env TLS). Healths 3000/3443/3444/bot 200; TLS/callback interno preservados; schema 215/scopes 7/blobs-attachments 45 inalterados pelo release (messages 139→163 atividade legitima); builder parado ao final.
+- Transferencia NAO executada: scope6 closed/conv6 resolved (GET user3 conv6 = 409 `Conversation is not active`); scope7 active/conv7 open encontrado mas nao escolhido; so transfer abortada antiga `08526da3...`; outbox 0; sem writes/grants/tokens. Round-trip pendente de caso ativo. Detalhe em `changelog/CHANGELOG_2026_11_03.md`.
+
+## Round-trip caso6/conversa7 BLOQUEADO em destino — 2026-11-03 ~02:05Z (release 787713081471)
+
+- Pre: conv7 open / scope active v1 Farmacia / caso6 open v1 sessao6 ativa; zero transfers; user3 Farmacia / user4 Hospital verified.
+- GET user3 conv7 destinations 200 count2 HAS_HOSPITAL true. POST Hospital 2x 409 duplicate scope destino com compensacao precommit (source active v1, ambos aborted, zero prepared).
+- Denial UID3 200 / UID4 404 em conv7. Grants inalterados, 0 avisos, sem SQL write. Retorno nao executado. Detalhe em `changelog/CHANGELOG_2026_11_03.md`.
+
+## Release N1 destino-adocao f40a + LEG1 commit FALHOU no WP — 2026-11-03 ~02:20Z
+
+- Imagem `teste` = `f40ab33ec43c` (`ensaio-n1-destino-20261103-0214`); backup `teste-pre-destino-20261103-0214` = `787713081471`. Healths 200; TLS/callback preservados; schema 215/scopes 7/blobs 45 inalterados; builder parado.
+- LEG1 POST 202 pending_activation; commit WP `SERVICE_UNAVAILABLE` (fork retry + WP transfer_failed 15x); transfer `52185ece=committed_local`, origem transferred_out, destino conv10 pending_activation v0; mesmo protocolo true; 1 escopo por conversa; outbox 1 pending 0 delivered; sem abort pos-commit, sem SQL manual.
+- LEG2 nao executada; denial user3/user4 conv10 = 404 (sem vazamento). Detalhe em `changelog/CHANGELOG_2026_11_03.md`.
+
+## Pausa PAUSED 2026-11-03T02:52:54Z — N1 pendente, handoff copiável (sem reescrever história)
+
+- Parada: backend `11696c938afb` + fork `f40ab33ec43c` ativos; release backend concluída antes da parada; nenhum retry/enqueue/POST/retorno manual após.
+- Saga `52185ece-d4ab-4c8f-8696-7a8e55178588` `committed_local` nos dois lados (detalhe em `changelog/CHANGELOG_2026_11_03.md`); session-ref/ativação/outbox por verificar; próxima sessão revalida e usa um recovery oficial só com aprovação, depois manual humano.
+- Mídia/áudio/download/assinatura humano-confirmados após reload 3443; RSpec não executado. Handoff: conectacidade `docs/plans/retomada-correcoes-ensaio-2026-11-03.md`. Sem código neste passo.

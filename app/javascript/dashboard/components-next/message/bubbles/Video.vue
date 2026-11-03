@@ -1,8 +1,9 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, watch } from 'vue';
 import BaseBubble from './Base.vue';
 import Icon from 'next/icon/Icon.vue';
 import { useLoadWithRetry } from 'dashboard/composables/loadWithRetry';
+import { useProtectedAttachmentUrl } from 'dashboard/composables/useProtectedAttachmentUrl';
 import { useSnakeCase } from 'dashboard/composables/useTransformKeys';
 import { useMessageContext } from '../provider.js';
 import GalleryView from 'dashboard/components/widgets/conversation/components/GalleryView.vue';
@@ -23,11 +24,19 @@ const { isLoaded, hasError, loadWithRetry } = useLoadWithRetry({
   type: 'video',
 });
 
-onMounted(() => {
-  if (attachment.value?.dataUrl) {
-    loadWithRetry(attachment.value.dataUrl);
-  }
-});
+const { resolvedUrl, resolveError } = useProtectedAttachmentUrl(
+  () => attachment.value?.dataUrl
+);
+
+const showLoadError = computed(() => hasError.value || !!resolveError.value);
+
+watch(
+  resolvedUrl,
+  url => {
+    if (url) loadWithRetry(url);
+  },
+  { immediate: true }
+);
 
 const handleError = () => {
   hasError.value = true;
@@ -40,13 +49,19 @@ const handleError = () => {
     data-bubble-name="video"
     @click="showGallery = true"
   >
-    <div v-if="hasError" class="flex items-center gap-1 text-center rounded-lg">
+    <div
+      v-if="showLoadError"
+      class="flex items-center gap-1 text-center rounded-lg"
+    >
       <Icon icon="i-lucide-circle-off" class="text-n-slate-11" />
       <p class="mb-0 text-n-slate-11">
         {{ $t('COMPONENTS.MEDIA.VIDEO_UNAVAILABLE') }}
       </p>
     </div>
-    <div v-else-if="isLoaded" class="relative group rounded-lg overflow-hidden">
+    <div
+      v-else-if="resolvedUrl && isLoaded"
+      class="relative group rounded-lg overflow-hidden"
+    >
       <div
         v-if="isReel"
         class="absolute p-2 flex items-start justify-end right-0 pointer-events-none"
@@ -56,7 +71,7 @@ const handleError = () => {
       <video
         controls
         class="rounded-lg skip-context-menu"
-        :src="attachment.dataUrl"
+        :src="resolvedUrl"
         :class="{
           'max-w-48': isReel,
           'max-w-full': !isReel,

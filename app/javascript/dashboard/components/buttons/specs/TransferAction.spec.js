@@ -1,9 +1,11 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
+import { createI18n } from 'vue-i18n';
 import TransferAction from '../TransferAction.vue';
 import conversationAPI from 'dashboard/api/inbox/conversation';
 import types from 'dashboard/store/mutation-types';
 import wootConstants from 'dashboard/constants/globals';
+import enConversation from 'dashboard/i18n/locale/en/conversation.json';
 
 const mockPush = vi.fn();
 vi.mock('vue-router', () => ({
@@ -59,6 +61,14 @@ vi.mock('dashboard/helper/URLHelper', () => ({
     `accounts/${accountId}/conversations/${id}`,
 }));
 
+// Real EN messages so useI18n() resolves the strings the component
+// passes to useAlert (without a provider t() returns the raw key).
+const i18n = createI18n({
+  legacy: false,
+  locale: 'en',
+  messages: { en: enConversation },
+});
+
 describe('TransferAction.vue', () => {
   beforeAll(() => {
     if (typeof HTMLDialogElement !== 'undefined') {
@@ -81,6 +91,7 @@ describe('TransferAction.vue', () => {
   const mountComponent = (options = {}) => {
     return mount(TransferAction, {
       global: {
+        plugins: [i18n],
         stubs: {
           TeleportWithDirection: {
             template: '<div><slot /></div>',

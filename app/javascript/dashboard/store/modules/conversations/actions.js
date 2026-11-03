@@ -22,6 +22,20 @@ import {
   handleVoiceCallUpdated,
   syncConversationCallVisibility,
 } from 'dashboard/helper/voice';
+import {
+  MAX_HYDRATE_ATTEMPTS,
+  attachmentSignature,
+  collectMarkedEmbeddedMessages,
+  decideHydrateApply,
+  deleteInflightResolve,
+  fetchExactMessage,
+  findStoreMessage,
+  getInflightResolve,
+  inflightKeyFor,
+  needsConnectaMediaResolve,
+  setInflightResolve,
+  withoutResolveMarker,
+} from './helpers/connectaMediaRehydrate';
 
 export const hasMessageFailedWithExternalError = pendingMessage => {
   // This helper is used to check if the message has failed with an external error.
@@ -469,7 +483,27 @@ const actions = {
     }
   },
 
-  addMessage({ commit, rootGetters }, message) {
+  // Cable de inbox marcada: anexos chegam sem `data_url`/`thumb_url` (sem token
+  // do remetente) com o marcador `connecta_media_resolve`. O placeholder entra
+  // na hora para o texto nao atrasar; a midia hidrata via GET autenticado do
+  // proprio viewer. `ADD_CONVERSATION_ATTACHMENTS` fica de fora aqui: a lista de
+  // arquivos so recebe entradas hidratadas (com URL propria), sem duplicar por id.
+  addMessage({ commit, dispatch, rootGetters }, message) {
+    if (needsConnectaMediaResolve(message)) {
+      commit(types.ADD_MESSAGE, message);
+      if (message.message_type === MESSAGE_TYPE.INCOMING) {
+        commit(types.SET_CONVERSATION_CAN_REPLY, {
+          conversationId: message.conversation_id,
+          canReply: true,
+        });
+      }
+      handleVoiceCallCreated(
+        message,
+        rootGetters?.getCurrentUserID,
+        rootGetters?.getCurrentUserAvailability
+      );
+      return dispatch('resolveConnectaMediaMessage', { message });
+    }
     commit(types.ADD_MESSAGE, message);
     if (message.message_type === MESSAGE_TYPE.INCOMING) {
       commit(types.SET_CONVERSATION_CAN_REPLY, {
@@ -483,9 +517,38 @@ const actions = {
       rootGetters?.getCurrentUserID,
       rootGetters?.getCurrentUserAvailability
     );
+    return null;
   },
 
-  updateMessage({ commit, rootGetters }, message) {
+  // Update marcado sobre mensagem ja hidratada com os MESMOS anexos: mantem as
+  // URLs proprias e aplica so os scalars (midia nao some apos `message.updated`).
+  // Anexos diferentes ou placeholder ainda marcado: entra marcado e reidrata.
+  updateMessage({ commit, dispatch, state, rootGetters }, message) {
+    if (needsConnectaMediaResolve(message)) {
+      const current = findStoreMessage(
+        state,
+        message.conversation_id,
+        message.id
+      );
+      if (
+        current &&
+        !needsConnectaMediaResolve(current) &&
+        attachmentSignature(current) === attachmentSignature(message)
+      ) {
+        return dispatch(
+          'updateMessage',
+          withoutResolveMarker({ ...message, attachments: current.attachments })
+        );
+      }
+      commit(types.ADD_MESSAGE, message);
+      handleVoiceCallUpdated(
+        commit,
+        message,
+        rootGetters?.getCurrentUserID,
+        rootGetters?.getCurrentUserAvailability
+      );
+      return dispatch('resolveConnectaMediaMessage', { message });
+    }
     commit(types.ADD_MESSAGE, message);
     handleVoiceCallUpdated(
       commit,
@@ -493,6 +556,74 @@ const actions = {
       rootGetters?.getCurrentUserID,
       rootGetters?.getCurrentUserAvailability
     );
+    return null;
+  },
+
+  // Busca limitada da representacao autorizada do proprio viewer para um evento
+  // marcado. Dedup por conta/viewer/conversa/mensagem (promises da sessao, sem
+  // compartilhar payload entre usuarios); logout/troca de conta descarta o
+  // resultado; 403/404/rede mantem o placeholder para o proximo evento recuperar.
+  resolveConnectaMediaMessage({ state, dispatch, rootGetters }, { message }) {
+    const accountId = rootGetters?.getCurrentAccountId;
+    const userId = rootGetters?.getCurrentUserID;
+    const key = inflightKeyFor({
+      accountId,
+      userId,
+      conversationId: message?.conversation_id,
+      messageId: message?.id,
+    });
+    const running = getInflightResolve(key);
+    if (running) {
+      running.latest = message;
+      return running.promise;
+    }
+    const entry = { latest: message, promise: null };
+    entry.promise = (async () => {
+      try {
+        for (let attempt = 0; attempt < MAX_HYDRATE_ATTEMPTS; attempt += 1) {
+          const trigger = entry.latest;
+          // eslint-disable-next-line no-await-in-loop
+          const fetched = await fetchExactMessage({
+            conversationId: trigger?.conversation_id,
+            messageId: trigger?.id,
+          });
+          if (
+            rootGetters?.getCurrentAccountId !== accountId ||
+            rootGetters?.getCurrentUserID !== userId
+          ) {
+            return;
+          }
+          const current = findStoreMessage(
+            state,
+            trigger?.conversation_id,
+            trigger?.id
+          );
+          const decision = decideHydrateApply(current, fetched);
+          if (decision === 'commit') {
+            // `fetched` vem do GET sem marcador: cai no fluxo normal (com
+            // URLs proprias, sem risco de reintroduzir URL legada).
+            // eslint-disable-next-line no-await-in-loop
+            await dispatch(
+              current && !needsConnectaMediaResolve(current)
+                ? 'updateMessage'
+                : 'addMessage',
+              fetched
+            );
+            return;
+          }
+          if (decision === 'keep') return;
+          // 'refetch': snapshot mais velho que o evento (ou ids divergentes
+          // com timestamps iguais); uma releitura limitada busca o estado novo.
+        }
+      } catch {
+        // GET negado ou rede: placeholder marcado permanece, honesto e
+        // recuperavel no proximo evento; nada legado e escrito no store.
+      } finally {
+        deleteInflightResolve(key, entry);
+      }
+    })();
+    setInflightResolve(key, entry);
+    return entry.promise;
   },
 
   deleteMessage: async function deleteLabels(
@@ -567,6 +698,11 @@ const actions = {
       commit(types.ADD_CONVERSATION, conversation);
       dispatch('contacts/setContact', sender);
     }
+    return Promise.all(
+      collectMarkedEmbeddedMessages(conversation).map(marked =>
+        dispatch('resolveConnectaMediaMessage', { message: marked })
+      )
+    );
   },
 
   addMentions({ dispatch, rootState }, conversation) {
@@ -593,6 +729,14 @@ const actions = {
     });
 
     if (sender) dispatch('contacts/setContact', sender);
+
+    // `UPDATE_CONVERSATION` ignora `messages`, mas o seed/preview de uma
+    // conversa marcada pode trazer anexos sem URL: resolve para o chat aberto.
+    return Promise.all(
+      collectMarkedEmbeddedMessages(conversation).map(marked =>
+        dispatch('resolveConnectaMediaMessage', { message: marked })
+      )
+    );
   },
 
   updateConversationLastActivity(

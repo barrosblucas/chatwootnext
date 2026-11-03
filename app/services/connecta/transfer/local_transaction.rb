@@ -132,10 +132,18 @@ class Connecta::Transfer::LocalTransaction # rubocop:disable Metrics/ClassLength
 
   # Só antes do commit local: origem transferring → active e registro aborted. Depois do commit a busca falha e nada muda.
   # Também desiste de um preparo retido em awaiting_dispatch (origem volta a active).
+  # Guarda de identidade: só registros pré-commit (requested/awaiting_dispatch/prepared/unknown)
+  # são desfeitos; committed_local/committed/activation_stuck nunca reabrem (RecordNotFound,
+  # sem efeitos e sem abort remoto pelo serviço). Id da transferência/origem/versão preservados.
   def abort!
     locked do
       Connecta::Scope::ConversationScope.find_by!(id: @scope.id, state: 'transferring').update!(state: 'active')
-      load_open_record!.update!(state: 'aborted')
+      record = load_open_record!
+      unless record && %w[requested awaiting_dispatch prepared unknown].include?(record.state)
+        raise ActiveRecord::RecordNotFound, 'preparo local ausente'
+      end
+
+      record.update!(state: 'aborted')
     end
   end
 
@@ -284,12 +292,12 @@ class Connecta::Transfer::LocalTransaction # rubocop:disable Metrics/ClassLength
   end
 
   # A origem já saiu dos estados não terminais antes deste INSERT: o índice único de (inbox, contato) não deixa dois.
+  # O Conversation.create! dispara ReceptionScopeCreator via after_create (síncrono, na mesma
+  # transação): o callback insere o escopo reception/version0/protocolo-nil antes do create abaixo.
+  # Por isso adotamos o escopo do callback quando ele é pristine; ausente mantém o create normal.
   def open_destination(origin, origin_conversation, summary)
     destination_conversation = Conversation.create!(origin_conversation.slice(:account_id, :inbox_id, :contact_id, :contact_inbox_id))
-    Connecta::Scope::ConversationScope.create!(
-      conversation_id: destination_conversation.id, inbox_id: origin.inbox_id, contact_id: origin.contact_id,
-      org_unit: @destination_org_unit, state: 'pending_activation', case_protocol: origin.case_protocol, case_version: 0
-    )
+    adopt_or_create_destination_scope!(origin, origin_conversation, destination_conversation)
     Message.create!(
       account_id: destination_conversation.account_id, inbox_id: destination_conversation.inbox_id,
       conversation: destination_conversation, message_type: :outgoing, private: true,
@@ -297,6 +305,46 @@ class Connecta::Transfer::LocalTransaction # rubocop:disable Metrics/ClassLength
                "#{Time.current.strftime('%d/%m/%Y %H:%M')}\n\nResumo: #{summary}"
     )
     destination_conversation
+  end
+
+  # Dentro da mesma transação/lock do commit: sem escopo intermediário vazando antes do commit.
+  def adopt_or_create_destination_scope!(origin, origin_conversation, destination_conversation)
+    existing = Connecta::Scope::ConversationScope.find_by(conversation_id: destination_conversation.id)
+    return Connecta::Scope::ConversationScope.create!(
+      conversation_id: destination_conversation.id, inbox_id: origin.inbox_id, contact_id: origin.contact_id,
+      org_unit: @destination_org_unit, state: 'pending_activation', case_protocol: origin.case_protocol, case_version: 0
+    ) if existing.nil?
+
+    adopt_callback_scope!(existing, origin, origin_conversation, destination_conversation)
+  end
+
+  # Adota SOMENTE o escopo pristine do callback (reception/version0/sem protocolo/sem
+  # transfer/session/ativação/fechamento, com identidade de conversa/conta/inbox/contato).
+  # Qualquer escopo ativo/estranho/divergente falha com conflito de domínio existente
+  # (RecordNotFound → 409 com compensação precommit), sem upsert cego nem update arbitrário.
+  # O alvo source+1 pertence ao transfer/activated, NÃO a este escopo (segue version0).
+  # Compatível com G0 (sem transfer_id/session/activated_at/closed_at) e produto:
+  # colunas ausentes são ignoradas via has_attribute?, nunca inventadas.
+  def adopt_callback_scope!(existing, origin, origin_conversation, destination_conversation)
+    pristine = existing.state == 'reception' &&
+              existing.case_version.to_i.zero? &&
+              existing.case_protocol.blank? &&
+              (!existing.has_attribute?('transfer_id') || existing.transfer_id.nil?) &&
+              (!existing.has_attribute?('platform_session_ref') || existing.platform_session_ref.blank?) &&
+              (!existing.has_attribute?('activated_at') || existing.activated_at.nil?) &&
+              (!existing.has_attribute?('closed_at') || existing.closed_at.nil?) &&
+              existing.conversation_id == destination_conversation.id &&
+              existing.inbox_id == origin.inbox_id &&
+              existing.contact_id == origin.contact_id &&
+              destination_conversation.account_id == origin_conversation.account_id &&
+              destination_conversation.inbox_id == origin.inbox_id &&
+              destination_conversation.contact_id == origin.contact_id
+    raise ActiveRecord::RecordNotFound, 'destino da transferência em uso' unless pristine
+
+    existing.update!(
+      org_unit: @destination_org_unit, state: 'pending_activation',
+      case_protocol: origin.case_protocol, case_version: 0
+    )
   end
 
   def destination_scope(record)

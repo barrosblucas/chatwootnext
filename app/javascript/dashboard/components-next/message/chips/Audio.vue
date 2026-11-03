@@ -1,16 +1,13 @@
 <script setup>
-import {
-  computed,
-  onMounted,
-  useTemplateRef,
-  ref,
-  getCurrentInstance,
-} from 'vue';
+import { computed, useTemplateRef, ref, watch, getCurrentInstance } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useLoadWithRetry } from 'dashboard/composables/loadWithRetry';
+import { useProtectedAttachmentUrl } from 'dashboard/composables/useProtectedAttachmentUrl';
+import {
+  downloadAttachmentFile,
+  withMediaTimestamp,
+} from 'dashboard/helper/connectaProtectedMedia';
 import Icon from 'next/icon/Icon.vue';
-import { timeStampAppendedURL } from 'dashboard/helper/URLHelper';
-import { downloadFile } from '@chatwoot/utils';
 import { useEmitter } from 'dashboard/composables/emitter';
 import { emitter } from 'shared/helpers/mitt';
 
@@ -34,9 +31,27 @@ const { isLoaded, hasError, loadWithRetry } = useLoadWithRetry({
   type: 'audio',
 });
 
+const {
+  resolvedUrl,
+  resolveError,
+  fileName: resolvedFileName,
+} = useProtectedAttachmentUrl(() => attachment.dataUrl);
+
+const showLoadError = computed(() => hasError.value || !!resolveError.value);
+
+// The timestamp busts stale caches on plain URLs; resolved blob: URLs
+// already carry fresh bytes and must stay untouched.
 const timeStampURL = computed(() => {
-  return timeStampAppendedURL(attachment.dataUrl);
+  return withMediaTimestamp(resolvedUrl.value);
 });
+
+watch(
+  resolvedUrl,
+  url => {
+    if (url) loadWithRetry(url);
+  },
+  { immediate: true }
+);
 
 const TRANSCRIPT_PREVIEW_LENGTH = 200;
 const isTranscriptExpanded = ref(false);
@@ -93,12 +108,6 @@ const onLoadedMetadata = () => {
 
 const playbackSpeedLabel = computed(() => {
   return `${playbackSpeed.value}x`;
-});
-
-onMounted(() => {
-  if (attachment.dataUrl) {
-    loadWithRetry(attachment.dataUrl);
-  }
 });
 
 // Listen for global audio play events and pause if it's not this audio
@@ -164,13 +173,18 @@ const changePlaybackSpeed = () => {
 
 const downloadAudio = async () => {
   const { fileType, dataUrl, extension } = attachment;
-  downloadFile({ url: dataUrl, type: fileType, extension });
+  await downloadAttachmentFile({
+    url: dataUrl,
+    fileType,
+    extension,
+    fileName: resolvedFileName.value || undefined,
+  });
 };
 </script>
 
 <template>
   <div
-    v-if="hasError"
+    v-if="showLoadError"
     v-bind="$attrs"
     class="flex items-center gap-1 text-center rounded-lg p-2 bg-n-alpha-white border border-n-container"
   >
@@ -179,7 +193,7 @@ const downloadAudio = async () => {
       {{ t('COMPONENTS.MEDIA.AUDIO_UNAVAILABLE') }}
     </p>
   </div>
-  <template v-else-if="isLoaded">
+  <template v-else-if="resolvedUrl && isLoaded">
     <audio
       ref="audioPlayer"
       controls

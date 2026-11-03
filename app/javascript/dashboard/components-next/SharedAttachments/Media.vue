@@ -7,11 +7,16 @@ import {
   formatDuration,
   shortTimestamp,
 } from 'shared/helpers/timeHelper';
-import { downloadFile } from '@chatwoot/utils';
+import {
+  downloadAttachmentFile,
+  fileNameFromUrl,
+  withMediaFragment,
+} from 'dashboard/helper/connectaProtectedMedia';
 import {
   ATTACHMENT_TYPES,
   MEDIA_TYPES,
 } from 'dashboard/components-next/message/constants';
+import ProtectedMediaSrc from './ProtectedMediaSrc.vue';
 
 import Icon from 'next/icon/Icon.vue';
 import NextButton from 'dashboard/components-next/button/Button.vue';
@@ -50,12 +55,6 @@ const overflow = computed(() => {
   const total = mediaAttachments.value.length;
   return total > props.peekLimit ? total - (props.peekLimit - 1) : 0;
 });
-
-const fileNameFromUrl = url => {
-  if (!url) return '';
-  const name = url.split('/').pop();
-  return name ? decodeURIComponent(name) : '';
-};
 
 const isVideoType = type =>
   [ATTACHMENT_TYPES.VIDEO, ATTACHMENT_TYPES.IG_REEL].includes(type);
@@ -140,7 +139,7 @@ const onDownloadFile = async attachment => {
   const { id, file_type: type, data_url: url, extension } = attachment;
   try {
     downloadingId.value = id;
-    await downloadFile({ url, type, extension });
+    await downloadAttachmentFile({ url, fileType: type, extension });
   } catch (error) {
     useAlert(t('CONVERSATION_SIDEBAR.SHARED_FILES.DOWNLOAD_ERROR'));
   } finally {
@@ -189,24 +188,38 @@ const onDownloadFile = async attachment => {
         @keydown.space.prevent="onTileActivate(attachment, index)"
       >
         <template v-if="!isOverflowTile(index)">
-          <img
+          <ProtectedMediaSrc
             v-if="hasPreview(attachment)"
-            :src="imagePreviewSrc(attachment)"
-            class="object-cover w-full h-full transition-transform duration-300 group-hover:scale-110"
-            loading="lazy"
-            :alt="fileNameFromUrl(attachment.data_url)"
+            v-slot="{ src }"
+            :url="imagePreviewSrc(attachment)"
             @error="onPreviewError(attachment)"
-          />
-          <video
+          >
+            <img
+              v-if="src"
+              :src="src"
+              class="object-cover w-full h-full transition-transform duration-300 group-hover:scale-110"
+              loading="lazy"
+              :alt="fileNameFromUrl(attachment.data_url)"
+              @error="onPreviewError(attachment)"
+            />
+          </ProtectedMediaSrc>
+          <ProtectedMediaSrc
             v-else-if="hasVideoPreview(attachment)"
-            :src="`${attachment.data_url}#t=0.1`"
-            preload="metadata"
-            muted
-            playsinline
-            class="object-cover w-full h-full transition-transform duration-300 group-hover:scale-110 pointer-events-none"
-            @loadedmetadata="onLoadedMetadata(attachment, $event)"
+            v-slot="{ src }"
+            :url="attachment.data_url"
             @error="onPreviewError(attachment)"
-          />
+          >
+            <video
+              v-if="src"
+              :src="withMediaFragment(src)"
+              preload="metadata"
+              muted
+              playsinline
+              class="object-cover w-full h-full transition-transform duration-300 group-hover:scale-110 pointer-events-none"
+              @loadedmetadata="onLoadedMetadata(attachment, $event)"
+              @error="onPreviewError(attachment)"
+            />
+          </ProtectedMediaSrc>
           <div
             v-else
             class="flex items-center justify-center w-full h-full bg-gradient-to-br from-n-slate-3 to-n-slate-4"
@@ -217,13 +230,19 @@ const onDownloadFile = async attachment => {
             />
           </div>
 
-          <audio
+          <ProtectedMediaSrc
             v-if="isAudioType(attachment.file_type) && attachment.data_url"
-            :src="attachment.data_url"
-            preload="metadata"
-            class="hidden"
-            @loadedmetadata="onLoadedMetadata(attachment, $event)"
-          />
+            v-slot="{ src }"
+            :url="attachment.data_url"
+          >
+            <audio
+              v-if="src"
+              :src="src"
+              preload="metadata"
+              class="hidden"
+              @loadedmetadata="onLoadedMetadata(attachment, $event)"
+            />
+          </ProtectedMediaSrc>
 
           <div
             class="absolute inset-0 transition-opacity duration-200 opacity-0 pointer-events-none group-hover:opacity-100 bg-gradient-to-t from-black/40 via-transparent to-transparent"

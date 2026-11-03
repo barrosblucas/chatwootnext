@@ -51,7 +51,7 @@ RSpec.describe 'Connecta runtime · transferencia do admin nativo (I.1b-runtime)
     stub = Object.new
     stub.define_singleton_method(:post) do |path, payload|
       recipient << { path: path, payload: payload }
-      { 'case_version' => 2, 'to_session_ref' => 'sess-runtime-2' }
+      { 'case_version' => 1, 'to_session_ref' => 'sess-runtime-2' }
     end
     stub
   end

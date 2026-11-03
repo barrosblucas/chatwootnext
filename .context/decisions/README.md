@@ -12,3 +12,4 @@ Decisão em proposta fica rotulada como proposta até aprovação humana.
 | 003 | Escopo de contato na busca e leitura em manutenção (spike G0) | Aceita | 2026-10-30 |
 | 004 | Envio em recepção só pelo usuário de serviço; parked vira falha visível (menos em manutenção) | Aceita | 2026-11-02 |
 | 005 | Ciclo de vida do escopo na resolução/reabertura (closed terminal) | Aceita | 2026-11-02 |
+| 006 | HTTPS só no ensaio LAN via proxy Caddy dedicado (sem tocar produção) | Aceita | 2026-11-02 |

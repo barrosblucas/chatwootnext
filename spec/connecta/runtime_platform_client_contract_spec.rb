@@ -30,7 +30,13 @@ RSpec.describe 'Connecta runtime · contrato Fork para WP (itens 1-7)', type: :r
     end
     stub.define_singleton_method(:post) do |path, payload|
       recipient << { method: :post, path: path, payload: payload }
-      { 'case_version' => 2, 'to_session_ref' => 'sess-2' }
+      # Sequência real: prepare ecoa a origem (source1→response1, alvo derivado 2);
+      # commit/activated confirmam o alvo 2.
+      if path == '/attendance/v1/transfers/prepare'
+        { 'case_version' => 1, 'to_session_ref' => 'sess-2' }
+      else
+        { 'case_version' => 2, 'to_session_ref' => 'sess-2' }
+      end
     end
     stub
   end

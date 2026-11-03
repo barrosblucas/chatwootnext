@@ -176,7 +176,8 @@ export function getEffectiveChannelType(channelType, medium) {
  * (Channel::Api, plus Channel::Whatsapp with provider baileys).
  * Other WhatsApp providers (Meta Cloud, etc.) keep the custom text signature.
  * The text format differs per channel: `*Nome*:` on API,
- * `*_Nome_*:` (bold-italic) on Baileys.
+ * `**_Nome_**:` (bold-italic CommonMark, rendered as `*_Nome_*:`
+ * on the WhatsApp wire) on Baileys.
  *
  * @param {string} channelType - e.g. 'Channel::Api', 'Channel::Whatsapp'.
  * @param {string} provider - Inbox provider (e.g. 'baileys'); only read for WhatsApp.
@@ -214,7 +215,7 @@ export function sanitizeAgentName(name, { baileys = false } = {}) {
 }
 
 /**
- * Builds the agent name prefix (`*Name*:` on API, `*_Name_*:` on Baileys).
+ * Builds the agent name prefix (`*Name*:` on API, `**_Name_**:` on Baileys).
  *
  * @param {string} name - The agent name.
  * @param {Object} options - Formatting options.
@@ -225,15 +226,15 @@ export function agentNamePrefix(name, { baileys = false } = {}) {
   const safeName = sanitizeAgentName(name, { baileys });
   if (!safeName) return null;
 
-  return baileys ? `*_${safeName}_*:` : `*${safeName}*:`;
+  return baileys ? `**_${safeName}_**:` : `*${safeName}*:`;
 }
 
 /**
  * Prepends an agent name prefix to outgoing message content.
  * Idempotent: does not prefix when content is empty or already prefixed.
- * In Baileys mode, a legacy bold-only prefix (`*Nome*:`) left by an older
- * client for the same sender is upgraded to bold-italic once, preserving
- * the body bytes, instead of stacking a second prefix.
+ * In Baileys mode, legacy prefixes (`*_Nome_*:`, `*Nome*:`) left by an
+ * older client for the same sender are upgraded to bold-italic once,
+ * preserving the body bytes, instead of stacking a second prefix.
  *
  * @param {string} name - The agent display name.
  * @param {string} content - Message body text.
@@ -252,14 +253,18 @@ export function prependAgentName(name, content, { baileys = false } = {}) {
   }
 
   if (baileys) {
-    const legacyPrefix = agentNamePrefix(name);
+    const baileysSafeName = sanitizeAgentName(name, { baileys: true });
+    const legacyPrefixes = [
+      baileysSafeName ? `*_${baileysSafeName}_*:` : null,
+      agentNamePrefix(name),
+    ].filter((p, i, arr) => p && arr.indexOf(p) === i);
+    const legacyPrefix = legacyPrefixes.find(
+      p => content.startsWith(`${p}\n`) || content === p
+    );
     if (legacyPrefix) {
-      if (content.startsWith(`${legacyPrefix}\n`)) {
-        return `${prefix}\n${content.slice(legacyPrefix.length + 1)}`;
-      }
-      if (content === legacyPrefix) {
-        return prefix;
-      }
+      return content === legacyPrefix
+        ? prefix
+        : `${prefix}\n${content.slice(legacyPrefix.length + 1)}`;
     }
   }
 

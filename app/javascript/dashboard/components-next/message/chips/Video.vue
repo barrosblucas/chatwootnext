@@ -1,8 +1,9 @@
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, watch } from 'vue';
 import Icon from 'next/icon/Icon.vue';
 import Spinner from 'dashboard/components-next/spinner/Spinner.vue';
 import { useLoadWithRetry } from 'dashboard/composables/loadWithRetry';
+import { useProtectedAttachmentUrl } from 'dashboard/composables/useProtectedAttachmentUrl';
 import { useSnakeCase } from 'dashboard/composables/useTransformKeys';
 import { useMessageContext } from '../provider.js';
 import GalleryView from 'dashboard/components/widgets/conversation/components/GalleryView.vue';
@@ -22,11 +23,19 @@ const { isLoaded, hasError, loadWithRetry } = useLoadWithRetry({
   type: 'video',
 });
 
-onMounted(() => {
-  if (attachment.dataUrl) {
-    loadWithRetry(attachment.dataUrl);
-  }
-});
+const { resolvedUrl, resolveError } = useProtectedAttachmentUrl(
+  () => attachment.dataUrl
+);
+
+const showLoadError = computed(() => hasError.value || !!resolveError.value);
+
+watch(
+  resolvedUrl,
+  url => {
+    if (url) loadWithRetry(url);
+  },
+  { immediate: true }
+);
 
 const handleError = () => {
   hasError.value = true;
@@ -39,15 +48,15 @@ const handleError = () => {
     @click="showGallery = true"
   >
     <div
-      v-if="hasError"
+      v-if="showLoadError"
       class="flex flex-col items-center justify-center gap-1 text-xs text-center rounded-lg size-full bg-n-alpha-1 text-n-slate-11"
     >
       <Icon icon="i-lucide-circle-off" class="text-n-slate-11" />
       {{ $t('COMPONENTS.MEDIA.LOADING_FAILED') }}
     </div>
-    <template v-else-if="isLoaded">
+    <template v-else-if="resolvedUrl && isLoaded">
       <video
-        :src="attachment.dataUrl"
+        :src="resolvedUrl"
         class="w-full h-full object-cover"
         muted
         playsInline

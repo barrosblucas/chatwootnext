@@ -1,0 +1,65 @@
+# TLS de ensaio — SOMENTE LAN 192.168.1.32 (Chatwoot 3443 + painel 3444).
+#
+# Escopo: microetapa HTTPS na VM de ensaio. Não toca produção, DNS público,
+# firewall, dados/migrações. HTTP legado (3000/6700) continua publicado e intacto.
+# FORCE_SSL segue false (default do production.rb): health HTTP legado preservado.
+# CONNECTA_PLATFORM_URL/ADMIN_URL internos HTTP ficam inalterados.
+#
+# Uso (sempre com o envfile comum carregado operacionalmente; nunca imprimir valores):
+#   docker compose --env-file .env.connecta-ensaio -p chatwootnext \
+#     -f docker-compose.teste-lan.yml \
+#     -f docker-compose.teste-lan.baileys-override.yml \
+#     -f docker-compose.teste-lan.human-number-override.yml \
+#     -f docker-compose.teste-lan.tls.yml \
+#     up -d --no-deps tls-proxy
+# E, pelo FRONTEND_URL abaixo, recriar rails/sidekiq SEM build, SEM migrate:
+#   (mesmo comando, mesmos 4 composes) up -d --no-deps rails sidekiq
+#
+# Rollback restrito (sem afetar volumes/dados):
+#   docker compose -p chatwootnext stop tls-proxy   # ou rm do servico
+#   + recriar rails/sidekiq só com os 3 composes originais (FRONTEND_URL volta a http).
+# Sem `down -v`; sem remover volumes.
+services:
+  rails:
+    environment:
+      # Origem EXATA do ensaio via proxy (permite futura serialização same-origin
+      # de mídia sob HTTPS sem enfraquecer o helper). Parametrizada com defaults
+      # do ensaio; sem credenciais, sem município.
+      - FRONTEND_URL=https://${ENSAIO_LAN_IP:-192.168.1.32}:${ENSAIO_TLS_CHATWOOT_PORT:-3443}
+  sidekiq:
+    environment:
+      - FRONTEND_URL=https://${ENSAIO_LAN_IP:-192.168.1.32}:${ENSAIO_TLS_CHATWOOT_PORT:-3443}
+  tls-proxy:
+    # Caddy oficial 2.11.7 (tag + digest fixados; pull público pontual autorizado).
+    image: caddy:2-alpine@sha256:e70b164da81ef698b3ad19af799ea6086ce6d9e48ed4079eb9fe26f6fbf14ee5
+    container_name: chatwootnext-tls-proxy-1
+    restart: unless-stopped
+    command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+    ports:
+      # Bind SOMENTE na LAN de ensaio (lado host); nenhum 443/80.
+      - "${ENSAIO_LAN_IP:-192.168.1.32}:${ENSAIO_TLS_CHATWOOT_PORT:-3443}:3443"
+      - "${ENSAIO_LAN_IP:-192.168.1.32}:${ENSAIO_TLS_PAINEL_PORT:-3444}:3444"
+    volumes:
+      - ./deploy/ensaio-tls/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./deploy/ensaio-tls/certs/ensaio-server.crt:/certs/ensaio-server.crt:ro
+      - ./deploy/ensaio-tls/certs/ensaio-server.key:/certs/ensaio-server.key:ro
+      - ensaio-tls-caddy-data:/data
+      - ensaio-tls-caddy-config:/config
+    mem_limit: 128m
+    cpus: 0.50
+    pids_limit: 100
+    networks:
+      - default
+      - ensaio-painel
+    # Sem docker socket, sem privileged, sem entrypoint customizado.
+
+volumes:
+  ensaio-tls-caddy-data:
+    name: chatwootnext_ensaio_tls_caddy_data
+  ensaio-tls-caddy-config:
+    name: chatwootnext_ensaio_tls_caddy_config
+
+networks:
+  ensaio-painel:
+    external: true
+    name: wb-saude_default

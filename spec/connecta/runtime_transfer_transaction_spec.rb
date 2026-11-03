@@ -24,7 +24,7 @@ RSpec.describe 'Connecta runtime · transação prepare→commit→activated' do
     stub = Object.new
     stub.define_singleton_method(:post) do |path, payload|
       recipient << { method: :post, path: path, payload: payload }
-      { 'case_version' => 2, 'to_session_ref' => 'sess-2' }
+      { 'case_version' => 1, 'to_session_ref' => 'sess-2' }
     end
     stub
   end

@@ -87,9 +87,9 @@ describe('ReplyBox Baileys signature contract (S.1b harness)', () => {
     expect(baileys.usesAgentName).toBe(true);
     expect(api.usesAgentName).toBe(true);
     expect(api.editorSignature).toBe('*Agente Ficticio*:');
-    expect(baileys.editorSignature).toBe('*_Agente Ficticio_*:');
+    expect(baileys.editorSignature).toBe('**_Agente Ficticio_**:');
     expect(baileys.applySignatureToMessage('Olá, como posso ajudar?')).toBe(
-      '*_Agente Ficticio_*:\nOlá, como posso ajudar?'
+      '**_Agente Ficticio_**:\nOlá, como posso ajudar?'
     );
   });
 
@@ -105,7 +105,7 @@ describe('ReplyBox Baileys signature contract (S.1b harness)', () => {
       signatureEnabled: false,
     });
 
-    expect(on.applySignatureToMessage('Oi')).toBe('*_Agente Ficticio_*:\nOi');
+    expect(on.applySignatureToMessage('Oi')).toBe('**_Agente Ficticio_**:\nOi');
     expect(off.applySignatureToMessage('Oi')).toBe('Oi');
   });
 
@@ -149,8 +149,8 @@ describe('ReplyBox Baileys signature contract (S.1b harness)', () => {
       buildReplyBoxSignatureHarness({
         channelType: 'Channel::Whatsapp',
         provider: 'baileys',
-      }).applySignatureToMessage('*_Agente Ficticio_*:\nOi')
-    ).toBe('*_Agente Ficticio_*:\nOi');
+      }).applySignatureToMessage('**_Agente Ficticio_**:\nOi')
+    ).toBe('**_Agente Ficticio_**:\nOi');
   });
 
   it('normalizes a cached legacy same-sender prefix once', () => {
@@ -160,8 +160,34 @@ describe('ReplyBox Baileys signature contract (S.1b harness)', () => {
     });
 
     expect(harness.applySignatureToMessage('*Agente Ficticio*:\nOi')).toBe(
-      '*_Agente Ficticio_*:\nOi'
+      '**_Agente Ficticio_**:\nOi'
     );
+  });
+
+  it('upgrades a cached interim single-star prefix once', () => {
+    const harness = buildReplyBoxSignatureHarness({
+      channelType: 'Channel::Whatsapp',
+      provider: 'baileys',
+    });
+
+    expect(harness.applySignatureToMessage('*_Agente Ficticio_*:\nOi')).toBe(
+      '**_Agente Ficticio_**:\nOi'
+    );
+    expect(harness.applySignatureToMessage('*_Agente Ficticio_*:')).toBe(
+      '**_Agente Ficticio_**:'
+    );
+  });
+
+  it('signs the first-attachment caption with the same prefix (no second text message)', () => {
+    const harness = buildReplyBoxSignatureHarness({
+      channelType: 'Channel::Whatsapp',
+      provider: 'baileys',
+    });
+
+    // getMultipleMessagesPayload reuses applySignatureToMessage(message) as the
+    // first-attachment caption; the caption must carry the same new prefix.
+    const caption = harness.applySignatureToMessage('foto da recepção');
+    expect(caption).toBe('**_Agente Ficticio_**:\nfoto da recepção');
   });
 
   it('does not sign empty content (media-only caption path stays name-free)', () => {

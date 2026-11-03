@@ -4,7 +4,11 @@ import { useI18n } from 'vue-i18n';
 import { useAlert } from 'dashboard/composables';
 import { formatBytes } from 'shared/helpers/FileHelper';
 import { dynamicTime, shortTimestamp } from 'shared/helpers/timeHelper';
-import { downloadFile } from '@chatwoot/utils';
+import {
+  downloadAttachmentFile,
+  fileNameFromUrl,
+  isProtectedAttachmentUrl,
+} from 'dashboard/helper/connectaProtectedMedia';
 import {
   MEDIA_TYPES,
   NON_FILE_TYPES,
@@ -44,15 +48,15 @@ const visibleFiles = computed(() => {
   return fileAttachments.value.slice(0, props.peekLimit);
 });
 
-const fileNameFromUrl = url => {
-  if (!url) return '';
-  const name = url.split('/').pop();
-  return name ? decodeURIComponent(name) : '';
+const displayName = attachment => {
+  if (isProtectedAttachmentUrl(attachment.data_url)) {
+    return t('CONVERSATION_SIDEBAR.SHARED_FILES.UNTITLED_FILE');
+  }
+  return (
+    fileNameFromUrl(attachment.data_url) ||
+    t('CONVERSATION_SIDEBAR.SHARED_FILES.UNTITLED_FILE')
+  );
 };
-
-const displayName = attachment =>
-  fileNameFromUrl(attachment.data_url) ||
-  t('CONVERSATION_SIDEBAR.SHARED_FILES.UNTITLED_FILE');
 
 const displaySize = attachment => {
   if (attachment.file_size) return formatBytes(attachment.file_size);
@@ -71,7 +75,7 @@ const onDownloadFile = async attachment => {
   const { id, file_type: type, data_url: url, extension } = attachment;
   try {
     downloadingId.value = id;
-    await downloadFile({ url, type, extension });
+    await downloadAttachmentFile({ url, fileType: type, extension });
   } catch (error) {
     useAlert(t('CONVERSATION_SIDEBAR.SHARED_FILES.DOWNLOAD_ERROR'));
   } finally {

@@ -1,0 +1,30 @@
+# Proxy TLS do ensaio (LAN 192.168.1.32): 3443 -> Chatwoot (rails:3000),
+# 3444 -> painel (wb-saude-admin:6700). HTTP 3000/6700 segue direto, intacto.
+#
+# O `bind` SOMENTE na LAN é feito na publicação de portas do Compose (lado host);
+# aqui o Caddy escuta :3443/:3444 dentro do container. Sem socket Docker,
+# sem privileged, sem ACME (certificados locais via `tls` + `auto_https off`).
+{
+	auto_https off
+	admin off
+}
+
+:3443 {
+	tls /certs/ensaio-server.crt /certs/ensaio-server.key
+
+	reverse_proxy rails:3000 {
+		header_up Host {http.request.host}
+		header_up X-Forwarded-Proto https
+		header_up X-Forwarded-Port 3443
+	}
+}
+
+:3444 {
+	tls /certs/ensaio-server.crt /certs/ensaio-server.key
+
+	reverse_proxy wb-saude-admin:6700 {
+		header_up Host {http.request.host}
+		header_up X-Forwarded-Proto https
+		header_up X-Forwarded-Port 3444
+	}
+}

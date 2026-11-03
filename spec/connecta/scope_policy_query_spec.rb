@@ -407,7 +407,7 @@ RSpec.describe 'Connecta G0 · escopo de conversas (T0.2 parte A)', type: :reque
       end
       stub.define_singleton_method(:post) do |_path, payload|
         recipient << { method: :post, path: payload[:destination_org_unit_id], payload: payload }
-        { 'case_version' => 2, 'to_session_ref' => 'sess-2' }
+        { 'case_version' => 1, 'to_session_ref' => 'sess-2' }
       end
       stub
     end

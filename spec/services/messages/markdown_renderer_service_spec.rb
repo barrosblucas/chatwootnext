@@ -53,6 +53,18 @@ RSpec.describe Messages::MarkdownRendererService, type: :service do
         expect(result.strip).to eq('*bold _italic_*')
       end
 
+      it 'renders the CommonMark bold-italic signature prefix as WhatsApp bold-italic' do
+        content = "**_Agente Ficticio_**:\nOlá, como posso ajudar?"
+        result = described_class.new(content, channel_type).render
+        expect(result).to eq("*_Agente Ficticio_*:\nOlá, como posso ajudar?")
+      end
+
+      it 'maps the legacy single-star signature prefix to double underscores, never to WhatsApp bold-italic' do
+        content = "*_Agente Ficticio_*:\nOlá"
+        result = described_class.new(content, channel_type).render
+        expect(result).to eq("__Agente Ficticio__:\nOlá")
+      end
+
       it 'preserves unordered list with dash markers' do
         content = "- item 1\n- item 2\n- item 3"
         result = described_class.new(content, channel_type).render

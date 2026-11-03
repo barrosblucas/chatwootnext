@@ -31,6 +31,9 @@ master.key
 .env
 .env.connecta-ensaio
 
+# TLS de ensaio local (CA + chaves + cert de servidor; nunca commitar)
+deploy/ensaio-tls/certs/
+
 public/uploads
 public/packs*
 public/assets/administrate*

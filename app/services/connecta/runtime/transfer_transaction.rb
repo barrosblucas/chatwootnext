@@ -42,9 +42,15 @@ class Connecta::Runtime::TransferTransaction
     # §4: transação local falhou/desfeita após prepare bem-sucedido ⇒ abort remoto via job.
     abort_local_prepare!(local, notify_remote: prepared&.dig(:remote), reason: local_reason(prepared, 'prepare_local_conflict'))
     raise Error.new(e.message, status: :conflict)
-  rescue KeyError, ArgumentError => e
+  rescue KeyError, ArgumentError, TypeError => e
     abort_local_prepare!(local, notify_remote: prepared&.dig(:remote), reason: local_reason(prepared, 'prepare_payload_invalid'))
     raise Error.new(e.message, status: :unprocessable_entity)
+  rescue Error => e
+    # Erro de domínio após HTTP 200 (ex.: versão inválida do prepare) ou após
+    # reconciliação: compensa a reserva remota quando ela pode existir e relança
+    # sem mascarar o status (502 para upstream inválido permanece 502).
+    abort_local_prepare!(local, notify_remote: prepared&.dig(:remote) || false, reason: local_reason(prepared, 'prepare_payload_invalid'))
+    raise
   end
 
   private
@@ -81,12 +87,13 @@ class Connecta::Runtime::TransferTransaction
     [Digest::SHA256.hexdigest(summary_json), summary_json.bytesize]
   end
 
-  # Ordem preservada: fingerprint, begin/record local, prepare remoto (marca prepared[:remote]).
+  # Ordem preservada: fingerprint, begin/record local, prepare remoto (marca prepared[:remote]
+  # imediatamente após HTTP 200, ANTES de validar o payload: resposta bem-sucedida
+  # mas malformada pode já ter reservado no WP e exige compensação).
   def prepare_transfer!(local, source, prepared)
     summary_hash, summary_length = summary_fingerprint
     transfer = begin_local_transfer!(local, source, summary_hash, summary_length)
-    target_version = prepare_remote!(transfer, source, summary_hash, summary_length)
-    prepared[:remote] = true
+    target_version = prepare_remote!(transfer, source, summary_hash, summary_length, prepared)
     [transfer, target_version]
   end
 
@@ -108,7 +115,12 @@ class Connecta::Runtime::TransferTransaction
     transfer
   end
 
-  def prepare_remote!(transfer, source, summary_hash, summary_length)
+  # Contrato de fio v1: WP guarda a versão de origem no prepare e incrementa uma vez
+  # sob lock no commit; fork deriva alvo=origem+1. Resposta de prepare bem-sucedida
+  # devolve a MESMA versão enviada (eco da origem); commit/activated exigem o alvo
+  # exato (commit_local! + activate! conferem igualdade). Resposta ausente,
+  # não-numérica ou divergente é erro controlado 502 sem expor o payload.
+  def prepare_remote!(transfer, source, summary_hash, summary_length, prepared = nil)
     payload = {
       transfer_id: transfer.id, account_id: @account_id, conversation_id: @conversation.display_id,
       case_protocol: source.case_protocol, case_version: source.case_version,
@@ -117,11 +129,22 @@ class Connecta::Runtime::TransferTransaction
     }
     authority = native_authority
     payload[:actor_authority] = authority unless authority.nil?
-    prepared = @client.post('/attendance/v1/transfers/prepare', payload)
-    target_version = Integer(prepared.fetch('case_version'))
-    raise Error.new('Platform returned an invalid case version', status: :bad_gateway) unless target_version > source.case_version
+    response = @client.post('/attendance/v1/transfers/prepare', payload)
+    # HTTP 200 ⇒ reserva potencial no WP mesmo com corpo inválido: marca ANTES de validar.
+    prepared[:remote] = true if prepared
+    begin
+      raise Error.new('Platform returned an invalid case version', status: :bad_gateway) unless response.is_a?(Hash)
 
-    transfer.update!(state: 'prepared', target_case_version: target_version, platform_session_ref: prepared['to_session_ref'])
+      response_version = Integer(response.fetch('case_version'))
+    rescue KeyError, TypeError, ArgumentError
+      raise Error.new('Platform returned an invalid case version', status: :bad_gateway)
+    end
+    unless response_version == source.case_version
+      raise Error.new('Platform returned an invalid case version', status: :bad_gateway)
+    end
+
+    target_version = source.case_version + 1
+    transfer.update!(state: 'prepared', target_case_version: target_version, platform_session_ref: response['to_session_ref'])
     target_version
   end
 

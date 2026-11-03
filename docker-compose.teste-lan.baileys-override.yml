@@ -4,6 +4,15 @@
 # Requer no ambiente: BAILEYS_PROVIDER_DEFAULT_API_KEY=<mesmo valor de BAILEYS_API_KEY do runtime>
 # (exportado em memória a partir do .env privado 0600; nunca literal aqui).
 # Mantém imagem atual (chatwootnext:teste), volumes e rede default; sem db prepare/migrações.
+# Separação frontend público x callback interno (obrigatória com CA local):
+# FRONTEND_URL (override TLS) é o endereço PÚBLICO https://LAN:3443 servido pelo
+# tls-proxy para navegador/bot — o transporte Baileys NÃO confia na CA local e
+# falha com "unable to verify the first certificate" se o callback apontar para lá.
+# INTERNAL_HOST_URL=http://rails:3000 + BAILEYS_PROVIDER_USE_INTERNAL_HOST_URL="true"
+# fazem Inbox#callback_webhook_url gerar o callback via DNS/rede interna
+# baileys-edge (HTTP interno, sem TLS), com verify_token/autenticação preservados.
+# Ruby trata qualquer string não vazia como truthy (inclusive "false"): habilitar
+# só com "true" explícito; desligar no futuro é via unset, nunca "false".
 # Entrypoint do rails sobrescrito para pular `rake db:chatwoot_prepare` preservando
 # pré-requisitos: limpeza de pid/cache, espera do Postgres e `bundle check`.
 services:
@@ -12,6 +21,8 @@ services:
       - BAILEYS_PROVIDER_DEFAULT_URL=http://baileys-api:3000
       - BAILEYS_PROVIDER_DEFAULT_API_KEY=${BAILEYS_PROVIDER_DEFAULT_API_KEY:?defina BAILEYS_PROVIDER_DEFAULT_API_KEY no ambiente (valor do .env privado do runtime)}
       - BAILEYS_PROVIDER_DEFAULT_CLIENT_NAME=Chatwoot-Connecta-Teste
+      - INTERNAL_HOST_URL=http://rails:3000
+      - BAILEYS_PROVIDER_USE_INTERNAL_HOST_URL="true"
     entrypoint:
       - sh
       - -c
@@ -37,6 +48,8 @@ services:
       - BAILEYS_PROVIDER_DEFAULT_URL=http://baileys-api:3000
       - BAILEYS_PROVIDER_DEFAULT_API_KEY=${BAILEYS_PROVIDER_DEFAULT_API_KEY:?defina BAILEYS_PROVIDER_DEFAULT_API_KEY no ambiente (valor do .env privado do runtime)}
       - BAILEYS_PROVIDER_DEFAULT_CLIENT_NAME=Chatwoot-Connecta-Teste
+      - INTERNAL_HOST_URL=http://rails:3000
+      - BAILEYS_PROVIDER_USE_INTERNAL_HOST_URL="true"
     networks:
       - default
       - baileys-edge

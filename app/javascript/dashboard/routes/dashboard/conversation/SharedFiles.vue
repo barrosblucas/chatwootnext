@@ -1,7 +1,12 @@
 <script setup>
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { useAlert } from 'dashboard/composables';
 import { useMapGetter } from 'dashboard/composables/store';
+import {
+  downloadAttachmentFile,
+  isProtectedAttachmentUrl,
+} from 'dashboard/helper/connectaProtectedMedia';
 import {
   MEDIA_TYPES,
   NON_FILE_TYPES,
@@ -39,9 +44,23 @@ const onMediaSelect = attachment => {
   showGallery.value = true;
 };
 
-const onFileSelect = attachment => {
-  if (attachment.data_url) {
+const onFileSelect = async attachment => {
+  if (!attachment.data_url) return;
+  // Protected URLs carry no session on a raw window.open, so they are
+  // downloaded through the authenticated session (server filename kept).
+  // Plain/external URLs keep the existing open-in-new-tab behavior.
+  if (!isProtectedAttachmentUrl(attachment.data_url)) {
     window.open(attachment.data_url, '_blank', 'noopener,noreferrer');
+    return;
+  }
+  try {
+    await downloadAttachmentFile({
+      url: attachment.data_url,
+      fileType: attachment.file_type,
+      extension: attachment.extension,
+    });
+  } catch {
+    useAlert(t('CONVERSATION_SIDEBAR.SHARED_FILES.DOWNLOAD_ERROR'));
   }
 };
 </script>

@@ -71,18 +71,25 @@ class ActionCableListener < BaseListener # rubocop:disable Metrics/ClassLength
 
   def message_created(event)
     message, account = extract_message_and_account(event)
+    sanitized = connecta_scope_sanitized_message(message, message.push_event_data)
+    return if sanitized.nil?
+
     conversation = message.conversation
     tokens = user_tokens(account, conversation.inbox.members) + contact_tokens(conversation.contact_inbox, message)
 
-    broadcast(account, tokens, MESSAGE_CREATED, message.push_event_data)
+    broadcast(account, tokens, MESSAGE_CREATED, sanitized)
   end
 
   def message_updated(event)
     message, account = extract_message_and_account(event)
+    payload = message.push_event_data.merge(previous_changes: event.data[:previous_changes])
+    sanitized = connecta_scope_sanitized_message(message, payload)
+    return if sanitized.nil?
+
     conversation = message.conversation
     tokens = user_tokens(account, conversation.inbox.members) + contact_tokens(conversation.contact_inbox, message)
 
-    broadcast(account, tokens, MESSAGE_UPDATED, message.push_event_data.merge(previous_changes: event.data[:previous_changes]))
+    broadcast(account, tokens, MESSAGE_UPDATED, sanitized)
   end
 
   def scheduled_message_created(event)
@@ -317,6 +324,32 @@ class ActionCableListener < BaseListener # rubocop:disable Metrics/ClassLength
   end
 
   private
+
+  # Inbox marcada: anexos saem do broadcast SEM `data_url`/`thumb_url` (o hook de
+  # URL serializa com o token do `Current.user`/remetente e o mesmo hash chega a
+  # N destinatarios). Cada viewer reidrata sua URL via GET autenticado, guiado
+  # pelo marcador. Inbox confirmadamente nao marcada devolve o payload intacto.
+  # Fail-closed: se o escopo (inbox marcada?) ou a sanitizacao falhar, o broadcast
+  # e descartado (nil) — nunca o payload original. Dados seguem via GET.
+  # `first_reply_created` mantem o comportamento atual no listener (fora do escopo
+  # desta frente) e passa pela barreira final do job.
+  def connecta_scope_sanitized_message(message, payload)
+    inbox_id = message.conversation.inbox_id
+    return payload unless Connecta::Scope::Projection.marked?(inbox_id)
+
+    Connecta::Scope::MediaBroadcastSanitizer.sanitize_message(payload)
+  rescue StandardError => e
+    connecta_scope_report_media_discard(message: message, error: e)
+    Connecta::Scope::MediaBroadcastSanitizer.discard_unless_safe(payload)
+  end
+
+  # Log operacional sem segredo: so IDs e classe do erro. Nunca payload, token ou URL.
+  def connecta_scope_report_media_discard(message:, error:)
+    Rails.logger.warn(
+      "[connecta_scope] realtime media broadcast descartado event=message " \
+      "account_id=#{message.account_id} message_id=#{message.id} error=#{error.class}"
+    )
+  end
 
   # Pins are personal, so the event only reaches the sessions of the agent who pinned the conversation.
   def broadcast_conversation_pin(event, event_name)
