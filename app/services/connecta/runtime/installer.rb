@@ -23,7 +23,17 @@ class Connecta::Runtime::Installer
     Message.prepend(Connecta::Transfer::OutboundDispatch::MessageHook) unless Message <= Connecta::Transfer::OutboundDispatch::MessageHook
     SendReplyJob.prepend(Connecta::Transfer::SendReplyHook) unless SendReplyJob <= Connecta::Transfer::SendReplyHook
     Conversation.after_create { Connecta::Runtime::ReceptionScopeCreator.call(self) }
-    Connecta::Runtime::ReceptionScopeCreator.verify_marked_inboxes!
+    # Fail-open no boot: numa conta fresca a primeira inbox marcada ainda não existe quando
+    # este verify roda (o enforce vem depois, via upsert oficial), então a unidade de
+    # recepção ausente não pode travar o boot — só registra o evento com a contagem.
+    # O fail-closed continua em ReceptionScopeCreator.call (conversa nova sem unidade).
+    begin
+      Connecta::Runtime::ReceptionScopeCreator.verify_marked_inboxes!
+    rescue Connecta::Runtime::ReceptionScopeCreator::MissingReceptionUnit
+      Rails.logger.error(
+        "connecta_reception_unit_missing marked_inbox_count=#{Connecta::Scope::ScopedInbox.where(enforcement: 'enforce').count}"
+      )
+    end
     @installed = true
   end
 end

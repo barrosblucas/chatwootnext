@@ -7,7 +7,8 @@ class Api::V1::Accounts::Connecta::ScopedInboxesController < Api::V1::Accounts::
   def update
     raise Pundit::NotAuthorizedError unless Connecta::Scope::Projection.new(current_user).admin?
 
-    scoped = Connecta::Scope::ScopedInbox.find_by!(inbox_id: params[:inbox_id])
+    inbox = ::Inbox.find_by!(id: params[:inbox_id], account_id: params[:account_id])
+    scoped = Connecta::Scope::ScopedInbox.find_or_initialize_by(inbox_id: inbox.id)
     scoped.update!(enforcement: params.require(:enforcement).to_s)
     Connecta::Scope::AccessAudit.create!(
       user_id: current_user.id, conversation_id: nil, surface: 'scoped_inbox',

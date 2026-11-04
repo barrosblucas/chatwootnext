@@ -25,6 +25,14 @@ module CacheKeys
     dispatch_cache_update_event
   end
 
+  # Bumps the Redis cache key WITHOUT dispatching ACCOUNT_CACHE_INVALIDATED.
+  # For high-frequency writes (e.g. connection status) where the change is pushed
+  # to clients via a targeted event; the broadcast would only re-trigger a full
+  # list fetch. Skips touch, so callers must not rely on updated_at changes.
+  def bump_cache_key(key)
+    update_cache_key_for_account(id, key)
+  end
+
   def reset_cache_keys
     self.class.cacheable_models.each do |model|
       update_cache_key_for_account(id, model.name.underscore)

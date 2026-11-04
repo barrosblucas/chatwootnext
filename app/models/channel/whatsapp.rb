@@ -173,7 +173,10 @@ class Channel::Whatsapp < ApplicationRecord # rubocop:disable Metrics/ClassLengt
     # (inherited from Channelable) so this high-frequency connection-status change does
     # NOT touch the inbox and invalidate the whole account inbox cache. The change is
     # pushed to clients via a targeted `inbox.provider_connection_updated` event.
+    # The inbox cache key is still bumped explicitly so a reload drops the stale
+    # provider_connection from IndexedDB without moving inboxes.updated_at.
     Inbox.no_touching { save!(validate: false) }
+    inbox&.account&.bump_cache_key('inbox')
     broadcast_provider_connection_updated
   end
 

@@ -15,10 +15,41 @@ RSpec.describe Channels::Whatsapp::BaileysConnectionCheckJob do
   end
 
   context 'when called' do
-    it 'calls setup_channel_provider' do
+    # POST /connections reuses a live socket but force-acquires a new lease epoch and
+    # flaps presence: it must run only when the provider does not know the phone.
+    it 'does not POST setup when the provider knows the phone and the socket is connected' do
+      allow(provider_service).to receive(:fetch_send_health)
+        .and_return({ present: true, connected: true, send_state: 'ok' })
+
+      described_class.perform_now(channel_whatsapp)
+
+      expect(channel_whatsapp).not_to have_received(:setup_channel_provider)
+    end
+
+    it 'does not POST setup when the provider knows the phone but the socket is down' do
+      allow(provider_service).to receive(:fetch_send_health)
+        .and_return({ present: true, connected: false, send_state: 'unknown' })
+
+      described_class.perform_now(channel_whatsapp)
+
+      expect(channel_whatsapp).not_to have_received(:setup_channel_provider)
+    end
+
+    it 'POSTs setup only when the provider reports the phone as unknown (404)' do
+      allow(provider_service).to receive(:fetch_send_health).and_return({ present: false, connected: false })
+
       described_class.perform_now(channel_whatsapp)
 
       expect(channel_whatsapp).to have_received(:setup_channel_provider)
+    end
+
+    it 'never POSTs setup when health is unknown, and warns' do
+      allow(Rails.logger).to receive(:warn)
+
+      described_class.perform_now(channel_whatsapp)
+
+      expect(channel_whatsapp).not_to have_received(:setup_channel_provider)
+      expect(Rails.logger).to have_received(:warn).with(/skipping setup for ##{channel_whatsapp.id}: health unknown/)
     end
 
     it 'persists the fetched reach-out time-lock' do
@@ -52,6 +83,7 @@ RSpec.describe Channels::Whatsapp::BaileysConnectionCheckJob do
     end
 
     it 'does not let a cap fetch error abort the connection check' do
+      allow(provider_service).to receive(:fetch_send_health).and_return({ present: false, connected: false })
       allow(provider_service).to receive(:fetch_new_chat_cap).and_raise(StandardError, 'boom')
 
       expect { described_class.perform_now(channel_whatsapp) }.not_to raise_error
@@ -63,7 +95,7 @@ RSpec.describe Channels::Whatsapp::BaileysConnectionCheckJob do
     # socket whose sends are wedged. This is the part of the check that can tell.
     it 'reports a connection whose sends are stalled' do
       allow(provider_service).to receive(:fetch_send_health).and_return(
-        { send_state: 'stalled', consecutive_send_timeouts: 3, last_outgoing_ack_ago_ms: 219_000 }
+        { present: true, connected: true, send_state: 'stalled', consecutive_send_timeouts: 3, last_outgoing_ack_ago_ms: 219_000 }
       )
       allow(Rails.logger).to receive(:error)
 
@@ -73,7 +105,7 @@ RSpec.describe Channels::Whatsapp::BaileysConnectionCheckJob do
     end
 
     it 'stays quiet for a healthy connection' do
-      allow(provider_service).to receive(:fetch_send_health).and_return({ send_state: 'ok' })
+      allow(provider_service).to receive(:fetch_send_health).and_return({ present: true, connected: true, send_state: 'ok' })
       allow(Rails.logger).to receive(:error)
 
       described_class.perform_now(channel_whatsapp)
@@ -83,7 +115,7 @@ RSpec.describe Channels::Whatsapp::BaileysConnectionCheckJob do
 
     # 'unknown' means no send has been observed on that connection, which is not a problem.
     it 'stays quiet when the send state is unknown' do
-      allow(provider_service).to receive(:fetch_send_health).and_return({ send_state: 'unknown' })
+      allow(provider_service).to receive(:fetch_send_health).and_return({ present: true, connected: true, send_state: 'unknown' })
       allow(Rails.logger).to receive(:error)
 
       described_class.perform_now(channel_whatsapp)
@@ -91,11 +123,13 @@ RSpec.describe Channels::Whatsapp::BaileysConnectionCheckJob do
       expect(Rails.logger).not_to have_received(:error)
     end
 
-    it 'does not let a health check error abort the connection check' do
+    it 'does not let a health probe error abort the connection check' do
       allow(provider_service).to receive(:fetch_send_health).and_raise(StandardError, 'boom')
+      allow(Rails.logger).to receive(:warn)
 
       expect { described_class.perform_now(channel_whatsapp) }.not_to raise_error
-      expect(channel_whatsapp).to have_received(:setup_channel_provider)
+      expect(channel_whatsapp).not_to have_received(:setup_channel_provider)
+      expect(Rails.logger).to have_received(:warn).with(/connection health probe failed for ##{channel_whatsapp.id}/)
     end
   end
 end

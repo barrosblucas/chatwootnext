@@ -674,6 +674,17 @@ RSpec.describe Channel::Whatsapp do
       end.not_to(change { inbox.reload.updated_at })
     end
 
+    it 'bumps the inbox cache key without dispatching a cache update event' do
+      allow(Redis::Alfred).to receive(:setex)
+      expect(Rails.configuration.dispatcher).not_to receive(:dispatch)
+
+      channel.update_provider_connection!(connection: 'open')
+
+      expect(Redis::Alfred).to have_received(:setex).with(
+        "idb-cache-key-account-#{channel.account_id}-inbox", kind_of(Integer), CacheKeys::CACHE_KEYS_EXPIRY
+      )
+    end
+
     it 'persists the new connection status' do
       channel.update_provider_connection!(connection: 'open')
 

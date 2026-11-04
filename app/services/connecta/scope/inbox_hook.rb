@@ -72,11 +72,21 @@ module Connecta::Scope::InboxHook
   # antes de qualquer I/O e só audita o allow quando o admin nominal também é administrator da conta.
   # Este guard roda como prepend_before_action, ANTES de current_account: Current.account_user ainda é nil
   # nesse ponto. Por isso o vínculo nativo é resolvido pela conta da rota (fail-closed: sem vínculo, nega).
+  # Bootstrap: numa conta fresca nenhuma inbox está marcada, então Projection#admin? é impossível
+  # antes do sync de ACL — o administrador nativo pode criar a primeira inbox WhatsApp (allow
+  # auditado como 'inbox_create_bootstrap'). Assim que a conta tem qualquer inbox marcada,
+  # vale a regra nominal de sempre.
   def connecta_scope_inbox_create_guard!
     return unless current_user && params.dig(:channel, :type) == 'whatsapp'
 
-    nominal = Connecta::Scope::Projection.new(current_user).admin?
     native_admin = connecta_scope_native_administrator?
+    if !Connecta::Scope::ScopedInbox.account_marked?(params[:account_id]) && native_admin
+      Connecta::Scope::AccessAudit.create!(user_id: current_user.id, conversation_id: nil, surface: 'inbox',
+                                           access_path: 'inbox_create_bootstrap', decision: 'allow')
+      return
+    end
+
+    nominal = Connecta::Scope::Projection.new(current_user).admin?
     unless nominal && native_admin
       Connecta::Scope::AccessAudit.create!(user_id: current_user.id, conversation_id: nil, surface: 'inbox',
                                            access_path: 'inbox_create', decision: 'deny')

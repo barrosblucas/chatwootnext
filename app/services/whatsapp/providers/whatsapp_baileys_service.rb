@@ -655,10 +655,16 @@ class Whatsapp::Providers::WhatsappBaileysService < Whatsapp::Providers::BaseSer
   # presence update, which does not go through the provider's keystore — so it succeeds
   # against a socket whose sends are wedged, which is exactly the state we need to catch.
   #
-  # nil means "unknown" (404 / error): the caller must leave the existing state alone
-  # rather than treat a failed lookup as healthy. Deliberately NOT wrapped in
-  # with_error_handling, matching the other diagnostic GETs — that helper marks the
-  # connection `close` on any error, which would be perverse for a health probe.
+  # `present` answers whether the provider knows this phone at all (false exactly on
+  # 404); `connected` mirrors the provider's own data.connected. The connection-check
+  # job POSTs /connections only when the phone is absent — POSTing while present would
+  # force-acquire a new lease epoch and flap presence on a live socket.
+  #
+  # nil means "unknown" (5xx / 421 / timeout / error): the caller must leave the
+  # existing state alone rather than treat a failed lookup as healthy or as absent.
+  # Deliberately NOT wrapped in with_error_handling, matching the other diagnostic GETs
+  # — that helper marks the connection `close` on any error, which would be perverse
+  # for a health probe.
   def fetch_send_health
     response = HTTParty.get(
       "#{provider_url}/connections/#{whatsapp_channel.phone_number}/health",
@@ -667,16 +673,21 @@ class Whatsapp::Providers::WhatsappBaileysService < Whatsapp::Providers::BaseSer
       timeout: 10
     )
 
-    return nil if response.code == 404
+    return { present: false, connected: false } if response.code == 404
     return nil unless process_response(response)
 
     data = response.parsed_response&.deep_symbolize_keys&.dig(:data) || {}
     {
+      present: true,
+      connected: data[:connected],
       send_state: data[:sendState],
       consecutive_send_timeouts: data[:consecutiveSendTimeouts],
       last_send_completed_ago_ms: data[:lastSendCompletedAgoMs],
       last_outgoing_ack_ago_ms: data[:lastOutgoingAckAgoMs]
     }.compact
+  rescue StandardError => e
+    Rails.logger.warn("[WHATSAPP][BAILEYS] fetch_send_health failed: #{e.class}: #{e.message}")
+    nil
   end
 
   # New-chat message cap (quota) for this connection. Read-only MEX query with the same 404

@@ -49,4 +49,46 @@ RSpec.describe 'Connecta inbox create (admin nominal e nativo)', type: :request 
 
     expect(response).to have_http_status(:forbidden)
   end
+
+  # Bootstrap C7: conta fresca (nenhuma inbox marcada) ainda não tem projeção/admin_nominal
+  # sincronizado — o administrador nativo pode criar a primeira inbox WhatsApp, auditado
+  # como allow em 'inbox_create_bootstrap'. Assim que há marca, vale a regra nominal.
+  context 'bootstrap (conta sem nenhuma inbox marcada)' do
+    before { Connecta::Scope::ScopedInbox.delete_all }
+
+    it 'administrador nativo cria a primeira inbox WhatsApp (allow bootstrap auditado)' do
+      native_admin = create(:user, account: account, role: :agent)
+      account.account_users.find_by!(user: native_admin).update!(role: :administrator)
+
+      post inboxes_path, params: whatsapp_params, headers: native_admin.create_new_auth_token
+
+      expect(response).not_to have_http_status(:forbidden)
+      expect(Connecta::Scope::AccessAudit.where(user_id: native_admin.id, access_path: 'inbox_create_bootstrap',
+                                                decision: 'allow')).to exist
+      expect(Connecta::Scope::AccessAudit.where(user_id: native_admin.id, decision: 'deny')).not_to exist
+    end
+
+    it 'não-admin continua negado mesmo sem marca (sem bootstrap para quem não administra)' do
+      expect do
+        post inboxes_path, params: whatsapp_params, headers: agent_a.create_new_auth_token
+      end.not_to change(Inbox, :count)
+
+      expect(response).to have_http_status(:forbidden)
+    end
+  end
+
+  context 'conta já marcada (regra nominal mantida)' do
+    it 'administrador nativo sem grant admin_nominal continua 403 com deny' do
+      native_only = create(:user, account: account, role: :agent)
+      account.account_users.find_by!(user: native_only).update!(role: :administrator)
+
+      expect do
+        post inboxes_path, params: whatsapp_params, headers: native_only.create_new_auth_token
+      end.not_to change(Inbox, :count)
+
+      expect(response).to have_http_status(:forbidden)
+      expect(Connecta::Scope::AccessAudit.where(user_id: native_only.id, access_path: 'inbox_create',
+                                                decision: 'deny')).to exist
+    end
+  end
 end
