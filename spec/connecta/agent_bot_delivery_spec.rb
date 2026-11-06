@@ -122,6 +122,16 @@ RSpec.describe 'AgentBot delivery (T0.5 · EVID6)', type: :job do
     end
   end
 
+  # Conta só as tentativas do evento original. A abertura da conversa e a mensagem
+  # de atividade também entregam webhooks (conversation_opened/status_changed e um
+  # novo message_created), então contar todas as chamadas à URL misturaria eventos.
+  def original_message_deliveries(url)
+    deliveries.count do |delivery|
+      body = delivery[:body] ? JSON.parse(delivery[:body]) : {}
+      delivery[:url] == url && body['event'] == 'message_created' && body['id'] == message.id
+    end
+  end
+
   # Executa o job atual e os retries agendados até esgotar o retry_on do WebhookJob.
   # O adapter de teste agenda o retry com :at; usamos esse instante para o próximo passo.
   def drain_webhook_retries!
@@ -214,7 +224,7 @@ RSpec.describe 'AgentBot delivery (T0.5 · EVID6)', type: :job do
         drain_webhook_retries!
 
         activity = ActiveJob::Base.queue_adapter.enqueued_jobs + ActiveJob::Base.queue_adapter.performed_jobs
-        expect(deliveries.count { |delivery| delivery[:url] == assignee_url }).to eq(5)
+        expect(original_message_deliveries(assignee_url)).to eq(5)
         expect(activity.count { |job| job[:job] == Conversations::ActivityMessageJob }).to eq(1)
         expect(conversation.reload).to be_open
       end
@@ -241,7 +251,7 @@ RSpec.describe 'AgentBot delivery (T0.5 · EVID6)', type: :job do
 
         drain_webhook_retries!
 
-        expect(deliveries.count { |delivery| delivery[:url] == assignee_url }).to eq(5)
+        expect(original_message_deliveries(assignee_url)).to eq(5)
         expect(conversation.reload).to be_open
       end
     end

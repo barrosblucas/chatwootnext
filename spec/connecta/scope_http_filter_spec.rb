@@ -395,7 +395,7 @@ RSpec.describe 'Connecta G0 · escopo HTTP de filtros, mensagens e criação (T0
       expect(response).to have_http_status(:unauthorized).or have_http_status(:not_found)
     end
 
-    it 'source_id de outra conta não cria (401) e nada é gravado' do
+    it 'source_id de outra conta não cria (404, sem vazar existência) e nada é gravado' do
       other_channel = build(:channel_whatsapp, account: other_account, provider: 'baileys')
       other_channel.save!(validate: false)
       other_inbox = build(:inbox, account: other_account, channel: other_channel, name: 'Outra WhatsApp')
@@ -409,7 +409,7 @@ RSpec.describe 'Connecta G0 · escopo HTTP de filtros, mensagens e criação (T0
              headers: agent_a.create_new_auth_token
       end.not_to change(Conversation, :count)
 
-      expect(response).to have_http_status(:unauthorized)
+      expect(response).to have_http_status(:not_found)
     end
 
     it 'sem token, criação na inbox marcada responde 401 e nada é gravado' do
