@@ -50,6 +50,8 @@ jobs:
       shard_indices: ${{ steps.plan.outputs.shard_indices }}
     steps:
       - uses: actions/checkout@v4
+      - name: Verify backend spec partition
+        run: python3 scripts/connecta/test_ci_split_specs.py
       - name: Decide what to run
         id: plan
         env:
@@ -96,7 +98,7 @@ jobs:
             # model/controller it adds is picked up below); an ADDED factory is local too.
             TAB=$'\t'
             shared=$(grep -vE "${TAB}config/(routes\.rb|locales/)" <<<"$changed" \
-              | grep -E "^[a-z]+${TAB}(Gemfile|Gemfile\.lock|\.ruby-version|config/|spec/support/|spec/(rails_helper|spec_helper|coverage_helper)\.rb|\.github/workflows/run_foss_spec\.yml|app/.*/(application_[a-z_]+|base|base_[a-z_]+)\.rb)" || true)
+              | grep -E "^[a-z]+${TAB}(Gemfile|Gemfile\.lock|\.ruby-version|config/|spec/support/|spec/(rails_helper|spec_helper|coverage_helper)\.rb|\.github/workflows/run_foss_spec\.yml|scripts/connecta/(ci_split_specs\.sh|test_ci_split_specs\.py|g0_test_env\.sh|g0-test-services\.compose\.yml)|app/.*/(application_[a-z_]+|base|base_[a-z_]+)\.rb)" || true)
             if [ -n "$shared" ]; then full_run "shared file changed: $(head -1 <<<"$shared" | cut -f2)"; fi
             if grep -qE "^(modified|removed|renamed)${TAB}spec/factories/" <<<"$changed"; then
               full_run "factory changed"
@@ -231,6 +233,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: pnpm/action-setup@v4
 
       - uses: ruby/setup-ruby@v1
@@ -256,32 +260,56 @@ jobs:
       - name: Seed database
         run: bundle exec rake db:schema:load
 
-      - name: Run backend tests (parallelized)
+      - name: Split this shard into common and isolated F5 specs
+        id: split
         env:
           CI_NODE_TOTAL: ${{ needs.plan.outputs.shard_total }}
           CI_NODE_INDEX: ${{ matrix.ci_node_index }}
           BACKEND_SPECS: ${{ needs.plan.outputs.backend_specs }}
-          NODE_OPTIONS: --openssl-legacy-provider
         run: |
           # Explicit list from the plan job (affected mode) or every spec file (full mode), split
-          # round-robin so slow tests are distributed evenly across the shards.
+          # round-robin first, then partition without losing any files. The F5 runner's allowlist
+          # covers both directories, including their currently unguarded specs.
           # shellcheck disable=SC2206,SC2207
           if [ -n "$BACKEND_SPECS" ]; then
             SPEC_FILES=($BACKEND_SPECS)
           else
             SPEC_FILES=($(find spec -name '*_spec.rb' | sort))
           fi
-          TESTS=""
-          for i in "${!SPEC_FILES[@]}"; do
-            if [ $(( i % CI_NODE_TOTAL )) -eq "$CI_NODE_INDEX" ]; then
-              TESTS="$TESTS ${SPEC_FILES[$i]}"
-            fi
-          done
-          echo "shard $CI_NODE_INDEX/$CI_NODE_TOTAL: $(wc -w <<<"$TESTS") spec files"
-          if [ -n "$TESTS" ]; then
-            # shellcheck disable=SC2086
-            bundle exec rspec --profile=10 --format progress --format json --out tmp/rspec_results.json $TESTS
+          mkdir -p tmp
+          bash scripts/connecta/ci_split_specs.sh "$CI_NODE_INDEX" "$CI_NODE_TOTAL" "${SPEC_FILES[@]}" > tmp/ci-shard-specs
+          awk -F '\t' '$1 == "common" { print $2 }' tmp/ci-shard-specs > tmp/ci-common-specs
+          awk -F '\t' '$1 == "f5" { print $2 }' tmp/ci-shard-specs > tmp/ci-f5-specs
+          echo "shard $CI_NODE_INDEX/$CI_NODE_TOTAL: $(wc -l < tmp/ci-common-specs) common, $(wc -l < tmp/ci-f5-specs) F5 files"
+          if [ -s tmp/ci-f5-specs ]; then echo 'has_f5=true' >> "$GITHUB_OUTPUT"; fi
+
+      - name: Run common backend specs
+        env:
+          NODE_OPTIONS: --openssl-legacy-provider
+        run: |
+          mapfile -t TESTS < tmp/ci-common-specs
+          if [ "${#TESTS[@]}" -gt 0 ]; then
+            bundle exec rspec --profile=10 --format progress --format json --out tmp/rspec_results.json "${TESTS[@]}"
           fi
+
+      # A fresh GitHub-hosted VM owns these Compose resources. The runner itself creates a random
+      # secret, clears inherited environment variables, verifies ownership and loads only an empty DB.
+      - name: Prepare isolated F5 services
+        id: f5_prepare
+        if: ${{ !cancelled() && steps.split.outcome == 'success' && steps.split.outputs.has_f5 == 'true' }}
+        run: |
+          docker pull pgvector/pgvector:pg16
+          docker pull redis:alpine
+          mkdir -p .bundle
+          ln -s "$GITHUB_WORKSPACE/vendor/bundle" .bundle/gems
+          scripts/connecta/g0_test_env.sh --apply
+
+      - name: Run isolated F5 specs
+        if: ${{ !cancelled() && steps.f5_prepare.outcome == 'success' }}
+        run: |
+          mapfile -t TESTS < tmp/ci-f5-specs
+          test "${#TESTS[@]}" -gt 0
+          scripts/connecta/g0_test_env.sh --spec --apply "${TESTS[@]}"
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
