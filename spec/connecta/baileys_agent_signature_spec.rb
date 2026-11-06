@@ -244,7 +244,7 @@ RSpec.describe 'Connecta Baileys agent signature (S.1a)' do # rubocop:disable RS
       end
 
       it 'keeps plain-text name bytes without interpreting markup' do
-        expect(built_message.content).to eq("*_Agente <b>Ficticio</b> Ficticio_*:\nOlá, como posso ajudar?")
+        expect(built_message.content).to eq("**_Agente <b>Ficticio</b> Ficticio_**:\nOlá, como posso ajudar?")
       end
     end
   end

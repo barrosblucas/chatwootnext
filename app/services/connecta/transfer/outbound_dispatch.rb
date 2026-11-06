@@ -32,10 +32,17 @@ class Connecta::Transfer::OutboundDispatch
   SQL
 
   class << self
-    # Só mensagem de saída, não privada e ainda não enviada, de inbox marcada. Espelha os filtros de Base::SendOnChannelService.
-    def dispatchable?(message)
-      (message.outgoing? || message.template?) && !message.private? && message.source_id.blank? &&
+    # Mensagem de saída/template, não privada, de inbox marcada. O source_id não
+    # entra aqui: uma mensagem já enviada continua sendo gerenciada pelo Connecta
+    # e o hook não pode reenviá-la pelo caminho nativo.
+    def managed?(message)
+      (message.outgoing? || message.template?) && !message.private? &&
         Connecta::Scope::ScopedInbox.exists?(inbox_id: message.inbox_id)
+    end
+
+    # Só mensagem gerenciada e ainda não enviada. Espelha os filtros de Base::SendOnChannelService.
+    def dispatchable?(message)
+      message.source_id.blank? && managed?(message)
     end
 
     # Idempotente: insert com ON CONFLICT DO NOTHING. A linha nasce com a mensagem e o job a garante antes do claim.

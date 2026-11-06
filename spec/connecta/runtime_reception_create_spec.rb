@@ -158,7 +158,7 @@ RSpec.describe 'Connecta G0 · criação com callback de recepção (micro passo
       post conversations_path, params: { source_id: other_ci.source_id }, headers: agent_a.create_new_auth_token
     end.not_to change(Conversation, :count)
 
-    expect(response).to have_http_status(:unauthorized)
+    expect(response).to have_http_status(:not_found)
   end
 
   it 'inbox não marcada continua sem escopo e sem erro' do

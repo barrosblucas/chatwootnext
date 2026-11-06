@@ -27,11 +27,21 @@ class Connecta::Runtime::ManualAdmissionTransaction
     raise Error.new('account_id is invalid', status: :service_unavailable)
   end
 
+  # Falhas 4xx do WP são definitivas: nenhuma admissão foi reservada, então a
+  # conversa recém-criada (sem mensagem) não pode ficar na recepção. Timeout/5xx
+  # seguem recuperáveis e preservam o rascunho para retry da mesma authority.
+  DEFINITIVE_ADMISSION_FAILURES = %i[forbidden not_found conflict unprocessable_entity].freeze
+
   def call
     ensure_marked!
     ensure_org_unit!
     conversation, reused = find_or_create_conversation!
-    admission = admit_in_wp!(conversation)
+    begin
+      admission = admit_in_wp!(conversation)
+    rescue Error => e
+      discard_unadmitted_conversation!(conversation) if !reused && DEFINITIVE_ADMISSION_FAILURES.include?(e.status)
+      raise
+    end
     scope = activate_scope!(conversation, admission)
     message = send_first_message!(conversation, scope) if @message_params.present?
     { conversation: conversation, scope: scope, message: message, reused: reused || admission['reused'] }
@@ -68,9 +78,22 @@ class Connecta::Runtime::ManualAdmissionTransaction
                                                           contact: @contact_inbox.contact)
     return [existing, true] unless existing.nil?
 
-    ensure_contact_inbox!
     conversation = ConversationBuilder.new(params: ActionController::Parameters.new, contact_inbox: @contact_inbox).perform
     [conversation, false]
+  end
+
+  # Remoção compensatória só da conversa criada por esta admissão. O escopo
+  # reception do after_create é apagado antes para não deixar órfão. Nunca
+  # toca em conversa reutilizada (tem histórico/atendimento de outro ator).
+  def discard_unadmitted_conversation!(conversation)
+    ActiveRecord::Base.transaction do
+      Connecta::Scope::ConversationScope.where(conversation_id: conversation.id).delete_all
+      conversation.destroy!
+    end
+  rescue StandardError => e
+    Rails.logger.error(
+      "Connecta manual admission could not discard conversation #{conversation.id}: #{e.class}: #{e.message}"
+    )
   end
 
   # WP fora de transação SQL: admite (caso/sessão verdadeiros) e ativa o scope.

@@ -22,7 +22,12 @@ class Connecta::Runtime::Installer
     end
     Message.prepend(Connecta::Transfer::OutboundDispatch::MessageHook) unless Message <= Connecta::Transfer::OutboundDispatch::MessageHook
     SendReplyJob.prepend(Connecta::Transfer::SendReplyHook) unless SendReplyJob <= Connecta::Transfer::SendReplyHook
-    Conversation.after_create { Connecta::Runtime::ReceptionScopeCreator.call(self) }
+    # O callback é instalado uma vez por processo; a checagem em tempo de execução
+    # impede que ele continue agindo em specs/hosts que desligaram o recurso depois
+    # do boot (o ENV é lido de novo a cada conversa criada).
+    Conversation.after_create do
+      Connecta::Runtime::ReceptionScopeCreator.call(self) if Connecta::Runtime::Feature.enabled?
+    end
     # Fail-open no boot: numa conta fresca a primeira inbox marcada ainda não existe quando
     # este verify roda (o enforce vem depois, via upsert oficial), então a unidade de
     # recepção ausente não pode travar o boot — só registra o evento com a contagem.

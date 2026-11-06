@@ -6,8 +6,8 @@
 module Connecta::Scope::CopilotChatHook
   private
 
-  def current_viewing_history(conversation_id)
-    return [] if connecta_scope_copilot_denied?(conversation_id, 'copilot_context')
+  def current_viewing_history
+    return [] if connecta_scope_copilot_denied?(@conversation_id, 'copilot_context')
 
     super
   end

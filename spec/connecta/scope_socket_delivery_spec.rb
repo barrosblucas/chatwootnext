@@ -37,8 +37,14 @@ RSpec.describe 'Connecta G0 · socket pendente apos perda de acesso (RF5/F1)', t
   # Job REAL enfileirado pelo LISTENER NATIVO: toma o ultimo
   # ActionCableBroadcastJob de enqueued_jobs, faz o round-trip JSON do plano
   # (l. 280-282) e devolve o payload pronto p/ ActiveJob::Base.execute.
-  def serialized_broadcast_hash
-    job_entry = enqueued_jobs.reverse.find { |entry| entry[:job] == ActionCableBroadcastJob }
+  # conversation.updated enfileira DOIS jobs (membros e contato). O evento nomeado
+  # seleciona o job certo; `first` escolhe o de membros, que antecede o do contato.
+  def serialized_broadcast_hash(event_name: nil, first: false)
+    jobs = enqueued_jobs.select { |entry| entry[:job] == ActionCableBroadcastJob }
+    if event_name
+      jobs = jobs.select { |entry| ActiveJob::Arguments.deserialize(entry[:args])[1] == event_name }
+    end
+    job_entry = first ? jobs.first : jobs.last
     expect(job_entry).not_to be_nil
     JSON.parse(job_entry.except(:job, :args, :queue, :priority, :at).to_json)
   end
@@ -271,7 +277,7 @@ RSpec.describe 'Connecta G0 · socket pendente apos perda de acesso (RF5/F1)', t
     listener.message_created(Events::Base.new(:'message.created', Time.zone.now, message: marked_message))
     payload_hash = serialized_broadcast_hash
     listener.conversation_updated(Events::Base.new(:'conversation.updated', Time.zone.now, conversation: conv_a))
-    updated_hash = serialized_broadcast_hash
+    updated_hash = serialized_broadcast_hash(event_name: 'conversation.updated', first: true)
 
     Connecta::Scope::UserGrant.where(user_id: agent_a.id).destroy_all
     create(:message, account: account, inbox: whatsapp_inbox, conversation: conv_a, content: 'nova apos enqueue')

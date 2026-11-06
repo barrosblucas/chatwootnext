@@ -29,6 +29,21 @@ RSpec.describe 'Connecta G0 · admissão manual fim a fim (micro passo 3)', type
   # o identificador roteável; o contato não precisa de phone_number.
   let!(:wa_contact) { create(:contact, account: account) }
 
+  # O boot de produção instala este after_create via Connecta::Runtime::Installer;
+  # aqui ele é registrado só para este spec e removido ao final (sem vazar para os
+  # demais arquivos do mesmo processo).
+  around do |example|
+    callback = proc do
+      Connecta::Runtime::ReceptionScopeCreator.call(self) if Connecta::Runtime::Feature.enabled?
+    end
+    Conversation.after_create(callback)
+    begin
+      example.run
+    ensure
+      Conversation.skip_callback(:create, :after, callback)
+    end
+  end
+
   before do
     stub_const('ENV', ENV.to_h.merge('CONNECTA_RECEPTION_ORG_UNIT_ID' => org_a.id.to_s,
                                      'CONNECTA_HUMAN_NUMBER_ENABLED' => 'true'))
@@ -93,6 +108,8 @@ RSpec.describe 'Connecta G0 · admissão manual fim a fim (micro passo 3)', type
   end
 
   def admin_nominal_unused
-    @admin_nominal_unused ||= create(:user, account: account, role: :agent)
+    @admin_nominal_unused ||= create(:user, account: account, role: :agent).tap do |user|
+      create(:inbox_member, inbox: whatsapp_inbox, user: user)
+    end
   end
 end

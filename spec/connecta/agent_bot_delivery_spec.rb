@@ -5,7 +5,9 @@ require 'rails_helper'
 # T0.5 (EVID6): entrega de eventos ao AgentBot, do listener até a requisição HTTP.
 # Listener, jobs e Trigger são os reais. SafeFetch é o único ponto stubado (nenhuma rede).
 # Retentativas de 429/500 (wait 3s) são avançadas com perform_enqueued_jobs(at:) em passos com folga (base, +4s, +8s),
-# porque o ActiveJob agenda a retentativa a partir do relógio de execução. Não há garantia de ordem global de entregas.
+# porque o ActiveJob agenda a retentativa a partir do relógio de execução. Demais falhas (404/timeout) usam o retry_on
+# genérico do WebhookJob (5 tentativas, backoff polinomial) e só escalam quando esgotadas. Não há garantia de ordem
+# global de entregas.
 RSpec.describe 'AgentBot delivery (T0.5 · EVID6)', type: :job do
   include ActiveSupport::Testing::TimeHelpers
 
@@ -120,6 +122,18 @@ RSpec.describe 'AgentBot delivery (T0.5 · EVID6)', type: :job do
     end
   end
 
+  # Executa o job atual e os retries agendados até esgotar o retry_on do WebhookJob.
+  # O adapter de teste agenda o retry com :at; usamos esse instante para o próximo passo.
+  def drain_webhook_retries!
+    10.times do
+      entry = ActiveJob::Base.queue_adapter.enqueued_jobs.find { |job| job[:job] == AgentBots::WebhookJob }
+      break if entry.nil?
+
+      at = entry[:at] ? Time.at(entry[:at]) : Time.current
+      travel_to(at) { perform_enqueued_jobs(at: at) }
+    end
+  end
+
   describe 'success and failures' do
     it 'delivers 2xx once per bot and does not reopen the conversation' do
       travel_to(base_time) do
@@ -186,43 +200,31 @@ RSpec.describe 'AgentBot delivery (T0.5 · EVID6)', type: :job do
     context 'when the AgentBot answers 404 (failure outside 429/500)' do
       let(:scripted) { { assignee_url => Array.new(5) { SafeFetch::HttpError.new('404 Not Found') } } }
 
-      it 'reopens the conversation on the first attempt, before any retry' do
+      it 'keeps the conversation pending and schedules a retry while attempts remain' do
         travel_to(base_time) { listener.message_created(event) }
         travel_to(base_time) { perform_enqueued_jobs(at: base_time) }
         expect(deliveries.count { |delivery| delivery[:url] == assignee_url }).to eq(1)
-        expect(conversation.reload).to be_open
+        expect(conversation.reload).to be_pending
+        expect(ActiveJob::Base.queue_adapter.enqueued_jobs.count { |job| job[:job] == AgentBots::WebhookJob }).to eq(1)
       end
 
-      it 'records a single activity message when reopening' do
-        travel_to(base_time) do
-          listener.message_created(event)
-          perform_enqueued_jobs
-        end
+      it 'reopens with a single activity only after the retries are exhausted' do
+        travel_to(base_time) { listener.message_created(event) }
+        travel_to(base_time) { perform_enqueued_jobs(at: base_time) }
+        drain_webhook_retries!
+
         activity = ActiveJob::Base.queue_adapter.enqueued_jobs + ActiveJob::Base.queue_adapter.performed_jobs
+        expect(deliveries.count { |delivery| delivery[:url] == assignee_url }).to eq(5)
         expect(activity.count { |job| job[:job] == Conversations::ActivityMessageJob }).to eq(1)
-      end
-
-      # Caracterização de um achado: WebhookJob declara retry_on (5 tentativas) e depois discard_on para a mesma
-      # RetriableError. O ActiveSupport procura handlers do último para o primeiro, então discard_on vence e a
-      # retentativa nunca é agendada. Conversa já aberta: não há reabertura nem eventos extras que confundam a contagem.
-      it 'does not retry: one attempt per job even after draining the queue' do
-        conversation.update!(status: :open)
-        ActiveJob::Base.queue_adapter.enqueued_jobs.clear
-        travel_to(base_time) do
-          listener.message_created(event)
-          perform_enqueued_jobs
-          perform_enqueued_jobs
-        end
-        expect(deliveries.count { |delivery| delivery[:url] == assignee_url }).to eq(1)
+        expect(conversation.reload).to be_open
       end
 
       context 'when keep_pending_on_bot_failure is enabled' do
         it 'does not reopen the conversation' do
           account.update!(keep_pending_on_bot_failure: true)
-          travel_to(base_time) do
-            listener.message_created(event)
-            perform_enqueued_jobs
-          end
+          travel_to(base_time) { listener.message_created(event) }
+          travel_to(base_time) { perform_enqueued_jobs(at: base_time) }
+          drain_webhook_retries!
           expect(conversation.reload).to be_pending
         end
       end
@@ -231,10 +233,15 @@ RSpec.describe 'AgentBot delivery (T0.5 · EVID6)', type: :job do
     context 'when the network times out (FetchError, mapped from Net::OpenTimeout in lib/safe_fetch.rb)' do
       let(:scripted) { { assignee_url => Array.new(5) { SafeFetch::FetchError.new('execution expired') } } }
 
-      it 'is treated as a common failure: reopens on the first attempt, and no retry is scheduled' do
+      it 'follows the same retry policy as any other common failure' do
         travel_to(base_time) { listener.message_created(event) }
-        travel_to(base_time) { perform_enqueued_jobs }
+        travel_to(base_time) { perform_enqueued_jobs(at: base_time) }
         expect(deliveries.count { |delivery| delivery[:url] == assignee_url }).to eq(1)
+        expect(conversation.reload).to be_pending
+
+        drain_webhook_retries!
+
+        expect(deliveries.count { |delivery| delivery[:url] == assignee_url }).to eq(5)
         expect(conversation.reload).to be_open
       end
     end

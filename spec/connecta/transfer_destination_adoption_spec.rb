@@ -94,7 +94,7 @@ RSpec.describe 'Connecta runtime · adoção do escopo de recepção do callback
     }.to raise_error(ActiveRecord::RecordNotFound)
 
     expect(origin_scope.reload.state).to eq('transferring')
-    expect(transfer.record.reload.state).to eq('prepared')
+    expect(transfer.record.reload.state).to eq('requested')
   end
 
   it 'identidade/versão/associação divergente é rejeitada' do

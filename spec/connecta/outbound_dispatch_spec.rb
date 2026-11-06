@@ -85,13 +85,31 @@ RSpec.describe 'Connecta G0 · despacho de saída e barreira de transferência (
     expect(dispatches.find_by!(message_id: outgoing.id).state).to eq('uncertain')
   end
 
-  it '409 do provedor (envio já em processamento) vira uncertain, como timeout' do
+  it '409 do provedor (envio já em processamento) volta a queued e o retry reenvia sob o mesmo id' do
     allow(connector).to receive(:perform).and_raise(Whatsapp::Providers::WhatsappBaileysService::MessageAlreadyProcessingError)
     outgoing
 
-    expect { SendReplyJob.perform_now(outgoing.id) }.to raise_error(Whatsapp::Providers::WhatsappBaileysService::MessageAlreadyProcessingError)
+    # O retry nativo do SendReplyJob (60s) intercepta o 409: o hook devolve a linha
+    # ao estado claimável em vez de marcá-la uncertain (outro worker detém o lock).
+    expect { SendReplyJob.perform_now(outgoing.id) }.not_to raise_error
+    expect(dispatches.find_by!(message_id: outgoing.id).state).to eq('queued')
 
-    expect(dispatches.find_by!(message_id: outgoing.id).state).to eq('uncertain')
+    allow(connector).to receive(:perform).and_return(nil)
+    SendReplyJob.perform_now(outgoing.id)
+
+    expect(connector).to have_received(:perform).twice
+    expect(dispatches.find_by!(message_id: outgoing.id).state).to eq('accepted')
+  end
+
+  it 'retry de job para mensagem já enviada reconcilia e não chama o conector de novo' do
+    outgoing.update!(source_id: 'provider-abc')
+
+    SendReplyJob.perform_now(outgoing.id)
+
+    expect(connector).not_to have_received(:perform)
+    expect(dispatches.find_by!(message_id: outgoing.id)).to have_attributes(
+      state: 'accepted', connector_message_id: 'provider-abc'
+    )
   end
 
   it 'erro comum do conector vira failed e não é reenviado' do
