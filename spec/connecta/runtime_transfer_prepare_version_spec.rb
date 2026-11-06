@@ -41,7 +41,8 @@ RSpec.describe 'Connecta runtime · versão de prepare ecoa origem, alvo=origem+
   let(:summary) { { 'subject' => 'Segunda via', 'completed' => 'Dados conferidos', 'next_action' => 'Retorno do setor B' } }
 
   before do
-    stub_const('ENV', ENV.to_h.merge('CONNECTA_ACCOUNT_ID' => account.id.to_s, 'CONNECTA_HUMAN_NUMBER_ENABLED' => 'true'))
+    stub_const('ENV', ENV.to_h.merge('CONNECTA_ACCOUNT_ID' => account.id.to_s, 'CONNECTA_HUMAN_NUMBER_ENABLED' => 'true',
+                                     'CONNECTA_RECEPTION_ORG_UNIT_ID' => org_a.id.to_s))
     allow(Connecta::Runtime::PlatformClient).to receive(:new).and_return(client)
     allow(Connecta::Runtime::TransferCommitJob).to receive(:perform_later)
     allow(Connecta::Runtime::TransferAbortJob).to receive(:perform_later)
