@@ -73,6 +73,15 @@ module Chatwoot
     # Disable PDF/video preview generation as we don't use them
     config.active_storage.previewers = []
 
+    # GHSA-v924-7rp8-4mxh: Active Storage passes the upload's filename extension to ffprobe and
+    # ffmpeg. Rails 7.2 has no patched release for it, so retire the automatic audio/video
+    # analyzers until the Rails 8 upgrade. The UI reads media duration from the browser and image
+    # width/height metadata stays enabled; files are still accepted, stored and served normally.
+    config.active_storage.analyzers -= [
+      ActiveStorage::Analyzer::VideoAnalyzer,
+      ActiveStorage::Analyzer::AudioAnalyzer
+    ]
+
     # Active Record Encryption configuration
     # Required for MFA/2FA features - skip if not using encryption
     if ENV['ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY'].present?

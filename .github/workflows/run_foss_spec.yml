@@ -292,11 +292,19 @@ jobs:
             bundle exec rspec --profile=10 --format progress --format json --out tmp/rspec_results.json "${TESTS[@]}"
           fi
 
+      # The CE suite strips enterprise to avoid loading it in common specs. Connecta installs hooks
+      # on Captain controllers that live in enterprise, so the isolated runner must use the same tree
+      # as production. Restore only after the common specs have finished in their own process.
+      - name: Restore enterprise code for isolated F5 specs
+        id: restore_enterprise
+        if: ${{ !cancelled() && steps.split.outcome == 'success' && steps.split.outputs.has_f5 == 'true' }}
+        run: git restore --source=HEAD --worktree enterprise spec/enterprise
+
       # A fresh GitHub-hosted VM owns these Compose resources. The runner itself creates a random
       # secret, clears inherited environment variables, verifies ownership and loads only an empty DB.
       - name: Prepare isolated F5 services
         id: f5_prepare
-        if: ${{ !cancelled() && steps.split.outcome == 'success' && steps.split.outputs.has_f5 == 'true' }}
+        if: ${{ !cancelled() && steps.restore_enterprise.outcome == 'success' }}
         run: |
           docker pull pgvector/pgvector:pg16
           docker pull redis:alpine
