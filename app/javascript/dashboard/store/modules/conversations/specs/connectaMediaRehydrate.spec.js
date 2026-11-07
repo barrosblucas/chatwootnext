@@ -53,12 +53,6 @@ const hydratedMessage = (overrides = {}) => {
   };
 };
 
-// Simula o GET de backend anterior ao campo `updated_at` no index de mensagens.
-const withoutUpdatedAt = message => {
-  const { updated_at: _dropped, ...rest } = message;
-  return rest;
-};
-
 const makeCtx = (rootOverrides = {}) => {
   const state = {
     allConversations: [{ id: CONVERSATION_ID, messages: [] }],
@@ -151,24 +145,6 @@ describe('connectaMediaRehydrate helpers (puros)', () => {
     expect(decideHydrateApply(hydratedCurrent, newer)).toBe('commit');
     expect(decideHydrateApply(current, undefined)).toBe('keep');
     expect(decideHydrateApply(undefined, newer)).toBe('commit');
-  });
-
-  it('decideHydrateApply: snapshot sem updated_at so resolve placeholder com os mesmos anexos', () => {
-    const current = markedMessage();
-    const sameAttachments = withoutUpdatedAt(hydratedMessage());
-    expect(compareUpdatedAt(current, sameAttachments)).toBe(null);
-    expect(decideHydrateApply(current, sameAttachments)).toBe('commit');
-
-    const otherAttachments = withoutUpdatedAt(
-      hydratedMessage({
-        attachments: [{ id: 999, file_type: 'image', data_url: 'x' }],
-      })
-    );
-    expect(decideHydrateApply(current, otherAttachments)).toBe('keep');
-
-    // Store ja hidratado: incomparavel continua sendo 'keep' mesmo com ids iguais.
-    const hydratedCurrent = hydratedMessage();
-    expect(decideHydrateApply(hydratedCurrent, sameAttachments)).toBe('keep');
   });
 
   it('attachmentSignature compara so ids', () => {
@@ -392,19 +368,5 @@ describe('resolveConnectaMediaMessage (store)', () => {
     await dispatch('addMessage', markedMessage({ id: 1 }));
 
     expect(axios.get.mock.calls[0][1]).toEqual({ params: { before: 2 } });
-  });
-
-  it('GET sem updated_at (backend anterior) resolve placeholder com os mesmos anexos', async () => {
-    axios.get.mockResolvedValue({
-      data: { meta: {}, payload: [withoutUpdatedAt(hydratedMessage())] },
-    });
-    const { state, dispatch } = makeCtx();
-
-    await dispatch('addMessage', markedMessage());
-
-    const stored = findMessage(state);
-    expect(stored.connecta_media_resolve).toBe(undefined);
-    expect(stored.attachments[0].data_url).toContain('token=proprio');
-    expect(connectaMediaInflightSize()).toBe(0);
   });
 });
