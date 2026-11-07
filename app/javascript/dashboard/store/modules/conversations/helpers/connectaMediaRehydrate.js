@@ -14,6 +14,8 @@
 // - nunca regredir scalar novo: snapshot antigo nao troca `status`/`content`/
 //   `updated_at` mais recente; timestamps iguais com ids de anexo diferentes
 //   disparam UMA releitura limitada (mudanca de midia com o GET em voo);
+// - snapshot sem `updated_at` (incomparavel) so resolve o placeholder se o
+//   conjunto de anexos for identico; caso contrario o placeholder permanece;
 // - falha 403/404/rede mantem o placeholder marcado (recuperavel no proximo
 //   evento) e nunca reintroduz URL legada.
 
@@ -138,7 +140,11 @@ export const decideHydrateApply = (current, fetched) => {
       ? 'commit'
       : 'refetch';
   }
-  return 'keep';
+  // Incomparavel (snapshot sem `updated_at`): so resolve se os anexos forem
+  // exatamente os mesmos; caso contrario o placeholder segue.
+  return attachmentSignature(current) === attachmentSignature(fetched)
+    ? 'commit'
+    : 'keep';
 };
 
 export const findStoreMessage = (state, conversationId, messageId) => {

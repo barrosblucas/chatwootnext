@@ -236,6 +236,19 @@ RSpec.describe 'Conversation Messages API', type: :request do
         expect(response).to conform_schema(200)
         expect(JSON.parse(response.body, symbolize_names: true)[:meta][:contact][:id]).to eq(conversation.contact_id)
       end
+
+      it 'includes updated_at for each message so clients can compare snapshots' do
+        created_message = create(:message, account: account, conversation: conversation)
+
+        get "/api/v1/accounts/#{account.id}/conversations/#{conversation.display_id}/messages",
+            headers: agent.create_new_auth_token,
+            as: :json
+
+        payload = JSON.parse(response.body, symbolize_names: true)[:payload]
+        item = payload.find { |m| m[:id] == created_message.id }
+        expect(item[:updated_at]).to be_present
+        expect(Time.zone.parse(item[:updated_at])).to be_within(1.second).of(created_message.reload.updated_at)
+      end
     end
   end
 
