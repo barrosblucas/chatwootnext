@@ -68,7 +68,7 @@ class Connecta::Purge::Cleanup # rubocop:disable Metrics/ClassLength
     }
   end
 
-  def apply(expected_hash:, confirmation:, writers_stopped:) # rubocop:disable Metrics/MethodLength, Metrics/AbcSize
+  def apply(expected_hash:, confirmation:, writers_stopped:) # rubocop:disable Metrics/MethodLength, Metrics/AbcSize, Metrics/CyclomaticComplexity
     fail!('WRITERS_NOT_STOPPED') unless writers_stopped == true
     valid_confirmation = expected_hash.to_s.match?(HASH_PATTERN) && confirmation.to_s == "APPLY:#{expected_hash}"
     fail!('CONFIRMATION_REQUIRED') unless valid_confirmation
@@ -99,7 +99,7 @@ class Connecta::Purge::Cleanup # rubocop:disable Metrics/ClassLength
       audit_counts: audit_counts,
       blob_purge_failures: blob_result[:failures],
       remaining_blobs: blob_result[:remaining_blobs],
-      remaining_blob_ids: blob_result[:remaining_blobs].map { |entry| entry[:id] },
+      remaining_blob_ids: blob_result[:remaining_blobs].map { |entry| entry.fetch(:id) },
       inventory_hash: current[:hash]
     }
   rescue ActiveRecord::RecordInvalid, ActiveRecord::RecordNotDestroyed, ActiveRecord::DeleteRestrictionError => e
@@ -158,7 +158,7 @@ class Connecta::Purge::Cleanup # rubocop:disable Metrics/ClassLength
       conversation_ids: conversation_ids, message_ids: message_ids,
       legacy_attachment_ids: legacy_attachment_ids,
       scheduled_message_ids: scheduled_ids, recurring_scheduled_message_ids: recurring_ids,
-      active_storage_attachment_ids: attachments.map { |entry| entry[:id] },
+      active_storage_attachment_ids: attachments.map { |entry| entry.fetch(:id) },
       attachments: attachments, blobs: blobs,
       scope_ids: scope_ids, protected_counts: protected, audit_counts: audits
     }
@@ -173,7 +173,7 @@ class Connecta::Purge::Cleanup # rubocop:disable Metrics/ClassLength
         recurring_scheduled_messages: recurring_ids.length,
         active_storage_attachments: attachments.length,
         active_storage_blobs: blobs.length,
-        active_storage_bytes: ActiveStorage::Blob.where(id: blobs.map { |entry| entry[:id] }).sum(:byte_size).to_i,
+        active_storage_bytes: ActiveStorage::Blob.where(id: blobs.map { |entry| entry.fetch(:id) }).sum(:byte_size).to_i,
         conversation_scopes: scope_ids.length
       },
       protected_counts: protected,
@@ -205,9 +205,7 @@ class Connecta::Purge::Cleanup # rubocop:disable Metrics/ClassLength
     fail!('NEW_MESSAGE_DURING_APPLY') unless Message.where(conversation_id: payload[:conversation_ids]).count.zero?
     fail!('TARGET_LEGACY_ATTACHMENTS_REMAIN') unless Attachment.where(id: payload[:legacy_attachment_ids]).count.zero?
     fail!('TARGET_SCHEDULED_REMAIN') unless ScheduledMessage.where(id: payload[:scheduled_message_ids]).count.zero?
-    unless RecurringScheduledMessage.where(id: payload[:recurring_scheduled_message_ids]).count.zero?
-      fail!('TARGET_RECURRING_REMAIN')
-    end
+    fail!('TARGET_RECURRING_REMAIN') unless RecurringScheduledMessage.where(id: payload[:recurring_scheduled_message_ids]).count.zero?
     verify_active_storage_gone!(payload)
 
     remaining_scope = Conversation.where(account_id: @account_ids)
@@ -222,9 +220,7 @@ class Connecta::Purge::Cleanup # rubocop:disable Metrics/ClassLength
   # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
 
   def verify_active_storage_gone!(payload)
-    unless ActiveStorage::Attachment.where(id: payload[:active_storage_attachment_ids]).count.zero?
-      fail!('TARGET_ACTIVE_STORAGE_ATTACHMENTS_REMAIN')
-    end
+    fail!('TARGET_ACTIVE_STORAGE_ATTACHMENTS_REMAIN') unless ActiveStorage::Attachment.where(id: payload[:active_storage_attachment_ids]).count.zero?
     race = ActiveStorage::Attachment
            .where(record_type: 'Message', record_id: payload[:message_ids])
            .or(ActiveStorage::Attachment.where(record_type: 'Attachment', record_id: payload[:legacy_attachment_ids]))
@@ -301,7 +297,7 @@ class Connecta::Purge::Cleanup # rubocop:disable Metrics/ClassLength
     ids
   end
 
-  def normalize_blob_manifest(value)
+  def normalize_blob_manifest(value) # rubocop:disable Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
     entries = Array(value).map do |raw|
       next nil unless raw.is_a?(Hash) || raw.respond_to?(:to_h)
 

@@ -129,7 +129,7 @@ RSpec.describe 'Connecta · protocolo, metadados e busca', type: :request do
       ).to be(true)
     end
 
-    it 'pagina por cursor sem esconder etapa visível após 200 etapas ocultas' do # rubocop:disable RSpec/ExampleLength
+    it 'pagina por cursor sem esconder etapa visível após 200 etapas ocultas' do
       hidden_contact = create(:contact, account: account)
       200.times do
         conversation = create(:conversation, account: account, inbox: inbox, contact: hidden_contact)

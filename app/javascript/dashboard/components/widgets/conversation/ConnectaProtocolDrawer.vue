@@ -60,6 +60,8 @@ const load = async () => {
     // com limite de páginas para não travar em caso de servidor inconsistente.
     let pages = 1;
     while (nativeAdmin.value && nextCursor.value && pages < 100) {
+      // Sequencial de propósito: o cursor da próxima página depende da atual.
+      // eslint-disable-next-line no-await-in-loop
       await fetchPage(nextCursor.value);
       pages += 1;
     }

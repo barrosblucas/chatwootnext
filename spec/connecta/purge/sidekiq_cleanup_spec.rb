@@ -8,7 +8,7 @@ require 'rails_helper'
 RSpec.describe Connecta::Purge::SidekiqCleanup do
   let(:run_id) { SecureRandom.hex(4) }
   let(:redis) do
-    Redis.new(url: ENV.fetch('REDIS_URL'), password: ENV['REDIS_PASSWORD'])
+    Redis.new(url: ENV.fetch('REDIS_URL'), password: ENV.fetch('REDIS_PASSWORD', nil))
   end
   let(:keys) do
     {
@@ -47,6 +47,7 @@ RSpec.describe Connecta::Purge::SidekiqCleanup do
   end
 
   before { clear_keys }
+
   after do
     clear_keys
     redis.close if redis.respond_to?(:close)

@@ -48,7 +48,7 @@ class Connecta::Scope::ConversationResolution # rubocop:disable Metrics/ClassLen
     # - `activation_stuck`: fecha direto.
     # Mantém org_unit/case_protocol/case_version; carimba closed_at. Sem escopo
     # (conversa legada) ou já terminal: nada faz.
-    def resolve_scope!(conversation) # rubocop:disable Metrics/MethodLength, Metrics/AbcSize
+    def resolve_scope!(conversation) # rubocop:disable Metrics/MethodLength, Metrics/CyclomaticComplexity
       return unless lifecycle_enforced?(conversation)
 
       remote_abort_ids = []

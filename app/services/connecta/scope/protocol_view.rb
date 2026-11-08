@@ -32,6 +32,7 @@ class Connecta::Scope::ProtocolView
         break if batch.empty?
 
         conversations = conversations_for(account, batch)
+        # rubocop:disable Style/Next
         batch.each do |scope|
           conversation = conversations[scope.conversation_id]
           next unless conversation
@@ -49,6 +50,7 @@ class Connecta::Scope::ProtocolView
             break
           end
         end
+        # rubocop:enable Style/Next
 
         last = batch.last
         position = [last.created_at, last.id]
@@ -76,14 +78,12 @@ class Connecta::Scope::ProtocolView
       relation = Connecta::Scope::ConversationScope
                  .joins("INNER JOIN conversations ON conversations.id = #{table}.conversation_id")
                  .where(conversations: { account_id: account.id })
-                 .where('conversations.inbox_id IN (?)', Connecta::Scope::ScopedInbox.select(:inbox_id))
+                 .where(conversations: { inbox_id: Connecta::Scope::ScopedInbox.select(:inbox_id) })
                  .where("LOWER(#{table}.case_protocol) = ?", protocol.downcase)
                  .includes(:org_unit)
                  .order("#{table}.created_at ASC, #{table}.id ASC")
                  .limit(SCAN_BATCH_SIZE)
-      if position
-        relation = relation.where("(#{table}.created_at, #{table}.id) > (?, ?)", position[0], position[1])
-      end
+      relation = relation.where("(#{table}.created_at, #{table}.id) > (?, ?)", position[0], position[1]) if position
       relation.to_a
     end
 
