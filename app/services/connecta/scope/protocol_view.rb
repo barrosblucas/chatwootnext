@@ -113,7 +113,7 @@ class Connecta::Scope::ProtocolView
 
     def encode_cursor(created_at, id)
       payload = { v: CURSOR_VERSION, at: created_at.iso8601(6), id: id }
-      Base64.urlsafe_encode64(JSON.generate(payload), padding: false)
+      Base64.urlsafe_encode64(JSON.generate(payload))
     end
 
     def decode_cursor(value)

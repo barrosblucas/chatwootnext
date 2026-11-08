@@ -175,6 +175,21 @@ RSpec.describe 'Connecta · protocolo, metadados e busca', type: :request do
       expect(body_json.fetch('stages').pluck('conversation_id')).not_to include(other_conversation.display_id)
     end
 
+    it 'next_cursor devolve a página seguinte sem repetir etapa' do
+      get protocol_path, params: { limit: 1 }, headers: token_native
+      expect(response).to have_http_status(:ok)
+      first_ids = body_json.fetch('stages').pluck('conversation_id')
+      cursor = body_json['next_cursor']
+      expect(first_ids.size).to eq(1)
+      expect(cursor).to be_present
+
+      get protocol_path, params: { limit: 1, cursor: cursor }, headers: token_native
+      expect(response).to have_http_status(:ok)
+      second_ids = body_json.fetch('stages').pluck('conversation_id')
+      expect(second_ids.size).to eq(1)
+      expect(second_ids).not_to eq(first_ids)
+    end
+
     it 'protocolo inexistente ou inválido responde o mesmo 404' do
       get "/api/v1/accounts/#{account.id}/connecta/protocols/NAOEXISTE", headers: token_native
       expect(response).to have_http_status(:not_found)
