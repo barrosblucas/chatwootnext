@@ -30,7 +30,14 @@ module Connecta::Scope::FollowUpDedupeHook
   def find_follow_up(nonce)
     @conversation.messages
                  .where('content_attributes::text LIKE ?', "%#{NONCE_KEY}%")
-                 .find { |message| follow_up_nonce(message.content_attributes) == nonce }
+                 .find { |message| follow_up_nonce(raw_content_attributes(message)) == nonce }
+  end
+
+  # O reader do model normaliza não-Hash para {}; o formato serializado legado
+  # só é visível no valor bruto da coluna. O parser aceita objeto ou string JSON
+  # com objeto dentro.
+  def raw_content_attributes(message)
+    message.read_attribute_before_type_cast(:content_attributes)
   end
 
   def follow_up_nonce(value)
@@ -56,13 +63,18 @@ module Connecta::Scope::FollowUpDedupeHook
   end
 
   def connecta_followup_nonce
-    raw = params[:content_attributes]
-    data = raw.is_a?(String) ? JSON.parse(raw) : raw
-    nonce = data.respond_to?(:[]) ? (data[NONCE_KEY] || data[NONCE_KEY.to_sym]) : nil
-    return nil unless nonce.is_a?(String)
-    return nil if nonce.empty? || nonce.length > MAX_NONCE_LENGTH
+    nonce = follow_up_nonce_from_params
+    return nil unless nonce.is_a?(String) && nonce.length.between?(1, MAX_NONCE_LENGTH)
 
     nonce
+  end
+
+  def follow_up_nonce_from_params
+    raw = params[:content_attributes]
+    data = raw.is_a?(String) ? JSON.parse(raw) : raw
+    return nil unless data.respond_to?(:[])
+
+    data[NONCE_KEY] || data[NONCE_KEY.to_sym]
   rescue JSON::ParserError, TypeError
     nil
   end

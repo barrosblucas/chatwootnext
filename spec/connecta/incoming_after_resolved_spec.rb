@@ -164,7 +164,7 @@ RSpec.describe 'Connecta · inbound após conversa resolvida (Baileys real)', ty
       source_conversation_id: old_conversation.id, destination_org_unit_id: reception_unit.id,
       state: 'unknown', platform_session_ref: 'sess-unknown', target_case_version: 1
     )
-    old_conversation.update_column(:status, 'resolved')
+    old_conversation.update_column(:status, 'resolved') # rubocop:disable Rails/SkipsModelValidations
 
     jobs_before = ActiveJob::Base.queue_adapter.enqueued_jobs.count do |job|
       job[:job] == Connecta::Runtime::TransferAbortJob

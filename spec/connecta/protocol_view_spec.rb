@@ -163,8 +163,8 @@ RSpec.describe 'Connecta · protocolo, metadados e busca', type: :request do
 
     it 'admin nativo pagina 201+ etapas sem perder, repetir ou perder auditoria' do
       pagination_protocol = "NAT#{SecureRandom.hex(4).upcase}"
-      contact = create(:contact, account: account)
       pairs = Array.new(205) do
+        contact = create(:contact, account: account)
         conversation = create(:conversation, account: account, inbox: inbox, contact: contact)
         scope = Connecta::Scope::ConversationScope.create!(
           conversation_id: conversation.id, inbox_id: inbox.id, contact_id: contact.id,
@@ -172,8 +172,8 @@ RSpec.describe 'Connecta · protocolo, metadados e busca', type: :request do
         )
         [scope, conversation]
       end
-      expected_ids = pairs.sort_by { |scope, _conversation| [scope.created_at, scope.id] }
-                         .map { |_scope, conversation| conversation.display_id }
+      sorted_pairs = pairs.sort_by { |scope, _conversation| [scope.created_at, scope.id] }
+      expected_ids = sorted_pairs.map { |_scope, conversation| conversation.display_id }
       seen = []
       cursor = nil
       pages = 0

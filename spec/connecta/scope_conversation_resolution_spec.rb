@@ -148,7 +148,7 @@ RSpec.describe 'Connecta · ciclo de vida do escopo na resolução/reabertura (d
         source_conversation_id: conv_a.id, destination_org_unit_id: org_b.id,
         state: 'unknown', platform_session_ref: 'sess-unknown', target_case_version: 1
       )
-      conv_a.update_column(:status, 'resolved')
+      conv_a.update_column(:status, 'resolved') # rubocop:disable Rails/SkipsModelValidations
 
       expect do
         ActiveRecord::Base.transaction do

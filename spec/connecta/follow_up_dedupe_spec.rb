@@ -15,6 +15,14 @@ RSpec.describe 'Connecta · dedupe de anexos de acompanhamento', type: :request 
 
   let(:messages_path) { "#{conversations_path}/#{conv_a.display_id}/messages" }
 
+  # Grava o valor JSON bruto na coluna, inclusive formatos que o coder do model
+  # normalizaria (scalar/array e o objeto serializado dentro de string).
+  def raw_content_attribute(message, value)
+    connection = Message.connection
+    raw = value.nil? ? 'NULL' : connection.quote(value.to_json)
+    connection.execute("UPDATE messages SET content_attributes = #{raw} WHERE id = #{message.id.to_i}")
+  end
+
   def post_follow_up(nonce, content)
     post messages_path,
          params: {
@@ -44,10 +52,10 @@ RSpec.describe 'Connecta · dedupe de anexos de acompanhamento', type: :request 
     base_params = { account: account, inbox: whatsapp_inbox, conversation: conv_a,
                     sender: agent_a, message_type: :outgoing }
     ['texto connecta_followup_nonce sem json', 123, nil, [1, 2]].each do |value|
-      create(:message, **base_params, content: "formato #{value.inspect}").update_column(:content_attributes, value)
+      raw_content_attribute(create(:message, **base_params, content: "formato #{value.inspect}"), value)
     end
     legacy = create(:message, **base_params, content: 'legado')
-    legacy.update_column(:content_attributes, { connecta_followup_nonce: 'legacy-nonce' }.to_json)
+    raw_content_attribute(legacy, { connecta_followup_nonce: 'legacy-nonce' }.to_json)
 
     expect { post_follow_up('follow-object', 'novo objeto') }.to change(Message, :count).by(1)
     expect(response).to have_http_status(:ok).or have_http_status(:created)
