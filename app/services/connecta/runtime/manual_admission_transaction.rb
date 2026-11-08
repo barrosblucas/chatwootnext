@@ -86,7 +86,7 @@ class Connecta::Runtime::ManualAdmissionTransaction
   # contato WhatsApp sem cadastro é válido (AC2); a normalização on_whatsapp
   # (rede bloqueada em teste G0) NÃO pode quebrar a criação — o source_id
   # explícito do browser já é o identificador roteável.
-  def find_or_create_conversation!
+  def find_or_create_conversation! # rubocop:disable Metrics/MethodLength, Metrics/AbcSize
     ActiveRecord::Base.transaction do
       Connecta::Scope::ConversationReuse.lock!(inbox_id: @contact_inbox.inbox_id, contact_id: @contact_inbox.contact_id)
       existing = Connecta::Scope::ConversationReuse.resolve(user: @actor, inbox: @contact_inbox.inbox,
