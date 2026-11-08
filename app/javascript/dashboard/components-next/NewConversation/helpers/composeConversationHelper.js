@@ -172,7 +172,8 @@ export const followUpPendingMessage = ({
 // retorno é a fila exata que ainda precisa ser reenviada.
 export const sendFollowUpBatch = async ({ conversationId, items, send }) => {
   const pending = [];
-  for (const item of items) {
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index];
     try {
       // Sequencial de propósito: preserva a ordem e evita tempestade.
       // eslint-disable-next-line no-await-in-loop
