@@ -113,7 +113,7 @@ class Connecta::Scope::ConversationResolution
         Connecta::Transfer::TransferRecord.where(
           source_conversation_id: scope.conversation_id,
           state: %w[requested awaiting_dispatch prepared unknown]
-        ).update_all(state: 'aborted', updated_at: Time.current)
+        ).find_each { |record| record.update!(state: 'aborted') }
       end
       close_scope!(scope)
     end
@@ -125,7 +125,7 @@ class Connecta::Scope::ConversationResolution
         Connecta::Transfer::TransferRecord.where(
           destination_conversation_id: scope.conversation_id,
           state: 'committed_local'
-        ).update_all(state: 'activation_stuck', updated_at: Time.current)
+        ).find_each { |record| record.update!(state: 'activation_stuck') }
       end
       close_scope!(scope)
     end

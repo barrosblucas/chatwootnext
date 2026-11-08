@@ -12,7 +12,7 @@ require 'json'
 #   escopos; o purge dos blobs só roda DEPOIS do commit.
 # - purge_blobs(blob_ids:) => retry exato dos blobs pendentes, sem tocar no banco
 #   de conversas.
-class Connecta::Purge::Cleanup # rubocop:disable Metrics/ClassLength
+class Connecta::Purge::Cleanup
   class Blocked < StandardError; end
 
   PROTECTED_TABLES = %w[
@@ -34,7 +34,7 @@ class Connecta::Purge::Cleanup # rubocop:disable Metrics/ClassLength
       ).plan
     end
 
-    def apply(account_ids:, expected_hash:, confirmation:, writers_stopped:,
+    def apply(account_ids:, expected_hash:, confirmation:, writers_stopped:, # rubocop:disable Metrics/ParameterLists
               protected_tables: PROTECTED_TABLES, audit_tables: AUDIT_TABLES)
       new(
         account_ids: account_ids, protected_tables: protected_tables, audit_tables: audit_tables
@@ -70,9 +70,8 @@ class Connecta::Purge::Cleanup # rubocop:disable Metrics/ClassLength
 
   def apply(expected_hash:, confirmation:, writers_stopped:) # rubocop:disable Metrics/MethodLength, Metrics/AbcSize
     fail!('WRITERS_NOT_STOPPED') unless writers_stopped == true
-    unless expected_hash.to_s.match?(HASH_PATTERN) && confirmation.to_s == "APPLY:#{expected_hash}"
-      fail!('CONFIRMATION_REQUIRED')
-    end
+    valid_confirmation = expected_hash.to_s.match?(HASH_PATTERN) && confirmation.to_s == "APPLY:#{expected_hash}"
+    fail!('CONFIRMATION_REQUIRED') unless valid_confirmation
 
     current = inventory
     fail!('INVENTORY_CHANGED') unless current[:hash] == expected_hash.to_s
@@ -114,7 +113,7 @@ class Connecta::Purge::Cleanup # rubocop:disable Metrics/ClassLength
       blob = ActiveStorage::Blob.find_by(id: blob_id)
       next if blob.nil?
 
-      if ActiveStorage::Attachment.where(blob_id: blob_id).exists?
+      if ActiveStorage::Attachment.exists?(blob_id: blob_id)
         failures += 1
         next
       end
@@ -184,12 +183,11 @@ class Connecta::Purge::Cleanup # rubocop:disable Metrics/ClassLength
     ActiveStorage::Attachment.where(record_type: 'Attachment', record_id: payload[:legacy_attachment_ids]).delete_all
   end
 
-  def verify_targets_gone!(payload, before_protected, before_audit) # rubocop:disable Metrics/MethodLength
+  # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
+  def verify_targets_gone!(payload, before_protected, before_audit)
     fail!('TARGET_CONVERSATIONS_REMAIN') unless Conversation.where(id: payload[:conversation_ids]).count.zero?
     fail!('NEW_MESSAGE_DURING_APPLY') unless Message.where(conversation_id: payload[:conversation_ids]).count.zero?
-    unless Attachment.where(id: payload[:legacy_attachment_ids]).count.zero?
-      fail!('TARGET_LEGACY_ATTACHMENTS_REMAIN')
-    end
+    fail!('TARGET_LEGACY_ATTACHMENTS_REMAIN') unless Attachment.where(id: payload[:legacy_attachment_ids]).count.zero?
 
     remaining_scope = Conversation.where(account_id: @account_ids)
     remaining_scope = remaining_scope.where.not(id: payload[:conversation_ids]) if payload[:conversation_ids].any?
@@ -200,6 +198,7 @@ class Connecta::Purge::Cleanup # rubocop:disable Metrics/ClassLength
       fail!("AUDIT_INVARIANT_FAILED:#{table}") if after_audit[table].to_i < before_audit[table].to_i
     end
   end
+  # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
 
   def active_storage_blob_ids(message_ids, legacy_attachment_ids)
     (
@@ -209,15 +208,11 @@ class Connecta::Purge::Cleanup # rubocop:disable Metrics/ClassLength
   end
 
   def protected_counts
-    @protected_tables.each_with_object({}) do |table, result|
-      result[table] = count_table(table, 'PROTECTED_COUNT_FAILED')
-    end
+    @protected_tables.index_with { |table| count_table(table, 'PROTECTED_COUNT_FAILED') }
   end
 
   def audit_counts
-    @audit_tables.each_with_object({}) do |table, result|
-      result[table] = count_table(table, 'AUDIT_COUNT_FAILED')
-    end
+    @audit_tables.index_with { |table| count_table(table, 'AUDIT_COUNT_FAILED') }
   end
 
   def count_table(table, error_prefix)
@@ -253,7 +248,7 @@ class Connecta::Purge::Cleanup # rubocop:disable Metrics/ClassLength
     end
   end
 
-  def normalize_account_ids(value)
+  def normalize_account_ids(value) # rubocop:disable Metrics/CyclomaticComplexity
     ids = Array(value).map { |id| normalize_id(id) }
     fail!('ACCOUNT_IDS_REQUIRED') if ids.empty? || ids.any?(&:nil?)
     fail!('ACCOUNT_IDS_INVALID') unless ids.all?(&:positive?)
@@ -294,4 +289,3 @@ class Connecta::Purge::Cleanup # rubocop:disable Metrics/ClassLength
     raise Blocked, code
   end
 end
-# rubocop:enable Metrics/ClassLength

@@ -127,24 +127,14 @@ class Api::V1::Accounts::Conversations::ConnectaManualAdmissionsController < Api
   def message_payload
     message = params[:message]
     return nil if message.blank?
-
-    unless message.is_a?(ActionController::Parameters)
-      raise Connecta::Runtime::ManualAdmissionTransaction::Error.new(
-        'message is invalid', status: :unprocessable_entity
-      )
-    end
+    invalid_message! unless message.is_a?(ActionController::Parameters)
 
     permitted = message.permit(
       :content, :is_voice_message, :is_recorded_audio, :transcode_audio,
       attachments: [], attachments_metadata: {}
     )
-    attachments = permitted[:attachments]
-    attachments = [attachments] if attachments.present? && !attachments.is_a?(Array)
-    if attachments.present? && !attachments.all? { |attachment| uploaded_file?(attachment) }
-      raise Connecta::Runtime::ManualAdmissionTransaction::Error.new(
-        'message attachments must be uploaded files', status: :unprocessable_entity
-      )
-    end
+    attachments = normalized_attachments(permitted[:attachments])
+    validate_attachments!(attachments)
     return nil if permitted[:content].blank? && attachments.blank?
 
     payload = permitted.to_h.with_indifferent_access
@@ -152,6 +142,26 @@ class Api::V1::Accounts::Conversations::ConnectaManualAdmissionsController < Api
     payload[:message_type] = 'outgoing'
     payload[:private] = false
     payload
+  end
+
+  def normalized_attachments(value)
+    return [] if value.blank?
+
+    value.is_a?(Array) ? value : [value]
+  end
+
+  def validate_attachments!(attachments)
+    return if attachments.all? { |attachment| uploaded_file?(attachment) }
+
+    raise Connecta::Runtime::ManualAdmissionTransaction::Error.new(
+      'message attachments must be uploaded files', status: :unprocessable_entity
+    )
+  end
+
+  def invalid_message!
+    raise Connecta::Runtime::ManualAdmissionTransaction::Error.new(
+      'message is invalid', status: :unprocessable_entity
+    )
   end
 
   def uploaded_file?(attachment)

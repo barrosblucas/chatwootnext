@@ -77,11 +77,8 @@ RSpec.describe 'Connecta · inbound após conversa resolvida (Baileys real)', ty
       conversation_scopes_by_inbox: Connecta::Scope::ConversationScope.where(inbox_id: inbox.id).count,
       contact_inboxes_by_inbox: ContactInbox.where(inbox_id: inbox.id).count
     )
-    expect(leftovers.reject { |_table, count| count.zero? }).to eq({}) # rubocop:disable RSpec/ExpectInHook
-  end
-
-  after(:all) do
     Connecta::Runtime::Installer.uninstall_reception_callback!
+    expect(leftovers.reject { |_table, count| count.zero? }).to eq({}) # rubocop:disable RSpec/ExpectInHook
   end
 
   def deliver(source_id, text)

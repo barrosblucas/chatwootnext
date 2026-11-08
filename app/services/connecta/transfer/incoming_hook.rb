@@ -25,9 +25,7 @@ module Connecta::Transfer::IncomingHook
       return super unless scope
 
       conversation = Conversation.find(scope.conversation_id)
-      if conversation.resolved?
-        raise ActiveRecord::RecordNotFound, 'resolved conversation still has a non-terminal Connecta scope'
-      end
+      raise ActiveRecord::RecordNotFound, 'resolved conversation still has a non-terminal Connecta scope' if conversation.resolved?
     end
 
     @conversation = conversation

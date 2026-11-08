@@ -16,7 +16,7 @@ Connecta::G0ScopeSchema.ensure!
 Connecta::G0TransferSchema.ensure!
 Connecta::Scope::Installer.install!
 
-RSpec.describe 'Connecta · ciclo de vida do escopo na resolução/reabertura (decisão 005)', type: :request do # rubocop:disable RSpec/DescribeClass
+RSpec.describe 'Connecta · ciclo de vida do escopo na resolução/reabertura (decisão 005)', type: :request do
   include_context 'with connecta g0 scope fixture'
 
   let(:messages_path) { "#{conversations_path}/#{conv_a.display_id}/messages" }
@@ -98,7 +98,7 @@ RSpec.describe 'Connecta · ciclo de vida do escopo na resolução/reabertura (d
       scope_of_conv_a.update!(state: 'transferred_out')
 
       expect { conv_a.update!(status: :resolved) }
-        .not_to change { scope_of_conv_a.reload.state }
+        .not_to(change { scope_of_conv_a.reload.state })
     end
   end
 

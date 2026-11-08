@@ -18,7 +18,7 @@ class Connecta::Runtime::ManualAdmissionTransaction
 
   IDEMPOTENCY_KEY_PATTERN = /\A[A-Za-z0-9._:-]{1,128}\z/
 
-  def initialize(account_id:, contact_inbox:, actor:, org_unit_id:, message_params:, idempotency_key: nil)
+  def initialize(account_id:, contact_inbox:, actor:, org_unit_id:, message_params:, idempotency_key: nil) # rubocop:disable Metrics/ParameterLists
     @account_id = Integer(account_id)
     @contact_inbox = contact_inbox
     @actor = actor
@@ -68,9 +68,8 @@ class Connecta::Runtime::ManualAdmissionTransaction
   def normalized_idempotency_key(value)
     key = value.to_s.strip
     return nil if key.empty?
-    unless key.match?(IDEMPOTENCY_KEY_PATTERN)
-      raise Error.new('idempotency_key is invalid', status: :unprocessable_entity)
-    end
+
+    raise Error.new('idempotency_key is invalid', status: :unprocessable_entity) unless key.match?(IDEMPOTENCY_KEY_PATTERN)
 
     key
   end
@@ -139,7 +138,7 @@ class Connecta::Runtime::ManualAdmissionTransaction
     raise Error.new(e.message, status: e.status)
   end
 
-  def activate_scope!(conversation, admission)
+  def activate_scope!(conversation, admission) # rubocop:disable Metrics/AbcSize
     expected = admission['case_protocol'].to_s
     version = Integer(admission['case_version'])
     Connecta::Scope::ConversationScope.transaction do

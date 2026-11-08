@@ -1,7 +1,7 @@
-require_relative '../support/connecta/g0_target_guard'
+require_relative '../../support/connecta/g0_target_guard'
 Connecta::G0TargetGuard.verify!
 require 'rails_helper'
-require_relative 'support/g0_scope_schema'
+require_relative '../support/g0_scope_schema'
 
 Connecta::G0ScopeSchema.ensure!
 

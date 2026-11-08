@@ -33,7 +33,7 @@ class Connecta::Scope::ProtocolView
       account.conversations
              .joins("INNER JOIN #{scope_table} connecta_protocol_view_scopes " \
                     'ON connecta_protocol_view_scopes.conversation_id = conversations.id')
-             .where("LOWER(connecta_protocol_view_scopes.case_protocol) = ?", protocol.downcase)
+             .where('LOWER(connecta_protocol_view_scopes.case_protocol) = ?', protocol.downcase)
              .where(conversations: { inbox_id: Connecta::Scope::ScopedInbox.select(:inbox_id) })
              .includes(:assignee)
              .distinct

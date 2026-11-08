@@ -13,7 +13,7 @@ Connecta::Transfer::Installer.install!
 # (inbox, contato) com nonces distintos. O lock do par precisa cobrir
 # find/create + resolução (transação real), e o lock da conversa precisa
 # serializar a mensagem sem deduplicar nonces diferentes.
-RSpec.describe 'Connecta · admissão manual concorrente', type: :request do # rubocop:disable RSpec/DescribeClass
+RSpec.describe 'Connecta · admissão manual concorrente', type: :request do
   self.use_transactional_tests = false
 
   let(:run_id) { SecureRandom.hex(4) }
@@ -95,15 +95,12 @@ RSpec.describe 'Connecta · admissão manual concorrente', type: :request do # r
       conversation_scopes_by_inbox: Connecta::Scope::ConversationScope.where(inbox_id: inbox.id).count,
       contact_inboxes_by_inbox: ContactInbox.where(inbox_id: inbox.id).count
     )
+    Connecta::Runtime::Installer.uninstall_reception_callback!
     expect(leftovers.reject { |_table, count| count.zero? }).to eq({}) # rubocop:disable RSpec/ExpectInHook
   end
 
-  after(:all) do
-    Connecta::Runtime::Installer.uninstall_reception_callback!
-  end
-
   it 'duas requisições do mesmo par criam UMA conversa e dois nonces geram DUAS mensagens',
-     :aggregate_failures do # rubocop:disable RSpec/ExampleLength
+     :aggregate_failures do
     source = "55119#{SecureRandom.random_number(8).to_s.rjust(8, '0')}"
     headers = agent.create_new_auth_token
     path = "/api/v1/accounts/#{account.id}/conversations/connecta_manual_admission"

@@ -149,7 +149,7 @@ RSpec.describe 'Connecta · protocolo, metadados e busca', type: :request do
 
     it 'encontra protocolo em minúsculas/mixed case e devolve o valor armazenado' do
       Connecta::Scope::ConversationScope.where(case_protocol: protocol)
-                                        .update_all(case_protocol: protocol.downcase)
+                                        .find_each { |scope| scope.update!(case_protocol: protocol.downcase) }
 
       get "/api/v1/accounts/#{account.id}/connecta/protocols/#{protocol.downcase}", headers: token_native
 

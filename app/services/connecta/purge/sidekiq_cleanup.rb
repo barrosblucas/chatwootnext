@@ -1,6 +1,5 @@
 require 'digest'
 require 'json'
-require 'set'
 
 # Política interna para o dead set do Sidekiq durante a janela de manutenção.
 # Nunca imprime args/payload. O alvo só é removido quando a classe, o conjunto
@@ -50,11 +49,11 @@ class Connecta::Purge::SidekiqCleanup
     end
   end
 
-  def apply(expected_hash:, confirmation:, writers_stopped:) # rubocop:disable Metrics/MethodLength, Metrics/AbcSize
+  # rubocop:disable Metrics/MethodLength, Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
+  def apply(expected_hash:, confirmation:, writers_stopped:)
     fail!('WRITERS_NOT_STOPPED') unless writers_stopped == true
-    unless expected_hash.to_s.match?(HASH_PATTERN) && confirmation.to_s == "APPLY:#{expected_hash}"
-      fail!('CONFIRMATION_REQUIRED')
-    end
+    valid_confirmation = expected_hash.to_s.match?(HASH_PATTERN) && confirmation.to_s == "APPLY:#{expected_hash}"
+    fail!('CONFIRMATION_REQUIRED') unless valid_confirmation
 
     current = snapshot
     fail!('INVENTORY_CHANGED') unless current[:hash] == expected_hash.to_s
@@ -90,6 +89,7 @@ class Connecta::Purge::SidekiqCleanup
       inventory_hash: current[:hash]
     }
   end
+  # rubocop:enable Metrics/MethodLength, Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
 
   private
 
@@ -98,10 +98,10 @@ class Connecta::Purge::SidekiqCleanup
     normalized.transform_values(&:to_s).freeze
   end
 
-  def with_redis(&block)
-    return block.call(@redis) if @redis
+  def with_redis
+    return yield(@redis) if @redis
 
-    Sidekiq.redis(&block)
+    Sidekiq.redis { |conn| yield(conn) }
   end
 
   def counts(rows)
