@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n';
 import { useMapGetter } from 'dashboard/composables/store';
 import { frontendURL, conversationUrl } from 'dashboard/helper/URLHelper';
 import ConnectaAPI from 'dashboard/api/connecta';
+import Icon from 'dashboard/components-next/icon/Icon.vue';
 import { connectaLabel } from 'dashboard/helper/connectaLabel';
 
 const props = defineProps({
@@ -90,8 +91,12 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown));
     :aria-label="title"
     @click.self="close"
   >
-    <div class="w-full max-w-2xl mt-12 overflow-hidden rounded-xl bg-n-solid-2 shadow-xl">
-      <header class="flex items-center justify-between gap-3 border-b border-n-weak px-4 py-3">
+    <div
+      class="w-full max-w-2xl mt-12 overflow-hidden rounded-xl bg-n-solid-2 shadow-xl"
+    >
+      <header
+        class="flex items-center justify-between gap-3 border-b border-n-weak px-4 py-3"
+      >
         <div class="min-w-0">
           <h3 class="truncate text-base font-medium text-n-slate-12">
             {{ title }}
@@ -106,7 +111,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown));
           :aria-label="t('CONNECTA.PROTOCOL.CLOSE')"
           @click="close"
         >
-          <span aria-hidden="true">×</span>
+          <Icon icon="i-lucide-x" class="size-4" aria-hidden="true" />
         </button>
       </header>
 

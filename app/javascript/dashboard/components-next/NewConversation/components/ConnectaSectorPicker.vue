@@ -25,11 +25,11 @@ const destinations = ref([]);
 const selectedUnit = ref(null);
 const isLoading = ref(false);
 const error = ref(null);
-const reuseInfo = ref(null);
+const reuseInfoMessage = ref(null);
 
 const applyUnits = units => {
   destinations.value = units || [];
-  reuseInfo.value = props.reuseInfo || null;
+  reuseInfoMessage.value = props.reuseInfo || null;
   selectedUnit.value =
     destinations.value.length === 1 ? destinations.value[0].id : null;
   error.value =
@@ -53,7 +53,7 @@ const loadDestinations = async conversationId => {
       ? await connectaAPI.admissionDestinations(conversationId)
       : await connectaAPI.admissionDestinationsForInbox(props.inboxId);
     destinations.value = data.eligible_org_units || [];
-    reuseInfo.value = data.reused_from || null;
+    reuseInfoMessage.value = data.reused_from || null;
     if (destinations.value.length === 1) {
       selectedUnit.value = destinations.value[0].id;
     }
@@ -141,7 +141,7 @@ defineExpose({ loadDestinations });
           title || $t('CONNECTA.MANUAL_ADMISSION.TITLE', 'Iniciar atendimento')
         }}
       </h3>
-      <p v-if="reuseInfo" class="mt-1 text-sm text-n-slate-11">
+      <p v-if="reuseInfoMessage" class="mt-1 text-sm text-n-slate-11">
         {{
           $t(
             'CONNECTA.MANUAL_ADMISSION.REUSED',

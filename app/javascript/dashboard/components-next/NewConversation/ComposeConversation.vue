@@ -560,9 +560,21 @@ onUnmounted(() => {
         />
         <ConnectaSectorPicker
           :show="showSectorPicker"
-          :inbox-id="pendingAdmissionPayload?.inboxId || pendingAdmissionPayload?.inbox_id || null"
-          :contact-id="pendingAdmissionPayload?.contactId || pendingAdmissionPayload?.contact_id || null"
-          :source-id="pendingAdmissionPayload?.sourceId || pendingAdmissionPayload?.source_id || null"
+          :inbox-id="
+            pendingAdmissionPayload?.inboxId ||
+            pendingAdmissionPayload?.inbox_id ||
+            null
+          "
+          :contact-id="
+            pendingAdmissionPayload?.contactId ||
+            pendingAdmissionPayload?.contact_id ||
+            null
+          "
+          :source-id="
+            pendingAdmissionPayload?.sourceId ||
+            pendingAdmissionPayload?.source_id ||
+            null
+          "
           :message="pendingAdmissionPayload?.message || null"
           :idempotency-key="admissionAttemptKey"
           :units="sectorDestinations"

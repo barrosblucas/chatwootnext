@@ -84,8 +84,9 @@ describe('ConversationCard', () => {
 
     expect(wrapper.text()).toContain('Jane Doe');
     expect(wrapper.text()).toContain('Raiz X | Setor Y | Pessoa Z');
-    expect(wrapper.find('.connecta-conversation-label').attributes('aria-label'))
-      .toBe('Raiz X | Setor Y | Pessoa Z');
+    expect(
+      wrapper.find('.connecta-conversation-label').attributes('aria-label')
+    ).toBe('Raiz X | Setor Y | Pessoa Z');
   });
 
   it('does not add the Connecta label without an authorized scope', () => {

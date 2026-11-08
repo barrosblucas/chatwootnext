@@ -68,7 +68,9 @@ watch(
     >
       <span class="min-w-0 truncate">
         {{ t('CONNECTA.PROTOCOL.PROTOCOL') }}
-        <span class="font-mono font-medium text-n-slate-12">{{ protocol }}</span>
+        <span class="font-mono font-medium text-n-slate-12">
+          {{ protocol }}
+        </span>
       </span>
       <button
         type="button"

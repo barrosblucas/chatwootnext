@@ -64,13 +64,17 @@ describe('ConnectaSectorPicker', () => {
         idempotencyKey: 'attempt-1',
       })
     );
-    expect(wrapper.emitted('admitted')?.[0]).toEqual([{ id: 55, account_id: 1 }]);
+    expect(wrapper.emitted('admitted')?.[0]).toEqual([
+      { id: 55, account_id: 1 },
+    ]);
   });
 
   it('shows an actionable error when the actor has no eligible sector', async () => {
     const wrapper = mountPicker({ units: [] });
     await flushPromises();
 
-    expect(wrapper.text()).toContain('CONNECTA.MANUAL_ADMISSION.NO_ELIGIBLE_UNIT');
+    expect(wrapper.text()).toContain(
+      'CONNECTA.MANUAL_ADMISSION.NO_ELIGIBLE_UNIT'
+    );
   });
 });
