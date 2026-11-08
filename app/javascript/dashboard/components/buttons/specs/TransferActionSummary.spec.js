@@ -91,13 +91,13 @@ describe('TransferAction summary mode', () => {
     wrapper
       .findComponent({ name: 'ComboBox' })
       .vm.$emit('update:modelValue', 'unit-uuid');
-    await wrapper.find('input.form-input').setValue('Segunda via da conta');
-    await wrapper
-      .findAll('textarea')[0]
-      .setValue('Dados conferidos com o cidadão.');
-    await wrapper
-      .findAll('textarea')[1]
-      .setValue('Aguardar envio do documento.');
+    const [subjectField, completedField, nextActionField] = wrapper.findAll(
+      'textarea.form-textarea'
+    );
+    expect(subjectField.attributes('maxlength')).toBe('160');
+    await subjectField.setValue('Segunda via da conta');
+    await completedField.setValue('Dados conferidos com o cidadão.');
+    await nextActionField.setValue('Aguardar envio do documento.');
     await wrapper.vm.$nextTick();
 
     expect(dialog.props('disableConfirmButton')).toBe(false);

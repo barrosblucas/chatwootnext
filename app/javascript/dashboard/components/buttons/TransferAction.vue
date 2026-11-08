@@ -205,8 +205,10 @@ const handleConfirm = async () => {
       @confirm="handleConfirm"
     >
       <div class="flex flex-col gap-4">
+        <!-- [&>button]: fills the ComboBox trigger like form-textarea -->
         <ComboBox
           v-model="selectedDepartmentId"
+          class="[&>button]:bg-n-alpha-black2"
           :options="destinationOptions"
           :placeholder="t('CONVERSATION.TRANSFER.DESTINATION_PLACEHOLDER')"
           :disabled="isLoadingDestinations || loadError"
@@ -225,11 +227,12 @@ const handleConfirm = async () => {
           </p>
           <label class="flex flex-col gap-1 text-sm text-n-slate-12">
             {{ t('CONVERSATION.TRANSFER.SUMMARY.SUBJECT') }}
-            <input
+            <textarea
               v-model="summary.subject"
-              class="form-input"
+              class="form-textarea"
               :maxlength="SUMMARY_LIMITS.subject"
               required
+              rows="3"
             />
           </label>
           <label class="flex flex-col gap-1 text-sm text-n-slate-12">
