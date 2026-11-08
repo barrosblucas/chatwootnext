@@ -56,6 +56,7 @@ RSpec.describe Connecta::Purge::Cleanup do
       blob
     end
   end
+  let(:extra_blobs) { [] }
   let(:account_ids) { [account.id] }
 
   before do
@@ -70,7 +71,7 @@ RSpec.describe Connecta::Purge::Cleanup do
   end
 
   after do
-    (blobs + scheduled_blobs).each do |blob|
+    (blobs + scheduled_blobs + extra_blobs).each do |blob|
       ActiveStorage::Blob.service.delete(blob.key)
     rescue StandardError
       nil
@@ -122,10 +123,29 @@ RSpec.describe Connecta::Purge::Cleanup do
     expect(Connecta::Scope::AccessAudit.count).to be >= before_audits[1]
   end
 
-  it 'recusa lista protegida reduzida antes de qualquer delete' do
+  it 'recusa listas protegidas/auditadas reduzidas antes de qualquer delete' do
     expect do
       described_class.plan(account_ids: account_ids, protected_tables: ['accounts'])
     end.to raise_error(described_class::Blocked, 'PROTECTED_TABLES_IMMUTABLE')
+
+    expect do
+      described_class.plan(account_ids: account_ids, audit_tables: ['audits'])
+    end.to raise_error(described_class::Blocked, 'AUDIT_TABLES_IMMUTABLE')
+  end
+
+  it 'aborta ANTES do commit quando um anexo novo entra depois do inventário' do
+    plan = inspect_plan
+    late_blob = ActiveStorage::Blob.create_and_upload!(
+      io: StringIO.new('anexo tardio'), filename: "late-#{run_id}.txt", content_type: 'text/plain'
+    )
+    extra_blobs << late_blob
+    messages.first.attachments.create!(account_id: account.id, file_type: :file, file: late_blob)
+
+    expect { apply_plan(plan) }.to raise_error(described_class::Blocked, 'INVENTORY_CHANGED')
+
+    expect(Conversation.where(id: conversations.map(&:id)).count).to eq(2)
+    expect(ActiveStorage::Blob.exists?(late_blob.id)).to be(true)
+    expect(ActiveStorage::Attachment.exists?(blob_id: late_blob.id)).to be(true)
   end
 
   it 'aborta ANTES de deletar quando installation_config muda' do
@@ -164,9 +184,14 @@ RSpec.describe Connecta::Purge::Cleanup do
     before_counts = preserved_counts
     plan = inspect_plan
     allow_any_instance_of(Message).to receive(:destroy!).and_raise(RuntimeError, 'probe') # rubocop:disable RSpec/AnyInstance
+    queued_before = ActiveJob::Base.queue_adapter.enqueued_jobs.size
 
     expect { apply_plan(plan) }.to raise_error(RuntimeError, 'probe')
 
+    expect(ActiveJob::Base.queue_adapter.enqueued_jobs.size).to eq(queued_before)
+    (blobs + scheduled_blobs).each do |blob|
+      expect(ActiveStorage::Blob.service.exist?(blob.key)).to be(true)
+    end
     expect(Conversation.where(id: conversations.map(&:id)).count).to eq(2)
     expect(Message.where(id: messages.map(&:id)).count).to eq(2)
     expect(Connecta::Scope::ConversationScope.where(conversation_id: conversations.map(&:id)).count).to eq(2)

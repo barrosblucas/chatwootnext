@@ -27,12 +27,14 @@ vi.mock('dashboard/composables/useConfig', () => ({
 }));
 
 const mockCommit = vi.fn();
+const mockDispatch = vi.fn();
 let mockSelectedChat = { id: 42, status: wootConstants.STATUS_TYPE.OPEN };
 let mockAccountId = 1;
 
 vi.mock('dashboard/composables/store', () => ({
   useStore: () => ({
     commit: mockCommit,
+    dispatch: mockDispatch,
   }),
   useStoreGetters: () => ({
     getSelectedChat: {
@@ -278,6 +280,11 @@ describe('TransferAction.vue', () => {
 
       expect(mockUseAlert).toHaveBeenCalledWith(
         'Conversation transferred successfully.'
+      );
+      expect(mockDispatch).toHaveBeenCalledWith('connectaMetadata/refresh', 42);
+      expect(mockDispatch).toHaveBeenCalledWith(
+        'connectaMetadata/refresh',
+        100
       );
       expect(mockPush).toHaveBeenCalledWith(
         '/app/accounts/1/conversations/100'

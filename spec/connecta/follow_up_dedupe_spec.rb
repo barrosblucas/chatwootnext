@@ -10,7 +10,7 @@ Connecta::Scope::Installer.install!
 # Anexos de acompanhamento usam o endpoint nativo de mensagens com um nonce em
 # content_attributes. O hook do fork dedupe no caminho oficial, sem fila
 # fictícia nem campo novo de banco.
-RSpec.describe 'Connecta · dedupe de anexos de acompanhamento', type: :request do # rubocop:disable RSpec/DescribeClass
+RSpec.describe 'Connecta · dedupe de anexos de acompanhamento', type: :request do
   include_context 'with connecta g0 scope fixture'
 
   let(:messages_path) { "#{conversations_path}/#{conv_a.display_id}/messages" }
@@ -38,5 +38,35 @@ RSpec.describe 'Connecta · dedupe de anexos de acompanhamento', type: :request 
       post_follow_up('follow-a', 'anexo a')
       post_follow_up('follow-b', 'anexo b')
     end.to change(Message, :count).by(2)
+  end
+
+  it 'retry de dois anexos após perda de resposta mantém uma mensagem por nonce' do
+    headers = agent_a.create_new_auth_token
+    send_file = lambda do |nonce|
+      post messages_path,
+           params: {
+             content: '',
+             content_attributes: { connecta_followup_nonce: nonce }.to_json,
+             private: false,
+             attachments: [Rack::Test::UploadedFile.new(Rails.root.join('spec/assets/avatar.png'), 'image/png')]
+           },
+           headers: headers
+    end
+
+    expect do
+      send_file.call('follow-file-1')
+      send_file.call('follow-file-2')
+    end.to change(Message, :count).by(2)
+    expect(response).to have_http_status(:ok).or have_http_status(:created)
+    messages = Message.where(conversation_id: conv_a.id).order(:id).last(2)
+    expect(messages.map { |message| message.attachments.count }).to eq([1, 1])
+
+    expect do
+      send_file.call('follow-file-1')
+      send_file.call('follow-file-2')
+    end.not_to change(Message, :count)
+    expect(Message.where(conversation_id: conv_a.id).order(:id).last(2))
+      .to contain_exactly(*messages)
+    messages.each { |message| expect(message.reload.attachments.count).to eq(1) }
   end
 end

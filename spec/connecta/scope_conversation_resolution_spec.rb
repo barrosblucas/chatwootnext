@@ -32,6 +32,8 @@ RSpec.describe 'Connecta · ciclo de vida do escopo na resolução/reabertura (d
 
   after do
     example_conversation_ids = Conversation.where(account_id: account.id).pluck(:id)
+    inbox_ids = Inbox.where(account_id: account.id).pluck(:id)
+    user_ids = [agent_a, agent_b, manager_a, admin_nominal, member_without_grant, native_admin].map(&:id)
     Connecta::Transfer::OutboundDispatchRecord.where(conversation_id: example_conversation_ids).delete_all
     Connecta::Transfer::TransferRecord.where(
       'source_conversation_id IN (?) OR destination_conversation_id IN (?)',
@@ -39,13 +41,15 @@ RSpec.describe 'Connecta · ciclo de vida do escopo na resolução/reabertura (d
     ).delete_all
     Connecta::Scope::ConversationScope.where(inbox_id: whatsapp_inbox.id).delete_all
     Connecta::Scope::ScopedInbox.where(inbox_id: whatsapp_inbox.id).delete_all
-    ContactInbox.where(inbox_id: whatsapp_inbox.id).delete_all
-    user_ids = [agent_a, agent_b, manager_a, admin_nominal, member_without_grant].map(&:id)
+    ContactInbox.where(inbox_id: inbox_ids).delete_all
+    InboxMember.where(inbox_id: inbox_ids).delete_all
     Connecta::Scope::UserGrant.where(user_id: user_ids).delete_all
     Connecta::Scope::UserAuthEpoch.where(user_id: user_ids).delete_all
+    Connecta::Scope::AccessAudit.where(user_id: user_ids).delete_all
     Connecta::Scope::AclSyncState.where(id: projection_heartbeat.id).delete_all
     Connecta::Scope::OrgUnit.where(id: [org_root.id, org_a.id, org_a1.id, org_b.id]).delete_all
     InternalChat::Channel.where(account_id: account.id).destroy_all
+    UserSession.where(user_id: user_ids).delete_all
 
     connection = ActiveRecord::Base.connection
     account_tables = (connection.tables - ['accounts']).select { |table| connection.column_exists?(table, :account_id) }
@@ -53,6 +57,7 @@ RSpec.describe 'Connecta · ciclo de vida do escopo na resolução/reabertura (d
       connection.delete("DELETE FROM #{connection.quote_table_name(table)} WHERE account_id = #{account.id.to_i}")
     end
     Account.where(id: account.id).delete_all
+    User.where(id: user_ids).delete_all
   end
 
   describe 'resolver move o escopo a terminal (AC1)' do

@@ -20,9 +20,10 @@ A transferência humana cria uma conversa nova na mesma inbox e mantém o mesmo 
 - `GET /api/v1/accounts/:account_id/connecta/conversations/metadata?ids=1,2`
   - `200 { conversations: { "<display_id>": { case_protocol, state, org_unit_name, root_unit_name } } }`
   - ids inválidos ou >50: `422 invalid_ids`; ids ocultos/inexistentes: omitidos.
-- `GET /api/v1/accounts/:account_id/connecta/protocols/:protocol`
-  - `200 { protocol, stages: [{ conversation_id, status, state, root_unit_name, org_unit_name, assignee_name, started_at, updated_at }] }`
-  - protocolo inválido, inexistente ou sem etapa visível: `404` genérico.
+- `GET /api/v1/accounts/:account_id/connecta/protocols/:protocol?cursor=...&limit=...`
+  - `200 { protocol, native_admin, stages: [{ conversation_id, status, state, root_unit_name, org_unit_name, assignee_name, started_at, updated_at }], next_cursor }`
+  - `limit` 1..100 (padrão 50); `next_cursor` opaco continua a partir de `(created_at,id)`; página seguinte sem etapa visível devolve `200` com `stages: []` e `next_cursor: null`.
+  - protocolo inválido, inexistente na primeira página ou cursor/limit inválido: `404`/`422` genéricos.
 - Nenhum campo de cidadão, telefone, CPF ou hash.
 
 ### Privacidade / ACL
@@ -41,7 +42,7 @@ A transferência humana cria uma conversa nova na mesma inbox e mantém o mesmo 
 ### Limpeza operacional interna
 - `Connecta::Purge::Cleanup`: classe interna de manutenção (sem rota HTTP/permissão nova), com `plan(account_ids:)`, `apply(account_ids:, expected_hash:, confirmation:, writers_stopped:)` e `purge_blobs(blobs:)` por manifesto opaco `{id,key,service_name}`. O `apply` revalida hash/contagens antes de deletar, roda mensagens/conversas/escopos em transação, inclui anexos de `ScheduledMessage`/`RecurringScheduledMessage`, verifica preservação de contatos/ContactInbox/contas/inboxes/usuários/account_users/installation_configs e só toca o storage depois do commit; falha real de `service.delete` retorna `committed_blob_pending` com o manifesto exato para retry, inclusive se a row do Blob já sumiu.
 - `Connecta::Purge::SidekiqCleanup`: `plan(redis:, keys:)`/`apply(..., redis:, keys:)` do dead set, sem defaults de Redis/keys, com hash de contagens + digests por entrada; preserva scheduled/retry e `ActiveStorage::PurgeJob`; só remove `Webhooks::WhatsappEventsJob` quando classe, digests e contagens batem. Nenhum arg/payload é impresso.
-- Specs sintéticas: `spec/connecta/purge_cleanup_spec.rb` (sucesso, nova conversa/rowcount antes do delete, rollback, purge após commit com retry, writers/confirmação) e `spec/connecta/purge_sidekiq_cleanup_spec.rb` (dead alvo, alvo tardio, classe desconhecida, data ingress em retry, confirmação). O wrapper privado do operador deve chamar estas classes da imagem final, sem copiar lógica.
+- Specs sintéticas: `spec/connecta/purge/cleanup_spec.rb` (sucesso com anexos de mensagem e agendados, manifestos, nova conversa/rowcount/installation_config antes do delete, lista protegida/auditada imutável, anexo tardio aborta antes do commit, rollback sem enfileirar purge, purge após commit com retry por manifesto e arquivo ausente) e `spec/connecta/purge/sidekiq_cleanup_spec.rb` (dead alvo, alvo tardio, classe desconhecida, data ingress em retry, Redis/keys obrigatórios, confirmação). O wrapper privado do operador deve chamar estas classes da imagem final, sem copiar lógica.
 - Contrato do wrapper privado: `Connecta::Purge::Cleanup.plan(account_ids: [...])` retorna `inventory_hash`; `apply(account_ids: [...], expected_hash: hash, confirmation: "APPLY:#{hash}", writers_stopped: true)` revalida e executa; se `status == "committed_blob_pending"`, repetir `purge_blobs(blobs: result[:remaining_blobs])`. No Sidekiq: `Connecta::Purge::SidekiqCleanup.plan(redis: <conexão>, keys: {schedule:, retry:, dead:})` e `apply(expected_hash:, confirmation:, writers_stopped:, redis:, keys:)`. Nenhum dos dois aceita default de conta/hash/Redis/keys.
 
 ### Fora do escopo / pendências

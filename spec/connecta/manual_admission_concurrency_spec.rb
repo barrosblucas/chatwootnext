@@ -66,6 +66,8 @@ RSpec.describe 'Connecta · admissão manual concorrente', type: :request do
   after do
     Connecta::Runtime::Installer.uninstall_reception_callback!
     example_conversation_ids = Conversation.where(inbox: inbox).pluck(:id)
+    inbox_ids = Inbox.where(account_id: account.id).pluck(:id)
+    user_ids = [agent.id]
     Connecta::Transfer::OutboundDispatchRecord.where(conversation_id: example_conversation_ids).delete_all
     Connecta::Transfer::TransferRecord.where(
       'source_conversation_id IN (?) OR destination_conversation_id IN (?)',
@@ -76,9 +78,12 @@ RSpec.describe 'Connecta · admissão manual concorrente', type: :request do
     Connecta::UserGrant.where(user_id: agent.id).delete_all
     Connecta::Scope::UserAuthEpoch.where(user_id: agent.id).delete_all
     Connecta::Scope::AclSyncState.where(id: acl_state.id).delete_all
-    ContactInbox.where(inbox_id: inbox.id).delete_all
+    ContactInbox.where(inbox_id: inbox_ids).delete_all
+    InboxMember.where(inbox_id: inbox_ids).delete_all
+    Connecta::Scope::AccessAudit.where(user_id: user_ids).delete_all
     Connecta::Scope::OrgUnit.where('path LIKE ?', "/conc-#{run_id}/%").delete_all
     InternalChat::Channel.where(account_id: account.id).destroy_all
+    UserSession.where(user_id: user_ids).delete_all
 
     connection = ActiveRecord::Base.connection
     account_tables = (connection.tables - ['accounts']).select { |table| connection.column_exists?(table, :account_id) }
@@ -86,6 +91,7 @@ RSpec.describe 'Connecta · admissão manual concorrente', type: :request do
       connection.delete("DELETE FROM #{connection.quote_table_name(table)} WHERE account_id = #{account.id.to_i}")
     end
     Account.where(id: account.id).delete_all
+    User.where(id: user_ids).delete_all
 
     leftovers = account_tables.to_h do |table|
       rows = connection.select_value("SELECT COUNT(*) FROM #{connection.quote_table_name(table)} WHERE account_id = #{account.id.to_i}")

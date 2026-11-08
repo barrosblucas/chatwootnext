@@ -324,8 +324,8 @@ const sendAdmissionFollowUps = async (data, followUpFiles) => {
   try {
     await sendFollowUpFiles(data.id, followUpFiles);
   } catch (_) {
-    // A conversa e a primeira mensagem já existem; não reabre o draft (o retry
-    // do nonce deduplicaria a primeira, mas os follow-ups não têm nonce).
+    // A conversa e a primeira mensagem já existem; não reabre o draft. O
+    // reenvio do mesmo anexo deduplica pelo nonce no endpoint nativo.
     useAlert(
       t(
         'CONNECTA.MANUAL_ADMISSION.FOLLOW_UP_ERROR',

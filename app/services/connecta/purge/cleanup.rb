@@ -240,7 +240,12 @@ class Connecta::Purge::Cleanup # rubocop:disable Metrics/ClassLength
   end
 
   def blob_manifest(blob_ids)
-    ActiveStorage::Blob.where(id: blob_ids.uniq).order(:id).map do |blob|
+    ids = blob_ids.uniq
+    blobs = ActiveStorage::Blob.where(id: ids).order(:id).to_a
+    missing = ids - blobs.map(&:id)
+    fail!("BLOB_METADATA_MISSING:#{missing.length}") if missing.any?
+
+    blobs.map do |blob|
       { id: blob.id, key: blob.key, service_name: blob.service_name }
     end
   end
@@ -344,7 +349,7 @@ class Connecta::Purge::Cleanup # rubocop:disable Metrics/ClassLength
   def delete_variants!(service, key)
     return unless service.respond_to?(:delete_prefixed)
 
-    service.delete_prefixed("#{key}/variants/")
+    service.delete_prefixed("variants/#{key}/")
   rescue ActiveStorage::FileNotFoundError, Errno::ENOENT
     nil
   end

@@ -121,6 +121,12 @@ class ContactInboxBuilder
     ::ContactInbox.where(attrs).first_or_create!(hmac_verified: hmac_verified || false)
   rescue ActiveRecord::RecordNotUnique
     Rails.logger.info("[ContactInboxBuilder] RecordNotUnique #{@source_id} #{@contact.id} #{@inbox.id}")
+    # Duas requisições do MESMO par podem inserir juntas; o vencedor já commitou
+    # quando o índice único dispara. Reaproveitar exatamente (contact, inbox,
+    # source) é idempotente e evita rotacionar o source de uma sessão legítima.
+    existing = ::ContactInbox.find_by(attrs)
+    return existing if existing
+
     update_old_contact_inbox
     retry
   end

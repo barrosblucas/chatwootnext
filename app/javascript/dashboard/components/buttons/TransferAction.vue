@@ -158,10 +158,17 @@ const handleConfirm = async () => {
     );
     dialogRef.value?.close();
 
+    // A transferência muda o vínculo/setor da conversa sem necessariamente
+    // mudar o display_id na lista; invalida e refaz a busca no escopo atual.
+    store.dispatch('connectaMetadata/refresh', currentChat.value.id);
+
     const newConversationId = connectaHumanNumberEnabled
       ? null
       : data.display_id || data.new_conversation_id;
     if (newConversationId) {
+      if (Number(newConversationId) !== Number(currentChat.value.id)) {
+        store.dispatch('connectaMetadata/refresh', newConversationId);
+      }
       router.push(
         frontendURL(
           conversationUrl({

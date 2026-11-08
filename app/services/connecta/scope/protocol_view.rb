@@ -23,6 +23,7 @@ class Connecta::Scope::ProtocolView
       page_size = normalize_limit(limit)
       position = decode_cursor(cursor)
       native_admin = Connecta::Scope::NativeAdmin.administrator?(user, account)
+      nominal_admin = Connecta::Scope::Projection.new(user).admin?
       gate = Connecta::Scope::Gate.new(user)
       visible = []
       next_position = nil
@@ -37,7 +38,10 @@ class Connecta::Scope::ProtocolView
           conversation = conversations[scope.conversation_id]
           next unless conversation
 
-          unless native_admin || scope.state != 'transferred_out'
+          # Papel nominal não enumera a etapa transferred_out; o administrador
+          # nativo vê a cadeia inteira. Agente comum passa pelo Gate, que nega
+          # e audita todo estado fora de READ_STATES.
+          if !native_admin && nominal_admin && scope.state == 'transferred_out'
             deny_nominal!(user, conversation)
             next
           end
@@ -128,7 +132,7 @@ class Connecta::Scope::ProtocolView
       raise InvalidRequest, 'cursor version' unless data['v'] == CURSOR_VERSION
 
       created_at = Time.iso8601(data['at'].to_s)
-      id = Integer(data['id'], 10)
+      id = data['id'].is_a?(Integer) ? data['id'] : Integer(data['id'].to_s, 10)
       raise InvalidRequest, 'cursor id' unless id.positive?
 
       [created_at, id]
