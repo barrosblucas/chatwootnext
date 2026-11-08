@@ -220,9 +220,7 @@ describe('TransferAction.vue', () => {
     it('keeps the legacy displayName label for non-Connecta destinations', async () => {
       conversationAPI.getConnectaTransferDestinations.mockResolvedValue({
         data: {
-          destinations: [
-            { departmentId: 'dept-1', displayName: 'UBS Centro' },
-          ],
+          destinations: [{ departmentId: 'dept-1', displayName: 'UBS Centro' }],
         },
       });
 
