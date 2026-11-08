@@ -58,7 +58,11 @@ class Connecta::Scope::ProtocolView
         break if batch.length < SCAN_BATCH_SIZE
       end
 
-      return nil if visible.empty?
+      if visible.empty?
+        return nil if cursor.blank?
+
+        return { protocol: normalized, native_admin: native_admin, stages: [], next_cursor: nil }
+      end
 
       stored_protocol = visible.filter_map { |scope, _conversation| scope.case_protocol }.first || normalized
       units = Connecta::Scope::ConversationMetadata.org_unit_map
