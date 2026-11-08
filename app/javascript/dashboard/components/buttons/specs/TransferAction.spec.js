@@ -5,7 +5,7 @@ import TransferAction from '../TransferAction.vue';
 import conversationAPI from 'dashboard/api/inbox/conversation';
 import types from 'dashboard/store/mutation-types';
 import wootConstants from 'dashboard/constants/globals';
-import enConversation from 'dashboard/i18n/locale/en/conversation.json';
+import messages from 'dashboard/i18n';
 
 const mockPush = vi.fn();
 vi.mock('vue-router', () => ({
@@ -66,7 +66,7 @@ vi.mock('dashboard/helper/URLHelper', () => ({
 const i18n = createI18n({
   legacy: false,
   locale: 'en',
-  messages: { en: enConversation },
+  messages: { en: messages.en },
 });
 
 describe('TransferAction.vue', () => {

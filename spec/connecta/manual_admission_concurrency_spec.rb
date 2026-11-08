@@ -112,7 +112,6 @@ RSpec.describe 'Connecta · admissão manual concorrente', type: :request do
       Thread.new do
         ActiveRecord::Base.connection_pool.with_connection do
           session = ActionDispatch::Integration::Session.new(Rails.application)
-          headers.each { |key, value| session.header(key, value) }
           ready << true
           go.pop
           session.post(
@@ -122,6 +121,7 @@ RSpec.describe 'Connecta · admissão manual concorrente', type: :request do
               org_unit_id: org.id.to_s, idempotency_key: nonce,
               message: { content: "texto #{nonce}" }
             },
+            headers: headers,
             as: :json
           )
           [session.response.status, session.response.body]

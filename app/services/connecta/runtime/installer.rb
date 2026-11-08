@@ -8,6 +8,7 @@ class Connecta::Runtime::Installer
   end
   RECEPTION_CALLBACK = :connecta_reception_after_create
 
+  # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
   def self.install!
     return unless Connecta::Runtime::Feature.enabled?
     return if @installed
@@ -50,6 +51,7 @@ class Connecta::Runtime::Installer
     end
     @installed = true
   end
+  # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
 
   # Só para specs: remove o callback de criação que o installer global deixou
   # no processo, sem tocar nos demais callbacks nativos de Conversation.
