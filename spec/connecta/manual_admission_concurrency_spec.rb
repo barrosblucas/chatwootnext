@@ -64,6 +64,7 @@ RSpec.describe 'Connecta · admissão manual concorrente', type: :request do
   end
 
   after do
+    Connecta::Runtime::Installer.uninstall_reception_callback!
     example_conversation_ids = Conversation.where(inbox: inbox).pluck(:id)
     Connecta::Transfer::OutboundDispatchRecord.where(conversation_id: example_conversation_ids).delete_all
     Connecta::Transfer::TransferRecord.where(
@@ -96,7 +97,6 @@ RSpec.describe 'Connecta · admissão manual concorrente', type: :request do
       conversation_scopes_by_inbox: Connecta::Scope::ConversationScope.where(inbox_id: inbox.id).count,
       contact_inboxes_by_inbox: ContactInbox.where(inbox_id: inbox.id).count
     )
-    Connecta::Runtime::Installer.uninstall_reception_callback!
     expect(leftovers.reject { |_table, count| count.zero? }).to eq({}) # rubocop:disable RSpec/ExpectInHook
   end
 
