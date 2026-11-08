@@ -138,7 +138,7 @@ RSpec.describe Connecta::Purge::Cleanup do
     plan = inspect_plan
     failing_id = plan[:payload][:blob_ids].first
     first_attempt = true
-    allow(described_class).to receive(:purge_blob).and_wrap_original do |original, blob|
+    allow_any_instance_of(described_class).to receive(:purge_blob).and_wrap_original do |original, blob| # rubocop:disable RSpec/AnyInstance
       if blob.id == failing_id && first_attempt
         first_attempt = false
         raise IOError, 'transient storage error'
@@ -154,7 +154,7 @@ RSpec.describe Connecta::Purge::Cleanup do
     expect(ActiveStorage::Blob.exists?(failing_id)).to be(true)
     expect(Conversation.where(id: conversations.map(&:id)).count).to eq(0)
 
-    allow(described_class).to receive(:purge_blob).and_call_original
+    allow_any_instance_of(described_class).to receive(:purge_blob).and_call_original # rubocop:disable RSpec/AnyInstance
     retry_result = described_class.purge_blobs(blob_ids: result[:remaining_blob_ids])
 
     expect(retry_result[:status]).to eq('committed')
