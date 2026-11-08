@@ -128,8 +128,9 @@ RSpec.describe 'Connecta · admissão manual concorrente', type: :request do
       end
     end
 
-    2.times { ready.pop }
+    Timeout.timeout(60) { 2.times { ready.pop } }
     2.times { go << true }
+    Timeout.timeout(60) { threads.each(&:join) }
     results = threads.map(&:value)
     expect(results.map(&:first)).to all(be_in([200, 201]))
     expect(Conversation.where(inbox: inbox).count).to eq(1)
