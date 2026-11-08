@@ -66,7 +66,7 @@ RSpec.describe 'Connecta · dedupe de anexos de acompanhamento', type: :request 
       send_file.call('follow-file-2')
     end.not_to change(Message, :count)
     expect(Message.where(conversation_id: conv_a.id).order(:id).last(2))
-      .to contain_exactly(*messages)
+      .to match_array(messages)
     messages.each { |message| expect(message.reload.attachments.count).to eq(1) }
   end
 end
