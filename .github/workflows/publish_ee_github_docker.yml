@@ -1,19 +1,107 @@
-name: Publish Chatwoot Enterprise docker images to GitHub
+name: Publish Chatwoot EE isolated build (src 15fa2b33)
+
+# ISOLATED one-shot EE image build from pinned source commit
+# 15fa2b33d6618d4dfcbd9357d36f6da62ecb3944.
+# Manual dispatch ONLY, ONLY from branch ci/ee-build-15fa2b33. This branch is
+# never merged to main. Publishes ONLY the tag
+# ee-src-15fa2b33d6618d4dfcbd9357d36f6da62ecb3944. latest-ee and every
+# fix-*-ee tag are never written by this workflow (the merge step names a
+# single -t, and a pre/post check fails the run if a protected tag drifts).
+# GHCR tags are mutable: the deployment identity is the final manifest digest
+# recorded in the Action summary, not the tag string.
+# Source SHA (application code) vs workflow SHA (this branch commit) are
+# recorded separately in the summary; do not confuse them.
 
 permissions:
   contents: read
   packages: write
 
 on:
-  release:
-    types: [released]
   workflow_dispatch:
+
+concurrency:
+  group: ee-build-15fa2b33
+  cancel-in-progress: false
 
 env:
   GITHUB_REPO: ghcr.io/${{ github.repository }}
+  SOURCE_SHA: 15fa2b33d6618d4dfcbd9357d36f6da62ecb3944
+  EE_TAG: ee-src-15fa2b33d6618d4dfcbd9357d36f6da62ecb3944
+  EXPECTED_BRANCH: ci/ee-build-15fa2b33
 
 jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Allow only manual dispatch on the dedicated branch
+        run: |
+          if [ "${{ github.ref_name }}" != "${{ env.EXPECTED_BRANCH }}" ]; then
+            echo "Refusing: this workflow runs only on '${{ env.EXPECTED_BRANCH }}' (got '${{ github.ref_name }}')." >&2
+            exit 1
+          fi
+          if [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+            echo "Refusing: manual dispatch only (got '${{ github.event_name }}')." >&2
+            exit 1
+          fi
+          echo "Guard OK: dispatch on '${{ github.ref_name }}'."
+
+  preflight:
+    runs-on: ubuntu-latest
+    needs: guard
+    steps:
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Refuse if the isolated tag already exists (fail closed)
+        run: |
+          REPO="ghcr.io/${{ github.repository }}"
+          set +e
+          OUT="$(docker buildx imagetools inspect "$REPO:${{ env.EE_TAG }}" 2>&1)"
+          RC=$?
+          set -e
+          if [ "$RC" -eq 0 ]; then
+            echo "Refusing: $REPO:${{ env.EE_TAG }} already exists. Tags are mutable, so an existing tag must never be overwritten." >&2
+            exit 1
+          fi
+          # A missing tag is only trustworthy when the error actually says so;
+          # auth/network failures must never be mistaken for "tag absent".
+          if printf '%s' "$OUT" | grep -qiE 'manifest unknown|MANIFEST_UNKNOWN|not found|not exist|no such'; then
+            echo "Isolated tag absent — safe to proceed."
+          else
+            printf '%s\n' "$OUT" >&2
+            echo "Refusing: could not prove the isolated tag is absent (registry/auth/network?)." >&2
+            exit 1
+          fi
+
+      - name: Record protected-tag baseline (latest-ee, fix-producao-20261106-ee)
+        run: |
+          REPO="ghcr.io/${{ github.repository }}"
+          : > protected.txt
+          for T in latest-ee fix-producao-20261106-ee; do
+            if OUT="$(docker buildx imagetools inspect "$REPO:$T" 2>&1)"; then
+              echo "$T $(printf '%s' "$OUT" | sha256sum | cut -d' ' -f1)" >> protected.txt
+            else
+              echo "$T ABSENT" >> protected.txt
+            fi
+          done
+          cat protected.txt
+
+      - name: Upload protected-tag baseline
+        uses: actions/upload-artifact@v4
+        with:
+          name: protected-tags
+          path: protected.txt
+          retention-days: 1
+
   build:
+    needs: preflight
     strategy:
       fail-fast: false
       matrix:
@@ -24,12 +112,25 @@ jobs:
             runner: ubuntu-22.04-arm
     runs-on: ${{ matrix.runner }}
     env:
-      GIT_REF: ${{ github.event.release.tag_name || github.ref_name }}
+      GIT_REF: ${{ env.EE_TAG }}
     steps:
-      - name: Checkout
+      - name: Checkout pinned EE source (full SHA, not the workflow branch)
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name || github.ref }}
+          ref: 15fa2b33d6618d4dfcbd9357d36f6da62ecb3944
+
+      - name: Verify pinned source SHA and enterprise overlay
+        run: |
+          HEAD_SHA="$(git rev-parse HEAD)"
+          if [ "$HEAD_SHA" != "${{ env.SOURCE_SHA }}" ]; then
+            echo "Refusing: checked out $HEAD_SHA, expected ${{ env.SOURCE_SHA }}." >&2
+            exit 1
+          fi
+          if [ ! -d enterprise ]; then
+            echo "Refusing: enterprise/ overlay missing from the pinned source." >&2
+            exit 1
+          fi
+          echo "Source OK: $HEAD_SHA with enterprise/ overlay."
 
       - name: Prepare
         run: |
@@ -50,11 +151,6 @@ jobs:
             echo "No version tag found, keeping existing version"
           fi
 
-      - name: Set Docker Tags
-        run: |
-          SANITIZED_REF=$(echo "$GIT_REF" | sed 's/\//-/g')
-          echo "SANITIZED_REF=${SANITIZED_REF}" >> $GITHUB_ENV
-
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -62,24 +158,40 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Login to GitHub Container Registry
-        if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push to GitHub Container Registry
+      - name: Build and push by digest only (no tags yet)
         id: build-ghcr
         uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/Dockerfile
           platforms: ${{ matrix.platform }}
-          push: ${{ github.event_name == 'release' || github.event_name == 'workflow_dispatch' }}
-          tags: |
-            ${{ env.GITHUB_REPO }}:${{ env.SANITIZED_REF }}-ee
-            ${{ env.GITHUB_REPO }}:latest-ee
+          # NOTE: provenance/attestations stay at the builder default (enabled).
+          # Never set provenance to false to "simplify" verification.
+          outputs: type=image,name=${{ env.GITHUB_REPO }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: Verify EE image content by digest (before any tag exists)
+        run: |
+          REF="${{ env.GITHUB_REPO }}@${{ steps.build-ghcr.outputs.digest }}"
+          docker pull "$REF"
+          CW="$(docker run --rm --entrypoint sh "$REF" -c 'printenv CW_EDITION')"
+          if [ "$CW" != "ee" ]; then
+            echo "Refusing: CW_EDITION='$CW', expected 'ee'." >&2
+            exit 1
+          fi
+          docker run --rm --entrypoint sh "$REF" -c 'test -d /app/enterprise' \
+            || { echo "Refusing: /app/enterprise missing from image." >&2; exit 1; }
+          SHA="$(docker run --rm --entrypoint sh "$REF" -c 'cat /app/.git_sha' | tr -d '[:space:]')"
+          if [ "$SHA" != "${{ env.SOURCE_SHA }}" ]; then
+            echo "Refusing: image /app/.git_sha='$SHA', expected '${{ env.SOURCE_SHA }}'." >&2
+            exit 1
+          fi
+          echo "Image content OK: CW_EDITION=ee, /app/enterprise present, source ${{ env.SOURCE_SHA }}."
 
       - name: Export digest
         run: |
@@ -95,10 +207,21 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+      - name: Record platform result in summary
+        run: |
+          {
+            echo "### build ${{ matrix.platform }} (native runner)"
+            echo "- source SHA (app code): ${{ env.SOURCE_SHA }}"
+            echo "- workflow SHA (branch commit): ${{ github.sha }}"
+            echo "- platform digest: ${{ steps.build-ghcr.outputs.digest }}"
+            echo "- verified in-image by digest: CW_EDITION=ee, /app/enterprise present, /app/.git_sha == source SHA"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   merge:
     runs-on: ubuntu-latest
     needs:
       - build
+      - preflight
     steps:
       - name: Download digests
         uses: actions/download-artifact@v4
@@ -106,6 +229,12 @@ jobs:
           path: ${{ runner.temp }}/digests
           pattern: digests-*
           merge-multiple: true
+
+      - name: Download protected-tag baseline
+        uses: actions/download-artifact@v4
+        with:
+          name: protected-tags
+          path: ${{ runner.temp }}/protected
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
@@ -117,22 +246,67 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Create manifest list and push
-        working-directory: ${{ runner.temp }}/digests
-        env:
-          GIT_REF: ${{ github.event.release.tag_name || github.ref_name }}
+      - name: Abort if a protected tag drifted before publication
         run: |
-          SANITIZED_REF=$(echo "$GIT_REF" | sed 's/\//-/g')
-          docker buildx imagetools create \
-            -t ghcr.io/${{ github.repository }}:${SANITIZED_REF}-ee \
-            -t ghcr.io/${{ github.repository }}:latest-ee \
-            $(printf 'ghcr.io/${{ github.repository }}@sha256:%s ' *)
-
-      - name: Inspect image
-        env:
-          GIT_REF: ${{ github.event.release.tag_name || github.ref_name }}
-        run: |
-          SANITIZED_REF=$(echo "$GIT_REF" | sed 's/\//-/g')
           REPO="ghcr.io/${{ github.repository }}"
-          docker buildx imagetools inspect ${REPO}:${SANITIZED_REF}-ee
-          docker buildx imagetools inspect ${REPO}:latest-ee
+          while IFS=' ' read -r TAG OLD; do
+            if OUT="$(docker buildx imagetools inspect "$REPO:$TAG" 2>&1)"; then
+              NEW="$(printf '%s' "$OUT" | sha256sum | cut -d' ' -f1)"
+            else
+              NEW="ABSENT"
+            fi
+            if [ "$NEW" != "$OLD" ]; then
+              echo "Refusing: protected tag $TAG changed since preflight ($OLD -> $NEW)." >&2
+              exit 1
+            fi
+          done < "${{ runner.temp }}/protected/protected.txt"
+          echo "Protected tags unchanged since preflight."
+
+      - name: Create the single isolated tag from both digests
+        id: create
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          REPO="ghcr.io/${{ github.repository }}"
+          # The ONLY tag this workflow ever creates. latest-ee and fix-*-ee
+          # are deliberately absent from this command.
+          docker buildx imagetools create \
+            -t "$REPO:${{ env.EE_TAG }}" \
+            $(printf "$REPO@sha256:%s " *)
+          INSPECT="$(docker buildx imagetools inspect "$REPO:${{ env.EE_TAG }}")"
+          printf '%s\n' "$INSPECT"
+          INDEX_DIGEST="$(printf '%s' "$INSPECT" | grep -i '^Digest:' | grep -oE 'sha256:[0-9a-f]{64}' | head -1)"
+          if [ -z "$INDEX_DIGEST" ]; then
+            echo "Refusing: could not determine the final index digest." >&2
+            exit 1
+          fi
+          echo "index-digest=$INDEX_DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Confirm protected tags still untouched after publication
+        run: |
+          REPO="ghcr.io/${{ github.repository }}"
+          while IFS=' ' read -r TAG OLD; do
+            if OUT="$(docker buildx imagetools inspect "$REPO:$TAG" 2>&1)"; then
+              NEW="$(printf '%s' "$OUT" | sha256sum | cut -d' ' -f1)"
+            else
+              NEW="ABSENT"
+            fi
+            if [ "$NEW" != "$OLD" ]; then
+              echo "ALERT: protected tag $TAG changed during publication ($OLD -> $NEW)." >&2
+              exit 1
+            fi
+          done < "${{ runner.temp }}/protected/protected.txt"
+          echo "Protected tags untouched by publication."
+
+      - name: Record deployment identity in summary
+        run: |
+          {
+            echo "## EE isolated build prepared"
+            echo "- source SHA (app code): ${{ env.SOURCE_SHA }}"
+            echo "- workflow SHA (branch ${{ env.EXPECTED_BRANCH }} commit): ${{ github.sha }}"
+            echo "- image reference: ghcr.io/${{ github.repository }}:${{ env.EE_TAG }}"
+            echo "- final index digest: ${{ steps.create.outputs.index-digest }}"
+            echo "- deployment identity (digest, tags are mutable): ghcr.io/${{ github.repository }}@${{ steps.create.outputs.index-digest }}"
+            echo "- platform digests merged: $(ls ${{ runner.temp }}/digests | sort | tr '\n' ' ')"
+            echo "- protected tags verified unchanged: latest-ee, fix-producao-20261106-ee"
+            echo "- provenance: builder default (enabled, not disabled)"
+          } >> "$GITHUB_STEP_SUMMARY"

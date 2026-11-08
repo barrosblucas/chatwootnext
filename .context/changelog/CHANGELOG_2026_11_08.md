@@ -52,3 +52,16 @@ A transferência humana cria uma conversa nova na mesma inbox e mantém o mesmo 
 - `fdb8190` (Conecta) continua sendo o caminho de borda de novo ciclo na mesma conversa; a regra canônica de novo pedido em conversa nova é do ciclo de resolução do Chatwoot. Não alterado neste repo; a proteção de `reception` e a colisão `23505` pertencem ao outro autor. O ciclo completo NÃO é declarado validado só porque o WP silencia a conversa antiga.
 - O gate Chatwoot cobre: conversa resolvida não recebe inbound; `lock_to_single_conversation=false` cria conversa nova/escopo reception; retry antigo idempotente. O requisito de runtime (inbox humana com a flag false) é operacional e precisa ser confirmado no ambiente.
 - Sem migração: `case_protocol`, `org_unit_id`, `transfer_id` e assignee nativo já existem. Índice de protocolo, se necessário, exige migração aditiva separada.
+
+## EE Actions isolado — workflow preparado (sem commit, sem build, sem deploy)
+
+### Intenção da feature
+Preparar, sem executar, um build GitHub Actions da imagem Enterprise a partir do fonte exato `15fa2b33d6618d4dfcbd9357d36f6da62ecb3944` numa branch isolada (`ci/ee-build-15fa2b33`), publicando somente a tag nova `ee-src-15fa2b33d6618d4dfcbd9357d36f6da62ecb3944`, sem tocar em `latest-ee`/`fix-producao-20261106-ee`, sem merge em `main` e sem deploy. Estado: preparado apenas — sem commit, sem push, sem dispatch, sem build, sem deploy. Aprovação humana ainda necessária para commit, push e dispatch.
+
+### Mudanças (somente no worktree `ci/ee-build-15fa2b33`)
+- `.github/workflows/publish_ee_github_docker.yml`: workflow isolado com dispatch manual restrito à branch dedicada; checkout pinado no SHA cheio `15fa2b33...` (não no commit da branch); mantém `enterprise/` e `CW_EDITION=ee`; build multi-arch por digest sem tags concorrentes e merge único criando só a tag nova; pré-voo recusa tag existente e falha fechado sem confundir falha de rede/auth com ausência; verificação em-imagem por digest (`CW_EDITION`, `/app/enterprise`, `/app/.git_sha`); baseline e reconferência de `latest-ee`/`fix-producao-20261106-ee`; proveniência mantida no padrão (nunca desativada); identidade de deploy (digest final) registrada no summary.
+- Este changelog (append, conteúdo existente preservado).
+
+### Fora do escopo / pendências
+- Nada foi comitado, publicado, despachado ou construído; o checkout preparado original (`fix/producao-20261106`, Baileys) segue intocado.
+- Falta decidir/aprovar: commit, push da branch, `gh workflow run` com `GITHUB_TOKEN` mínimo e leitura do digest final no summary como identidade de deploy.
