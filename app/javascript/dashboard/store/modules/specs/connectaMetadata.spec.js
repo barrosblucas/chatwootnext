@@ -18,10 +18,14 @@ const makeState = () => ({
   scope: { accountId: null, userId: null, epoch: 0 },
 });
 
-const contextFor = state => ({
-  state,
-  commit: (type, payload) => mutations[type](state, payload),
-});
+const contextFor = state => {
+  const context = {
+    state,
+    commit: (type, payload) => mutations[type](state, payload),
+  };
+  context.dispatch = (type, payload) => actions[type](context, payload);
+  return context;
+};
 
 const metadata = id => ({
   case_protocol: `PROT-${id}`,
@@ -143,6 +147,29 @@ describe('connectaMetadata store', () => {
     expect(getters.getMetadata(state)(7)).toBeNull();
     expect(getters.isChecked(state)(7)).toBe(false);
     expect(state.scope.epoch).toBe(1);
+  });
+
+  it('refresh invalida e busca imediatamente o mesmo display id', async () => {
+    await actions.setScope(context, { accountId: 1, userId: 10 });
+    ConnectaAPI.conversationMetadata
+      .mockResolvedValueOnce({ data: { conversations: { 7: metadata(7) } } })
+      .mockResolvedValueOnce({
+        data: {
+          conversations: {
+            7: {
+              case_protocol: 'PROT-7',
+              org_unit_name: 'Setor Reuso',
+              root_unit_name: 'Raiz',
+            },
+          },
+        },
+      });
+
+    await actions.fetch(context, [7]);
+    await actions.refresh(context, 7);
+
+    expect(ConnectaAPI.conversationMetadata).toHaveBeenCalledTimes(2);
+    expect(getters.getMetadata(state)(7).org_unit_name).toBe('Setor Reuso');
   });
 
   it('atualiza setor após reuso/transferência do mesmo display id', async () => {

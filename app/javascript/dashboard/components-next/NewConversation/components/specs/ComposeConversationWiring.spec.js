@@ -43,5 +43,6 @@ describe('ComposeConversation sector picker wiring', () => {
       'await sendAdmissionFollowUps(data, followUpFiles);'
     );
     expect(source).toContain('files: admissionFiles');
+    expect(source).toContain('connectaMetadata/refresh');
   });
 });

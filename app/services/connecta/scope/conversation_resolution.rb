@@ -48,9 +48,10 @@ class Connecta::Scope::ConversationResolution
     # - `activation_stuck`: fecha direto.
     # Mantém org_unit/case_protocol/case_version; carimba closed_at. Sem escopo
     # (conversa legada) ou já terminal: nada faz.
-    def resolve_scope!(conversation)
+    def resolve_scope!(conversation) # rubocop:disable Metrics/MethodLength, Metrics/AbcSize
       return unless lifecycle_enforced?(conversation)
 
+      remote_abort_ids = []
       ActiveRecord::Base.transaction do
         Connecta::Transfer::LocalTransaction.lock!(
           inbox_id: conversation.inbox_id, contact_id: conversation.contact_id
@@ -62,10 +63,13 @@ class Connecta::Scope::ConversationResolution
         when 'reception', 'active', 'activation_stuck'
           close_scope!(scope)
         when 'transferring'
-          abort_inflight_transfer!(scope)
+          remote_abort_ids = abort_inflight_transfer!(scope)
         when 'pending_activation'
           close_pending_activation!(scope)
         end
+      end
+      remote_abort_ids.each do |transfer_id|
+        Connecta::Runtime::TransferAbortJob.perform_later(transfer_id, 'conversation_resolved')
       end
     end
 
@@ -109,13 +113,21 @@ class Connecta::Scope::ConversationResolution
     # Só registros pré-commit são abortáveis. Se o transfer já commitou, a
     # origem deveria estar transferred_out (terminal) e o caso não chega aqui.
     def abort_inflight_transfer!(scope)
+      remote_ids = []
       if transfer_records_available?
-        Connecta::Transfer::TransferRecord.where(
+        records = Connecta::Transfer::TransferRecord.where(
           source_conversation_id: scope.conversation_id,
           state: %w[requested awaiting_dispatch prepared unknown]
-        ).find_each { |record| record.update!(state: 'aborted') }
+        ).to_a
+        remote_ids = records.select do |record|
+          %w[prepared unknown].include?(record.state) &&
+            record.has_attribute?('platform_session_ref') &&
+            record.platform_session_ref.present?
+        end.map(&:id)
+        records.each { |record| record.update!(state: 'aborted') }
       end
       close_scope!(scope)
+      remote_ids
     end
 
     # O destino já pertence a um transfer commitado; fechar sem marcar o

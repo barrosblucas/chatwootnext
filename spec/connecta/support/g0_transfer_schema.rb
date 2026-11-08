@@ -19,6 +19,7 @@ module Connecta::G0TransferSchema
       t.bigint :destination_org_unit_id, null: false
       t.bigint :actor_user_id
       t.string :state, null: false
+      t.string :platform_session_ref
       t.integer :target_case_version
       t.string :summary_sha256
       t.timestamps

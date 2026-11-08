@@ -128,6 +128,26 @@ export const prepareAttachmentPayload = (
 // A admissão manual envia o primeiro anexo como upload multipart nativo.
 // O File cru fica no anexo mesmo quando o direct upload já criou o blob;
 // signed ID solto não é aceito no endpoint porque não prova vínculo de conta.
+// Nonce estável por anexo de acompanhamento: o servidor devolve a mensagem
+// existente quando o browser repete o envio após perder a resposta.
+export const followUpNonce = (conversationId, index, attachment = {}) => {
+  const resource = attachment.resource || attachment;
+  const identity =
+    [
+      resource.name || resource.filename,
+      resource.size || resource.byte_size,
+      resource.lastModified || resource.checksum,
+    ]
+      .filter(value => value !== undefined && value !== null && value !== '')
+      .join(':') ||
+    attachment.blobSignedId ||
+    'attachment';
+  return `connecta-followup:${conversationId}:${index}:${identity}`.slice(
+    0,
+    200
+  );
+};
+
 export const prepareAdmissionFiles = (attachedFiles = []) =>
   attachedFiles
     .map(

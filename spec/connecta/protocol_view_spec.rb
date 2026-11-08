@@ -114,13 +114,49 @@ RSpec.describe 'Connecta · protocolo, metadados e busca', type: :request do
       expect(body_json.fetch('stages').pluck('conversation_id')).to contain_exactly(conv_b.display_id)
     end
 
-    it 'admin nominal não enumera a etapa transferred_out (sem escrita)' do
+    it 'admin nominal não enumera a etapa transferred_out e audita deny explícito' do
       get protocol_path, headers: token_admin_nominal
 
       expect(response).to have_http_status(:ok)
       expect(body_json.fetch('stages').pluck('conversation_id')).to contain_exactly(
         conv_a.display_id, conv_b.display_id
       )
+      expect(
+        Connecta::Scope::AccessAudit.exists?(
+          user_id: admin_nominal.id, conversation_id: origin_conversation.id,
+          access_path: 'protocol_view', decision: 'deny'
+        )
+      ).to be(true)
+    end
+
+    it 'pagina por cursor sem esconder etapa visível após 200 etapas ocultas' do # rubocop:disable RSpec/ExampleLength
+      hidden_contact = create(:contact, account: account)
+      200.times do
+        conversation = create(:conversation, account: account, inbox: inbox, contact: hidden_contact)
+        Connecta::Scope::ConversationScope.create!(
+          conversation_id: conversation.id, inbox_id: inbox.id, contact_id: hidden_contact.id,
+          org_unit: org_a, state: 'transferred_out', case_protocol: protocol, case_version: 1
+        )
+      end
+      visible_contact = create(:contact, account: account)
+      visible = create(:conversation, account: account, inbox: inbox, contact: visible_contact, assignee: agent_a)
+      Connecta::Scope::ConversationScope.create!(
+        conversation_id: visible.id, inbox_id: inbox.id, contact_id: visible_contact.id,
+        org_unit: org_a, state: 'active', case_protocol: protocol, case_version: 1
+      )
+      queries = 0
+      subscriber = lambda do |_name, _start, _finish, _id, payload|
+        queries += 1 if payload[:sql].to_s.match?(/connecta_conversation_scopes|conversations/i)
+      end
+
+      ActiveSupport::Notifications.subscribed(subscriber, 'sql.active_record') do
+        get protocol_path, params: { limit: 1 }, headers: token_a
+      end
+
+      expect(response).to have_http_status(:ok)
+      expect(body_json.fetch('stages').pluck('conversation_id')).to eq([visible.display_id])
+      expect(body_json['next_cursor']).to be_nil
+      expect(queries).to be <= 20
     end
 
     it 'agente só com transferir não lê (404 genérico)' do

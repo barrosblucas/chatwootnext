@@ -72,8 +72,10 @@ class ConnectaApi extends ApiClient {
 
   // Etapas visíveis do protocolo. O backend filtra por conta/inbox e aplica
   // Gate por etapa; etapas ocultas não retornam id, nome nem link.
-  getProtocol(protocol) {
-    return axios.get(`${this.url}/protocols/${encodeURIComponent(protocol)}`);
+  getProtocol(protocol, { cursor = null, limit = null } = {}) {
+    return axios.get(`${this.url}/protocols/${encodeURIComponent(protocol)}`, {
+      params: { cursor, limit },
+    });
   }
 
   // Metadados da lista em lote; ids não visíveis são omitidos pelo servidor.

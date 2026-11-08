@@ -285,6 +285,25 @@ describe('composeConversationHelper', () => {
     });
   });
 
+  describe('followUpNonce', () => {
+    it('is stable for the same file and differs by index', () => {
+      const file = { resource: { name: 'a.png', size: 10, lastModified: 7 } };
+
+      expect(helpers.followUpNonce(9, 0, file)).toBe(
+        helpers.followUpNonce(9, 0, file)
+      );
+      expect(helpers.followUpNonce(9, 0, file)).not.toBe(
+        helpers.followUpNonce(9, 1, file)
+      );
+    });
+
+    it('prefers the direct upload signed id', () => {
+      expect(
+        helpers.followUpNonce(9, 0, { blobSignedId: 'signed-1' })
+      ).toContain('signed-1');
+    });
+  });
+
   describe('prepareAdmissionFiles', () => {
     it('uses the raw File even after a direct upload', () => {
       const raw = new File(['a'], 'a.png', { type: 'image/png' });

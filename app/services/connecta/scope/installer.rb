@@ -55,6 +55,7 @@ module Connecta::Scope::Installer
     ConversationBuilder.prepend(Connecta::Scope::ConversationReuse::BuilderInterceptor) unless
       ConversationBuilder <= Connecta::Scope::ConversationReuse::BuilderInterceptor
     Api::V1::Accounts::Conversations::DirectUploadsController.prepend(Connecta::Scope::DirectUploadsHook)
+    Api::V1::Accounts::Conversations::MessagesController.prepend(Connecta::Scope::FollowUpDedupeHook)
     Api::V1::Accounts::BulkActionsController.prepend(Connecta::Scope::BulkHook)
     Api::V1::Accounts::BulkActionsController.before_action(:connecta_scope_bulk_guard!, only: :create)
     Api::V1::Accounts::ConversationsController.prepend(Connecta::Scope::PresenceBulkHook)

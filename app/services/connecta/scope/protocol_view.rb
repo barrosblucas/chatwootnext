@@ -1,77 +1,135 @@
-# Visão por protocolo: todas as etapas visíveis ao ator, na ordem cronológica.
-# A consulta parte da conta e da inbox marcada; cada etapa passa pelo Gate, que
-# audita allow/deny. Etapas ocultas não entram no payload (nem id, nem nome,
-# nem link). Nenhum dado do cidadão é serializado.
+require 'base64'
+require 'json'
+require 'time'
+
+# Visão por protocolo: etapas visíveis ao ator, em páginas cursor (created_at,id).
+# A consulta é account-bound (conversations.account_id + inbox marcada), o Gate
+# roda antes do corte da página e cada etapa visitada é auditada. O cursor é
+# opaco e nunca enumera etapa oculta.
 class Connecta::Scope::ProtocolView
-  MAX_STAGES = 200
+  class InvalidRequest < StandardError; end
+
+  DEFAULT_LIMIT = 50
+  MAX_LIMIT = 100
+  SCAN_BATCH_SIZE = 100
+  CURSOR_VERSION = 1
 
   class << self
-    def call(account:, user:, protocol:)
+    # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
+    def call(account:, user:, protocol:, cursor: nil, limit: nil)
       normalized = Connecta::Scope::ProtocolSearch.normalize_protocol(protocol)
       return nil if normalized.nil?
 
-      conversations = visible_conversations(account, normalized)
-      return nil if conversations.empty?
+      page_size = normalize_limit(limit)
+      position = decode_cursor(cursor)
+      native_admin = Connecta::Scope::NativeAdmin.administrator?(user, account)
+      gate = Connecta::Scope::Gate.new(user)
+      visible = []
+      next_position = nil
 
-      visible, truncated = visible_scopes(conversations, normalized, user, account)
+      loop do
+        batch = scopes_batch(account, normalized, position)
+        break if batch.empty?
+
+        conversations = conversations_for(account, batch)
+        batch.each do |scope|
+          conversation = conversations[scope.conversation_id]
+          next unless conversation
+
+          unless native_admin || scope.state != 'transferred_out'
+            deny_nominal!(user, conversation)
+            next
+          end
+          next unless gate.read?(conversation, access_path: 'protocol_view', scope: scope)
+
+          visible << [scope, conversation]
+          if visible.length >= page_size
+            last_scope = batch.last
+            next_position = [scope.created_at, scope.id] unless scope.equal?(last_scope) && batch.length < SCAN_BATCH_SIZE
+            break
+          end
+        end
+
+        last = batch.last
+        position = [last.created_at, last.id]
+        break if visible.length >= page_size
+        break if batch.length < SCAN_BATCH_SIZE
+      end
+
       return nil if visible.empty?
 
-      # Devolve o valor armazenado (o writer pode ter gravado mixed case), não
-      # a forma normalizada da busca.
-      stored_protocol = visible.filter_map(&:case_protocol).first || normalized
-      serialize(stored_protocol, visible, conversations, truncated)
+      stored_protocol = visible.filter_map { |scope, _conversation| scope.case_protocol }.first || normalized
+      units = Connecta::Scope::ConversationMetadata.org_unit_map
+      {
+        protocol: stored_protocol,
+        native_admin: native_admin,
+        stages: visible.map { |scope, conversation| stage_payload(scope, conversation, units) },
+        next_cursor: next_position ? encode_cursor(*next_position) : nil
+      }
     end
+    # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
 
     private
 
-    # A consulta começa pela conta e pela inbox marcada; nunca faz pluck global
-    # de protocolo em ConversationScope (que leria ids de outras contas antes
-    # do filtro). A comparação é case-insensitive e literal (sem ILIKE/wildcard
-    # na visão por protocolo).
-    def visible_conversations(account, protocol)
-      scope_table = Connecta::Scope::ConversationScope.quoted_table_name
-      account.conversations
-             .joins("INNER JOIN #{scope_table} connecta_protocol_view_scopes " \
-                    'ON connecta_protocol_view_scopes.conversation_id = conversations.id')
-             .where('LOWER(connecta_protocol_view_scopes.case_protocol) = ?', protocol.downcase)
-             .where(conversations: { inbox_id: Connecta::Scope::ScopedInbox.select(:inbox_id) })
-             .includes(:assignee)
-             .distinct
-             .to_a
-             .index_by(&:id)
-    end
-
-    def visible_scopes(conversations, protocol, user, account)
-      native_admin = Connecta::Scope::NativeAdmin.administrator?(user, account)
-      gate = Connecta::Scope::Gate.new(user)
-      scopes = Connecta::Scope::ConversationScope
-               .where(conversation_id: conversations.keys)
-               .where('LOWER(case_protocol) = ?', protocol.downcase)
-               .includes(:org_unit)
-               .order(:created_at, :id)
-               .limit(MAX_STAGES + 1)
-               .to_a
-      truncated = scopes.length > MAX_STAGES
-      scopes = scopes.first(MAX_STAGES)
-      visible = scopes.select do |scope|
-        conversation = conversations[scope.conversation_id]
-        next false unless conversation
-        # Contrato do papel nominal: não enumera a etapa transferred_out. O
-        # administrador NATIVO da conta continua vendo a cadeia inteira.
-        next false if !native_admin && scope.state == 'transferred_out'
-
-        gate.read?(conversation, access_path: 'protocol_view', scope: scope)
+    def scopes_batch(account, protocol, position)
+      table = Connecta::Scope::ConversationScope.quoted_table_name
+      relation = Connecta::Scope::ConversationScope
+                 .joins("INNER JOIN conversations ON conversations.id = #{table}.conversation_id")
+                 .where(conversations: { account_id: account.id })
+                 .where('conversations.inbox_id IN (?)', Connecta::Scope::ScopedInbox.select(:inbox_id))
+                 .where("LOWER(#{table}.case_protocol) = ?", protocol.downcase)
+                 .includes(:org_unit)
+                 .order("#{table}.created_at ASC, #{table}.id ASC")
+                 .limit(SCAN_BATCH_SIZE)
+      if position
+        relation = relation.where("(#{table}.created_at, #{table}.id) > (?, ?)", position[0], position[1])
       end
-      [visible, truncated]
+      relation.to_a
     end
 
-    def serialize(protocol, visible, conversations, truncated)
-      units = Connecta::Scope::ConversationMetadata.org_unit_map
-      {
-        protocol: protocol,
-        truncated: truncated,
-        stages: visible.map { |scope| stage_payload(scope, conversations[scope.conversation_id], units) }
-      }
+    def conversations_for(account, batch)
+      Conversation.where(account_id: account.id, id: batch.map(&:conversation_id))
+                  .includes(:assignee)
+                  .index_by(&:id)
+    end
+
+    def deny_nominal!(user, conversation)
+      Connecta::Scope::AccessAudit.create!(
+        user_id: user.id, conversation_id: conversation.id, surface: 'conversation',
+        access_path: 'protocol_view', decision: 'deny'
+      )
+    end
+
+    def normalize_limit(value)
+      return DEFAULT_LIMIT if value.blank?
+
+      parsed = value.is_a?(Integer) ? value : Integer(value, 10)
+      raise InvalidRequest, 'limit out of range' unless parsed.between?(1, MAX_LIMIT)
+
+      parsed
+    rescue ArgumentError, TypeError
+      raise InvalidRequest, 'limit is invalid'
+    end
+
+    def encode_cursor(created_at, id)
+      payload = { v: CURSOR_VERSION, at: created_at.iso8601(6), id: id }
+      Base64.urlsafe_encode64(JSON.generate(payload), padding: false)
+    end
+
+    def decode_cursor(value)
+      return nil if value.blank?
+
+      raw = Base64.urlsafe_decode64(value.to_s)
+      data = JSON.parse(raw)
+      raise InvalidRequest, 'cursor version' unless data['v'] == CURSOR_VERSION
+
+      created_at = Time.iso8601(data['at'].to_s)
+      id = Integer(data['id'], 10)
+      raise InvalidRequest, 'cursor id' unless id.positive?
+
+      [created_at, id]
+    rescue ArgumentError, TypeError, JSON::ParserError, KeyError
+      raise InvalidRequest, 'cursor is invalid'
     end
 
     def stage_payload(scope, conversation, units)

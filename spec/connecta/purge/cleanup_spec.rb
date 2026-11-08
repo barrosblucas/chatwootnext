@@ -37,6 +37,25 @@ RSpec.describe Connecta::Purge::Cleanup do
       blob
     end
   end
+  let!(:scheduled_messages) do
+    [
+      create(:scheduled_message, account: account, inbox: inbox, conversation: conversations.first,
+                                 author: create(:user, account: account)),
+      create(:recurring_scheduled_message, account: account, inbox: inbox, conversation: conversations.last,
+                                           author: create(:user, account: account))
+    ]
+  end
+  let!(:scheduled_blobs) do
+    scheduled_messages.map do |record|
+      blob = ActiveStorage::Blob.create_and_upload!(
+        io: StringIO.new('agendado sintético'),
+        filename: "scheduled-#{run_id}-#{record.id}.txt",
+        content_type: 'text/plain'
+      )
+      record.attachment.attach(blob)
+      blob
+    end
+  end
   let(:account_ids) { [account.id] }
 
   before do
@@ -51,7 +70,7 @@ RSpec.describe Connecta::Purge::Cleanup do
   end
 
   after do
-    blobs.each do |blob|
+    (blobs + scheduled_blobs).each do |blob|
       ActiveStorage::Blob.service.delete(blob.key)
     rescue StandardError
       nil
@@ -79,10 +98,12 @@ RSpec.describe Connecta::Purge::Cleanup do
 
   it 'remove conversas, mensagens e escopos, preservando contatos, caixas, contas, usuários e config' do
     before_counts = preserved_counts
+    before_audits = [Audit.count, Connecta::Scope::AccessAudit.count]
     plan = inspect_plan
 
     expect(plan[:counts]).to include(
-      conversations: 2, legacy_attachments: 2, conversation_scopes: 2
+      conversations: 2, legacy_attachments: 2, conversation_scopes: 2,
+      scheduled_messages: 1, recurring_scheduled_messages: 1, active_storage_attachments: 4
     )
     expect(plan[:counts][:messages]).to be >= messages.size
     result = apply_plan(plan)
@@ -92,9 +113,29 @@ RSpec.describe Connecta::Purge::Cleanup do
     expect(Conversation.where(id: conversations.map(&:id)).count).to eq(0)
     expect(Message.where(account_id: account.id).count).to eq(0)
     expect(Attachment.where(account_id: account.id).count).to eq(0)
+    expect(ScheduledMessage.where(account_id: account.id).count).to eq(0)
+    expect(RecurringScheduledMessage.where(account_id: account.id).count).to eq(0)
     expect(Connecta::Scope::ConversationScope.where(inbox_id: inbox.id).count).to eq(0)
-    expect(ActiveStorage::Blob.where(id: blobs.map(&:id)).count).to eq(0)
+    expect(ActiveStorage::Blob.where(id: (blobs + scheduled_blobs).map(&:id)).count).to eq(0)
     expect(preserved_counts).to eq(before_counts)
+    expect(Audit.count).to be >= before_audits[0]
+    expect(Connecta::Scope::AccessAudit.count).to be >= before_audits[1]
+  end
+
+  it 'recusa lista protegida reduzida antes de qualquer delete' do
+    expect do
+      described_class.plan(account_ids: account_ids, protected_tables: ['accounts'])
+    end.to raise_error(described_class::Blocked, 'PROTECTED_TABLES_IMMUTABLE')
+  end
+
+  it 'aborta ANTES de deletar quando installation_config muda' do
+    plan = inspect_plan
+    InstallationConfig.create!(name: "purge_delta_#{run_id}", value: 'synthetic', locked: true)
+
+    expect { apply_plan(plan) }.to raise_error(described_class::Blocked, 'INVENTORY_CHANGED')
+
+    expect(Conversation.where(id: conversations.map(&:id)).count).to eq(2)
+    expect(Message.where(id: messages.map(&:id)).count).to eq(2)
   end
 
   it 'aborta ANTES de deletar quando surge conversa nova na conta' do
@@ -130,37 +171,55 @@ RSpec.describe Connecta::Purge::Cleanup do
     expect(Message.where(id: messages.map(&:id)).count).to eq(2)
     expect(Connecta::Scope::ConversationScope.where(conversation_id: conversations.map(&:id)).count).to eq(2)
     expect(Attachment.where(account_id: account.id).count).to eq(2)
-    expect(ActiveStorage::Attachment.where(blob_id: blobs.map(&:id)).count).to eq(2)
-    expect(ActiveStorage::Blob.where(id: blobs.map(&:id)).count).to eq(2)
+    expect(ScheduledMessage.where(account_id: account.id).count).to eq(1)
+    expect(RecurringScheduledMessage.where(account_id: account.id).count).to eq(1)
+    expect(ActiveStorage::Attachment.where(blob_id: (blobs + scheduled_blobs).map(&:id)).count).to eq(4)
+    expect(ActiveStorage::Blob.where(id: (blobs + scheduled_blobs).map(&:id)).count).to eq(4)
     expect(preserved_counts).to eq(before_counts)
   end
 
-  it 'purge de blob só ocorre após commit; falha transitória deixa pending e retry exato' do
+  it 'falha real de service.delete deixa manifesto pending e retry exato mesmo com row ausente' do
     plan = inspect_plan
-    failing_id = plan[:payload][:blob_ids].first
+    failing = plan[:payload][:blobs].first
     first_attempt = true
-    allow_any_instance_of(described_class).to receive(:purge_blob).and_wrap_original do |original, blob| # rubocop:disable RSpec/AnyInstance
-      if blob.id == failing_id && first_attempt
+    # rubocop:disable RSpec/AnyInstance
+    allow_any_instance_of(ActiveStorage::Service::DiskService).to receive(:delete).and_wrap_original do |original, key|
+      if key == failing[:key] && first_attempt
         first_attempt = false
         raise IOError, 'transient storage error'
       end
 
-      original.call(blob)
+      original.call(key)
     end
+    # rubocop:enable RSpec/AnyInstance
 
     result = apply_plan(plan)
 
     expect(result[:status]).to eq('committed_blob_pending')
-    expect(result[:remaining_blob_ids]).to eq([failing_id])
-    expect(ActiveStorage::Blob.exists?(failing_id)).to be(true)
+    expect(result[:remaining_blobs].map { |entry| entry[:key] }).to include(failing[:key])
+    expect(ActiveStorage::Blob.exists?(failing[:id])).to be(true)
     expect(Conversation.where(id: conversations.map(&:id)).count).to eq(0)
 
-    allow_any_instance_of(described_class).to receive(:purge_blob).and_call_original # rubocop:disable RSpec/AnyInstance
-    retry_result = described_class.purge_blobs(blob_ids: result[:remaining_blob_ids])
+    # O retry não depende da row: simula row já ausente e usa o manifesto opaco.
+    ActiveStorage::Blob.where(id: failing[:id]).delete_all
+    allow_any_instance_of(ActiveStorage::Service::DiskService).to receive(:delete).and_call_original # rubocop:disable RSpec/AnyInstance
+    retry_result = described_class.purge_blobs(blobs: result[:remaining_blobs])
 
     expect(retry_result[:status]).to eq('committed')
-    expect(retry_result[:remaining_blob_ids]).to be_empty
-    expect(ActiveStorage::Blob.exists?(failing_id)).to be(false)
+    expect(retry_result[:remaining_blobs]).to be_empty
+    expect(ActiveStorage::Blob.exists?(failing[:id])).to be(false)
+  end
+
+  it 'arquivo ausente comprovado permite remover metadata e declarar commit' do
+    plan = inspect_plan
+    target = plan[:payload][:blobs].first
+    target_blob = ActiveStorage::Blob.find(target[:id])
+    ActiveStorage::Blob.service.delete(target_blob.key)
+
+    result = apply_plan(plan)
+
+    expect(result[:status]).to eq('committed')
+    expect(ActiveStorage::Blob.exists?(target[:id])).to be(false)
   end
 
   it 'recusa apply sem writers parados ou confirmação/hash exatos' do

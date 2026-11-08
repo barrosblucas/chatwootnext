@@ -7,6 +7,9 @@ require 'rails_helper'
 # rubocop:disable RSpec/MultipleExpectations
 RSpec.describe Connecta::Purge::SidekiqCleanup do
   let(:run_id) { SecureRandom.hex(4) }
+  let(:redis) do
+    Redis.new(url: ENV.fetch('REDIS_URL'), password: ENV['REDIS_PASSWORD'])
+  end
   let(:keys) do
     {
       schedule: "connecta-purge-test:#{run_id}:schedule",
@@ -30,7 +33,7 @@ RSpec.describe Connecta::Purge::SidekiqCleanup do
   end
 
   def plan
-    described_class.plan(keys: keys)
+    described_class.plan(redis: redis, keys: keys)
   end
 
   def apply(plan_hash)
@@ -38,12 +41,16 @@ RSpec.describe Connecta::Purge::SidekiqCleanup do
       expected_hash: plan_hash,
       confirmation: "APPLY:#{plan_hash}",
       writers_stopped: true,
+      redis: redis,
       keys: keys
     )
   end
 
   before { clear_keys }
-  after { clear_keys }
+  after do
+    clear_keys
+    redis.close if redis.respond_to?(:close)
+  end
 
   it 'remove só dead Webhooks::WhatsappEventsJob e preserva scheduled/retry e PurgeJob' do
     scheduled = add(keys[:schedule], 'ActiveStorage::PurgeJob', 'arg-scheduled')
@@ -99,6 +106,17 @@ RSpec.describe Connecta::Purge::SidekiqCleanup do
     expect(with_redis { |conn| conn.zcard(keys[:retry]) }).to eq(1)
   end
 
+  it 'exige redis e keys explicitos antes de qualquer leitura' do
+    expect { described_class.plan(redis: redis) }.to raise_error(ArgumentError)
+    expect { described_class.plan(redis: nil, keys: keys) }.to raise_error(
+      described_class::Blocked, 'REDIS_REQUIRED'
+    )
+    expect { described_class.plan(redis: redis, keys: { schedule: keys[:schedule] }) }.to raise_error(
+      described_class::Blocked, 'KEYS_REQUIRED:retry'
+    )
+    expect(with_redis { |conn| conn.zcard(keys[:dead]) }).to eq(0)
+  end
+
   it 'recusa apply sem writers parados ou confirmação exata' do
     add(keys[:dead], 'Webhooks::WhatsappEventsJob', 'target')
     inspected = plan
@@ -106,14 +124,15 @@ RSpec.describe Connecta::Purge::SidekiqCleanup do
     expect do
       described_class.apply(
         expected_hash: inspected[:inventory_hash], confirmation: 'APPLY:errado',
-        writers_stopped: true, keys: keys
+        writers_stopped: true, redis: redis, keys: keys
       )
     end.to raise_error(described_class::Blocked, 'CONFIRMATION_REQUIRED')
 
     expect do
       described_class.apply(
         expected_hash: inspected[:inventory_hash],
-        confirmation: "APPLY:#{inspected[:inventory_hash]}", writers_stopped: false, keys: keys
+        confirmation: "APPLY:#{inspected[:inventory_hash]}", writers_stopped: false,
+        redis: redis, keys: keys
       )
     end.to raise_error(described_class::Blocked, 'WRITERS_NOT_STOPPED')
   end

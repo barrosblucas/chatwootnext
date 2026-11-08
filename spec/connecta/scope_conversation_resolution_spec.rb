@@ -18,6 +18,7 @@ Connecta::Scope::Installer.install!
 
 RSpec.describe 'Connecta · ciclo de vida do escopo na resolução/reabertura (decisão 005)', type: :request do
   include_context 'with connecta g0 scope fixture'
+  self.use_transactional_tests = false
 
   let(:messages_path) { "#{conversations_path}/#{conv_a.display_id}/messages" }
   let(:toggle_path) { "#{conversations_path}/#{conv_a.display_id}/toggle_status" }
@@ -27,6 +28,31 @@ RSpec.describe 'Connecta · ciclo de vida do escopo na resolução/reabertura (d
   before do
     stub_const('ENV', ENV.to_h.merge('CONNECTA_HUMAN_NUMBER_ENABLED' => 'true'))
     create(:inbox_member, inbox: whatsapp_inbox, user: native_admin)
+  end
+
+  after do
+    example_conversation_ids = Conversation.where(account_id: account.id).pluck(:id)
+    Connecta::Transfer::OutboundDispatchRecord.where(conversation_id: example_conversation_ids).delete_all
+    Connecta::Transfer::TransferRecord.where(
+      'source_conversation_id IN (?) OR destination_conversation_id IN (?)',
+      example_conversation_ids, example_conversation_ids
+    ).delete_all
+    Connecta::Scope::ConversationScope.where(inbox_id: whatsapp_inbox.id).delete_all
+    Connecta::Scope::ScopedInbox.where(inbox_id: whatsapp_inbox.id).delete_all
+    ContactInbox.where(inbox_id: whatsapp_inbox.id).delete_all
+    user_ids = [agent_a, agent_b, manager_a, admin_nominal, member_without_grant].map(&:id)
+    Connecta::Scope::UserGrant.where(user_id: user_ids).delete_all
+    Connecta::Scope::UserAuthEpoch.where(user_id: user_ids).delete_all
+    Connecta::Scope::AclSyncState.where(id: projection_heartbeat.id).delete_all
+    Connecta::Scope::OrgUnit.where(id: [org_root.id, org_a.id, org_a1.id, org_b.id]).delete_all
+    InternalChat::Channel.where(account_id: account.id).destroy_all
+
+    connection = ActiveRecord::Base.connection
+    account_tables = (connection.tables - ['accounts']).select { |table| connection.column_exists?(table, :account_id) }
+    account_tables.each do |table|
+      connection.delete("DELETE FROM #{connection.quote_table_name(table)} WHERE account_id = #{account.id.to_i}")
+    end
+    Account.where(id: account.id).delete_all
   end
 
   describe 'resolver move o escopo a terminal (AC1)' do
@@ -92,6 +118,23 @@ RSpec.describe 'Connecta · ciclo de vida do escopo na resolução/reabertura (d
 
       expect(scope_of_conv_a.reload.state).to eq('closed')
       expect(record.reload.state).to eq('aborted')
+    end
+
+    it 'prepared com platform_session_ref enfileira abort remoto uma vez, após o fechamento' do
+      scope_of_conv_a.update!(state: 'transferring')
+      record = Connecta::Transfer::TransferRecord.create!(
+        source_conversation_id: conv_a.id, destination_org_unit_id: org_b.id,
+        state: 'prepared', platform_session_ref: 'sess-prepared', target_case_version: 1
+      )
+
+      expect { conv_a.update!(status: :resolved) }
+        .to have_enqueued_job(Connecta::Runtime::TransferAbortJob)
+        .with(record.id, 'conversation_resolved')
+      expect(scope_of_conv_a.reload.state).to eq('closed')
+      expect(record.reload.state).to eq('aborted')
+
+      expect { Connecta::Scope::ConversationResolution.resolve_scope!(conv_a.reload) }
+        .not_to have_enqueued_job(Connecta::Runtime::TransferAbortJob)
     end
 
     it 'transferred_out continua terminal e não é reaberto pela resolução' do

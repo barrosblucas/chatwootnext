@@ -15,6 +15,7 @@ import {
   createContactSearcher,
   createNewContact,
   fetchContactableInboxes,
+  followUpNonce,
   processContactableInboxes,
   mergeInboxDetails,
 } from 'dashboard/components-next/NewConversation/helpers/composeConversationHelper';
@@ -268,13 +269,16 @@ const createGroup = async ({ inboxId, subject, participants }) => {
 // picked: WhatsApp orders by arrival, and a Promise.all reorders them for the contact.
 const sendFollowUpFiles = (conversationId, followUpFiles) =>
   followUpFiles.reduce(
-    (previous, file) =>
+    (previous, file, index) =>
       previous.then(() =>
         store.dispatch('createPendingMessageAndSend', {
           conversationId,
           files: [
             directUploadsEnabled.value ? file.blobSignedId : file.resource.file,
           ],
+          contentAttributes: {
+            connecta_followup_nonce: followUpNonce(conversationId, index, file),
+          },
           message: '',
           private: false,
         })
@@ -306,7 +310,7 @@ const completeAdmission = data => {
   sectorDestinations.value = [];
   discardCompose();
   admissionAttemptKey.value = null;
-  store.dispatch('connectaMetadata/invalidate', data.id);
+  store.dispatch('connectaMetadata/refresh', data.id);
   useAlert(t('COMPOSE_NEW_CONVERSATION.FORM.SUCCESS_MESSAGE'), action);
 };
 

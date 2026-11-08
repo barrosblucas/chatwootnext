@@ -10,11 +10,11 @@ class Connecta::Purge::SidekiqCleanup
   DISCARD_DEAD = ['Webhooks::WhatsappEventsJob'].freeze
   PRESERVE_DEAD = ['ActiveStorage::PurgeJob'].freeze
   DATA_INGRESS = ['Webhooks::WhatsappEventsJob'].freeze
-  DEFAULT_KEYS = { schedule: 'schedule', retry: 'retry', dead: 'dead' }.freeze
+  REQUIRED_KEYS = %i[schedule retry dead].freeze
   HASH_PATTERN = /\A[0-9a-f]{64}\z/
 
   class << self
-    def plan(redis: nil, keys: DEFAULT_KEYS)
+    def plan(redis:, keys:)
       data = new(redis: redis, keys: keys).snapshot
       {
         status: 'inspected',
@@ -24,14 +24,16 @@ class Connecta::Purge::SidekiqCleanup
       }
     end
 
-    def apply(expected_hash:, confirmation:, writers_stopped:, redis: nil, keys: DEFAULT_KEYS)
+    def apply(expected_hash:, confirmation:, writers_stopped:, redis:, keys:)
       new(redis: redis, keys: keys).apply(
         expected_hash: expected_hash, confirmation: confirmation, writers_stopped: writers_stopped
       )
     end
   end
 
-  def initialize(redis: nil, keys: DEFAULT_KEYS)
+  def initialize(redis:, keys:)
+    fail!('REDIS_REQUIRED') if redis.nil?
+
     @redis = redis
     @keys = normalize_keys(keys)
   end
@@ -94,14 +96,19 @@ class Connecta::Purge::SidekiqCleanup
   private
 
   def normalize_keys(keys)
-    normalized = DEFAULT_KEYS.to_h { |name, default| [name, keys[name] || keys[name.to_s] || default] }
-    normalized.transform_values(&:to_s).freeze
+    fail!('KEYS_REQUIRED') unless keys.is_a?(Hash)
+
+    normalized = REQUIRED_KEYS.to_h do |name|
+      value = keys[name] || keys[name.to_s]
+      fail!("KEYS_REQUIRED:#{name}") if value.to_s.strip.empty?
+
+      [name, value.to_s]
+    end
+    normalized.freeze
   end
 
-  def with_redis(&)
-    return yield(@redis) if @redis
-
-    Sidekiq.redis(&)
+  def with_redis
+    yield(@redis)
   end
 
   def counts(rows)

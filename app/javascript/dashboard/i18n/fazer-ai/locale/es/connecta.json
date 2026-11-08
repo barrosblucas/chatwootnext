@@ -15,6 +15,8 @@
       "VIEW_STAGES": "Ver etapas",
       "TITLE": "Etapas del protocolo",
       "LOADING": "Cargando etapas…",
+      "LOADING_MORE": "Cargando más etapas…",
+      "LOAD_MORE": "Cargar más etapas",
       "LOAD_ERROR": "No se pudieron cargar las etapas.",
       "EMPTY": "No hay etapas visibles para este protocolo.",
       "CURRENT": "Etapa actual",

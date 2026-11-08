@@ -987,6 +987,7 @@ const subscribePresenceForTopChats = () => {
 };
 
 let presenceInterval = null;
+let connectaMetadataInterval = null;
 
 onMounted(() => {
   store.dispatch('setChatListFilters', conversationFilters.value);
@@ -999,6 +1000,10 @@ onMounted(() => {
     store.dispatch('campaigns/get');
   }
   presenceInterval = setInterval(subscribePresenceForTopChats, 60000);
+  connectaMetadataInterval = setInterval(
+    () => refreshConnectaMetadata(conversationList.value),
+    60000
+  );
 });
 
 watch(assigneeTabItems, items => {
@@ -1009,6 +1014,7 @@ watch(assigneeTabItems, items => {
 
 onBeforeUnmount(() => {
   if (presenceInterval) clearInterval(presenceInterval);
+  if (connectaMetadataInterval) clearInterval(connectaMetadataInterval);
 });
 
 const deleteConversationDialogRef = ref(null);

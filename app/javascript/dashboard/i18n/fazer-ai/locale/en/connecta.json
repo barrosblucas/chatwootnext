@@ -15,6 +15,8 @@
       "VIEW_STAGES": "View stages",
       "TITLE": "Protocol stages",
       "LOADING": "Loading stages…",
+      "LOADING_MORE": "Loading more stages…",
+      "LOAD_MORE": "Load more stages",
       "LOAD_ERROR": "Could not load the stages.",
       "EMPTY": "No visible stage for this protocol.",
       "CURRENT": "Current stage",

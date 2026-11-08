@@ -10,16 +10,16 @@ require 'json'
 # - apply(account_ids:, expected_hash:, confirmation:, writers_stopped:)
 #   revalida o hash ANTES de deletar; a transação cobre mensagens, conversas e
 #   escopos; o purge dos blobs só roda DEPOIS do commit.
-# - purge_blobs(blob_ids:) => retry exato dos blobs pendentes, sem tocar no banco
-#   de conversas.
+# - purge_blobs(blobs:) => retry exato do manifesto opaco {id,key,service_name},
+#   sem tocar no banco de conversas.
 class Connecta::Purge::Cleanup # rubocop:disable Metrics/ClassLength
   class Blocked < StandardError; end
 
   PROTECTED_TABLES = %w[
     accounts users account_users inboxes inbox_members contacts contact_inboxes
     agent_bots agent_bot_inboxes teams labels webhooks channel_whatsapp
-    connecta_scoped_inboxes connecta_user_grants connecta_user_auth_epochs
-    connecta_acl_sync_state
+    installation_configs connecta_scoped_inboxes connecta_user_grants
+    connecta_user_auth_epochs connecta_acl_sync_state
   ].freeze
   AUDIT_TABLES = %w[audits connecta_access_audits].freeze
   PROTECTED_DEPENDENT_MODELS = %w[Account User Inbox Contact ContactInbox AgentBot Team Label Webhook].freeze
@@ -41,16 +41,16 @@ class Connecta::Purge::Cleanup # rubocop:disable Metrics/ClassLength
       ).apply(expected_hash: expected_hash, confirmation: confirmation, writers_stopped: writers_stopped)
     end
 
-    def purge_blobs(blob_ids:)
-      new(account_ids: nil, skip_account_validation: true).purge_blobs(blob_ids: blob_ids)
+    def purge_blobs(blobs:)
+      new(account_ids: nil, skip_account_validation: true).purge_blobs(blobs: blobs)
     end
   end
 
   def initialize(account_ids:, protected_tables: PROTECTED_TABLES, audit_tables: AUDIT_TABLES,
                  skip_account_validation: false)
     @account_ids = skip_account_validation ? [] : normalize_account_ids(account_ids)
-    @protected_tables = normalize_tables(protected_tables, 'PROTECTED_TABLE_INVALID')
-    @audit_tables = normalize_tables(audit_tables, 'AUDIT_TABLE_INVALID')
+    @protected_tables = immutable_tables(protected_tables, PROTECTED_TABLES, 'PROTECTED_TABLES_IMMUTABLE')
+    @audit_tables = immutable_tables(audit_tables, AUDIT_TABLES, 'AUDIT_TABLES_IMMUTABLE')
     ensure_protected_dependencies! unless skip_account_validation
   end
 
@@ -89,48 +89,49 @@ class Connecta::Purge::Cleanup # rubocop:disable Metrics/ClassLength
       verify_targets_gone!(payload, before_protected, before_audit)
     end
 
-    blob_result = purge_blobs(blob_ids: payload[:blob_ids])
+    # O manifesto foi capturado ANTES do commit, com key/service_name. Nunca
+    # dependemos da row do Blob (Blob#purge pode destruí-la) para o retry.
+    blob_result = purge_blobs(blobs: payload[:blobs])
     {
       status: blob_result[:status] == 'committed' ? 'committed' : 'committed_blob_pending',
       counts: current[:counts],
       protected_counts: protected_counts,
       audit_counts: audit_counts,
       blob_purge_failures: blob_result[:failures],
-      remaining_blob_ids: blob_result[:remaining_blob_ids],
+      remaining_blobs: blob_result[:remaining_blobs],
+      remaining_blob_ids: blob_result[:remaining_blobs].map { |entry| entry[:id] },
       inventory_hash: current[:hash]
     }
   rescue ActiveRecord::RecordInvalid, ActiveRecord::RecordNotDestroyed, ActiveRecord::DeleteRestrictionError => e
     fail!("DELETE_FAILED:#{e.class}")
   end
 
-  # Purge idempotente e exato. Um blob ainda referenciado por ActiveStorage
-  # permanece pendente (nunca é removido por engano). Falha transitória mantém
-  # o id na lista de retry, sem declarar sucesso.
-  def purge_blobs(blob_ids:) # rubocop:disable Metrics/MethodLength
-    ids = normalize_blob_ids(blob_ids)
+  # Purge idempotente e exato por manifesto opaco {id,key,service_name}. A row
+  # do Blob só é removida DEPOIS de o storage confirmar delete/ausência; falha
+  # transitória mantém o manifesto inteiro para retry, inclusive se a row já
+  # tiver sumido.
+  def purge_blobs(blobs:) # rubocop:disable Metrics/MethodLength
+    manifest = normalize_blob_manifest(blobs)
     failures = 0
-    ids.each do |blob_id|
-      blob = ActiveStorage::Blob.find_by(id: blob_id)
-      next if blob.nil?
-
-      if ActiveStorage::Attachment.exists?(blob_id: blob_id)
+    pending = []
+    manifest.each do |entry|
+      if ActiveStorage::Attachment.exists?(blob_id: entry[:id])
         failures += 1
+        pending << entry
         next
       end
 
       begin
-        purge_blob(blob)
-      rescue ActiveStorage::FileNotFoundError
-        blob.delete
+        purge_manifest_entry!(entry)
       rescue StandardError
         failures += 1
+        pending << entry
       end
     end
-    remaining = ActiveStorage::Blob.where(id: ids).order(:id).pluck(:id)
     {
-      status: remaining.empty? ? 'committed' : 'committed_blob_pending',
+      status: pending.empty? ? 'committed' : 'committed_blob_pending',
       failures: failures,
-      remaining_blob_ids: remaining
+      remaining_blobs: pending
     }
   end
 
@@ -143,15 +144,22 @@ class Connecta::Purge::Cleanup # rubocop:disable Metrics/ClassLength
     conversation_ids = Conversation.where(account_id: @account_ids).order(:id).pluck(:id)
     message_ids = Message.where(conversation_id: conversation_ids).order(:id).pluck(:id)
     legacy_attachment_ids = Attachment.where(message_id: message_ids).order(:id).pluck(:id)
-    blob_ids = active_storage_blob_ids(message_ids, legacy_attachment_ids)
+    scheduled_ids = ScheduledMessage.where(conversation_id: conversation_ids).order(:id).pluck(:id)
+    recurring_ids = RecurringScheduledMessage.where(conversation_id: conversation_ids).order(:id).pluck(:id)
+    attachment_rows = active_storage_attachment_rows(message_ids, legacy_attachment_ids, scheduled_ids, recurring_ids)
+    attachments = attachment_rows.map { |row| { id: row.id, blob_id: row.blob_id } }
+    blobs = blob_manifest(attachment_rows.map(&:blob_id))
     scope_ids = Connecta::Scope::ConversationScope.where(conversation_id: conversation_ids)
                                                   .order(:conversation_id).pluck(:conversation_id)
     protected = protected_counts
     audits = audit_counts
     payload = {
-      version: 1, account_ids: @account_ids,
+      version: 2, account_ids: @account_ids,
       conversation_ids: conversation_ids, message_ids: message_ids,
-      legacy_attachment_ids: legacy_attachment_ids, blob_ids: blob_ids,
+      legacy_attachment_ids: legacy_attachment_ids,
+      scheduled_message_ids: scheduled_ids, recurring_scheduled_message_ids: recurring_ids,
+      active_storage_attachment_ids: attachments.map { |entry| entry[:id] },
+      attachments: attachments, blobs: blobs,
       scope_ids: scope_ids, protected_counts: protected, audit_counts: audits
     }
     {
@@ -161,8 +169,11 @@ class Connecta::Purge::Cleanup # rubocop:disable Metrics/ClassLength
         conversations: conversation_ids.length,
         messages: message_ids.length,
         legacy_attachments: legacy_attachment_ids.length,
-        active_storage_blobs: blob_ids.length,
-        active_storage_bytes: ActiveStorage::Blob.where(id: blob_ids).sum(:byte_size).to_i,
+        scheduled_messages: scheduled_ids.length,
+        recurring_scheduled_messages: recurring_ids.length,
+        active_storage_attachments: attachments.length,
+        active_storage_blobs: blobs.length,
+        active_storage_bytes: ActiveStorage::Blob.where(id: blobs.map { |entry| entry[:id] }).sum(:byte_size).to_i,
         conversation_scopes: scope_ids.length
       },
       protected_counts: protected,
@@ -175,12 +186,17 @@ class Connecta::Purge::Cleanup # rubocop:disable Metrics/ClassLength
     }
   end
 
-  # Remove apenas os vínculos ActiveStorage dos alvos, sem purge_later. Isso
-  # impede que um rollback restaure a conversa com o blob já apagado por um job
-  # enfileirado dentro da transação. O blob em si só é purgado após o commit.
+  # Remove apenas os vínculos ActiveStorage inventariados, sem purge_later. O
+  # blob em si só é tocado após o commit; um rollback restaura os vínculos e
+  # nenhum job de purge foi enfileirado.
   def detach_active_storage_rows!(payload)
-    ActiveStorage::Attachment.where(record_type: 'Message', record_id: payload[:message_ids]).delete_all
-    ActiveStorage::Attachment.where(record_type: 'Attachment', record_id: payload[:legacy_attachment_ids]).delete_all
+    current_ids = active_storage_attachment_rows(
+      payload[:message_ids], payload[:legacy_attachment_ids],
+      payload[:scheduled_message_ids], payload[:recurring_scheduled_message_ids]
+    ).map(&:id)
+    fail!('ACTIVE_STORAGE_CHANGED') unless current_ids.sort == payload[:active_storage_attachment_ids].sort
+
+    ActiveStorage::Attachment.where(id: payload[:active_storage_attachment_ids]).delete_all
   end
 
   # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
@@ -188,6 +204,11 @@ class Connecta::Purge::Cleanup # rubocop:disable Metrics/ClassLength
     fail!('TARGET_CONVERSATIONS_REMAIN') unless Conversation.where(id: payload[:conversation_ids]).count.zero?
     fail!('NEW_MESSAGE_DURING_APPLY') unless Message.where(conversation_id: payload[:conversation_ids]).count.zero?
     fail!('TARGET_LEGACY_ATTACHMENTS_REMAIN') unless Attachment.where(id: payload[:legacy_attachment_ids]).count.zero?
+    fail!('TARGET_SCHEDULED_REMAIN') unless ScheduledMessage.where(id: payload[:scheduled_message_ids]).count.zero?
+    unless RecurringScheduledMessage.where(id: payload[:recurring_scheduled_message_ids]).count.zero?
+      fail!('TARGET_RECURRING_REMAIN')
+    end
+    verify_active_storage_gone!(payload)
 
     remaining_scope = Conversation.where(account_id: @account_ids)
     remaining_scope = remaining_scope.where.not(id: payload[:conversation_ids]) if payload[:conversation_ids].any?
@@ -200,11 +221,32 @@ class Connecta::Purge::Cleanup # rubocop:disable Metrics/ClassLength
   end
   # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
 
-  def active_storage_blob_ids(message_ids, legacy_attachment_ids)
-    (
-      ActiveStorage::Attachment.where(record_type: 'Message', record_id: message_ids).pluck(:blob_id) +
-      ActiveStorage::Attachment.where(record_type: 'Attachment', record_id: legacy_attachment_ids).pluck(:blob_id)
-    ).uniq.sort
+  def verify_active_storage_gone!(payload)
+    unless ActiveStorage::Attachment.where(id: payload[:active_storage_attachment_ids]).count.zero?
+      fail!('TARGET_ACTIVE_STORAGE_ATTACHMENTS_REMAIN')
+    end
+    race = ActiveStorage::Attachment
+           .where(record_type: 'Message', record_id: payload[:message_ids])
+           .or(ActiveStorage::Attachment.where(record_type: 'Attachment', record_id: payload[:legacy_attachment_ids]))
+           .or(ActiveStorage::Attachment.where(record_type: 'ScheduledMessage', record_id: payload[:scheduled_message_ids]))
+           .or(ActiveStorage::Attachment.where(record_type: 'RecurringScheduledMessage',
+                                               record_id: payload[:recurring_scheduled_message_ids]))
+    fail!('NEW_ACTIVE_STORAGE_ATTACHMENT_DURING_APPLY') unless race.count.zero?
+  end
+
+  def active_storage_attachment_rows(message_ids, legacy_attachment_ids, scheduled_ids, recurring_ids)
+    ActiveStorage::Attachment
+      .where(record_type: 'Message', record_id: message_ids)
+      .or(ActiveStorage::Attachment.where(record_type: 'Attachment', record_id: legacy_attachment_ids))
+      .or(ActiveStorage::Attachment.where(record_type: 'ScheduledMessage', record_id: scheduled_ids))
+      .or(ActiveStorage::Attachment.where(record_type: 'RecurringScheduledMessage', record_id: recurring_ids))
+      .order(:id).to_a
+  end
+
+  def blob_manifest(blob_ids)
+    ActiveStorage::Blob.where(id: blob_ids.uniq).order(:id).map do |blob|
+      { id: blob.id, key: blob.key, service_name: blob.service_name }
+    end
   end
 
   def protected_counts
@@ -259,11 +301,51 @@ class Connecta::Purge::Cleanup # rubocop:disable Metrics/ClassLength
     ids
   end
 
-  def normalize_blob_ids(value)
-    ids = Array(value).map { |id| normalize_id(id) }
-    fail!('BLOB_IDS_INVALID') if ids.any?(&:nil?) || !ids.all?(&:positive?)
+  def normalize_blob_manifest(value)
+    entries = Array(value).map do |raw|
+      next nil unless raw.is_a?(Hash) || raw.respond_to?(:to_h)
 
-    ids.uniq.sort
+      entry = raw.to_h.symbolize_keys
+      id = normalize_id(entry[:id])
+      key = entry[:key].to_s
+      service_name = entry[:service_name].to_s
+      next nil unless id&.positive? && key.present? && service_name.present?
+
+      { id: id, key: key, service_name: service_name }
+    end
+    fail!('BLOB_MANIFEST_INVALID') if entries.any?(&:nil?)
+
+    entries.compact.uniq { |entry| entry[:id] }.sort_by { |entry| entry[:id] }
+  end
+
+  def purge_manifest_entry!(entry)
+    services = ActiveStorage::Blob.services
+    service = services[entry[:service_name]] || services[entry[:service_name].to_sym]
+    fail!('STORAGE_SERVICE_UNKNOWN') if service.nil?
+    delete_variants!(service, entry[:key])
+    if service.respond_to?(:exist?) && !service.exist?(entry[:key])
+      delete_blob_metadata!(entry[:id])
+      return
+    end
+
+    service.delete(entry[:key])
+    delete_blob_metadata!(entry[:id])
+  rescue ActiveStorage::FileNotFoundError, Errno::ENOENT
+    # Ausência comprovada do objeto: só então remove a metadata.
+    delete_blob_metadata!(entry[:id])
+  end
+
+  def delete_variants!(service, key)
+    return unless service.respond_to?(:delete_prefixed)
+
+    service.delete_prefixed("#{key}/variants/")
+  rescue ActiveStorage::FileNotFoundError, Errno::ENOENT
+    nil
+  end
+
+  def delete_blob_metadata!(blob_id)
+    ActiveStorage::VariantRecord.where(blob_id: blob_id).delete_all
+    ActiveStorage::Blob.where(id: blob_id).delete_all
   end
 
   def normalize_id(value)
@@ -274,15 +356,11 @@ class Connecta::Purge::Cleanup # rubocop:disable Metrics/ClassLength
     nil
   end
 
-  def normalize_tables(tables, error)
-    values = Array(tables).map(&:to_s)
-    fail!(error) if values.empty? || !values.all? { |table| table.match?(TABLE_PATTERN) }
+  def immutable_tables(value, constant, error)
+    values = Array(value).map(&:to_s)
+    fail!(error) unless values == constant
 
-    values.freeze
-  end
-
-  def purge_blob(blob)
-    blob.purge
+    constant
   end
 
   def fail!(code)

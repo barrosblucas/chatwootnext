@@ -106,6 +106,13 @@ export const actions = {
     if (!normalized) return;
     commit('INVALIDATE', normalized);
   },
+
+  // Reuso/transferência com o mesmo display_id não muda a lista; invalida e
+  // busca imediatamente no escopo conta/ator atual.
+  refresh: async ({ dispatch }, id) => {
+    await dispatch('invalidate', id);
+    await dispatch('fetch', [id]);
+  },
 };
 
 export const mutations = {

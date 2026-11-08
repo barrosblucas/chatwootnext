@@ -56,7 +56,7 @@ describe('ConnectaProtocolDrawer', () => {
     const wrapper = mountDrawer();
     await flushPromises();
 
-    expect(getProtocol).toHaveBeenCalledWith('PROT1');
+    expect(getProtocol).toHaveBeenCalledWith('PROT1', { cursor: null });
     expect(wrapper.text()).toContain('#11');
     expect(wrapper.text()).toContain('Raiz X | Setor Y | Pessoa Z');
     expect(wrapper.text()).not.toContain('#12');
@@ -64,6 +64,62 @@ describe('ConnectaProtocolDrawer', () => {
     await wrapper.find('ul button').trigger('click');
     expect(push).toHaveBeenCalledWith('/conversations/11');
     expect(wrapper.emitted('close')).toBeTruthy();
+  });
+
+  it('loads the next cursor page and appends without duplicates', async () => {
+    getProtocol
+      .mockResolvedValueOnce({
+        data: {
+          stages: [{ conversation_id: 11, state: 'active' }],
+          next_cursor: 'cursor-1',
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          stages: [
+            { conversation_id: 11, state: 'active' },
+            { conversation_id: 12, state: 'closed' },
+          ],
+          next_cursor: null,
+        },
+      });
+
+    const wrapper = mountDrawer();
+    await flushPromises();
+    const buttons = wrapper.findAll('button');
+    await buttons[buttons.length - 1].trigger('click');
+    await flushPromises();
+
+    expect(getProtocol).toHaveBeenLastCalledWith('PROT1', {
+      cursor: 'cursor-1',
+    });
+    expect(wrapper.text()).toContain('#12');
+    expect(wrapper.findAll('ul li')).toHaveLength(2);
+  });
+
+  it('auto-loads all pages for a native admin', async () => {
+    getProtocol
+      .mockResolvedValueOnce({
+        data: {
+          native_admin: true,
+          stages: [{ conversation_id: 11, state: 'active' }],
+          next_cursor: 'cursor-1',
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          native_admin: true,
+          stages: [{ conversation_id: 12, state: 'closed' }],
+          next_cursor: null,
+        },
+      });
+
+    const wrapper = mountDrawer();
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('#11');
+    expect(wrapper.text()).toContain('#12');
+    expect(getProtocol).toHaveBeenCalledTimes(2);
   });
 
   it('shows the empty state when no stage is visible', async () => {

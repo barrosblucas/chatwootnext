@@ -21,23 +21,66 @@ const router = useRouter();
 const accountId = useMapGetter('getCurrentAccountId');
 const stages = ref([]);
 const isLoading = ref(false);
+const isLoadingMore = ref(false);
+const nextCursor = ref(null);
+const nativeAdmin = ref(false);
 const error = ref(null);
 
 const title = computed(() => t('CONNECTA.PROTOCOL.TITLE'));
 const hasStages = computed(() => stages.value.length > 0);
+const hasMore = computed(() => Boolean(nextCursor.value));
+
+const appendStages = (batch = []) => {
+  const seen = new Set(stages.value.map(stage => stage.conversation_id));
+  batch.forEach(stage => {
+    if (seen.has(stage.conversation_id)) return;
+    seen.add(stage.conversation_id);
+    stages.value.push(stage);
+  });
+};
+
+const fetchPage = async cursor => {
+  const { data } = await ConnectaAPI.getProtocol(props.protocol, { cursor });
+  appendStages(data?.stages || []);
+  nextCursor.value = data?.next_cursor || null;
+  nativeAdmin.value = Boolean(data?.native_admin);
+  return data;
+};
 
 const load = async () => {
   if (!props.show || !props.protocol) return;
   isLoading.value = true;
   error.value = null;
+  stages.value = [];
+  nextCursor.value = null;
+  nativeAdmin.value = false;
   try {
-    const { data } = await ConnectaAPI.getProtocol(props.protocol);
-    stages.value = data?.stages || [];
+    await fetchPage(null);
+    // Admin nativo recebe a cadeia inteira por paginação; carrega até o fim,
+    // com limite de páginas para não travar em caso de servidor inconsistente.
+    let pages = 1;
+    while (nativeAdmin.value && nextCursor.value && pages < 100) {
+      await fetchPage(nextCursor.value);
+      pages += 1;
+    }
   } catch (_) {
     stages.value = [];
+    nextCursor.value = null;
     error.value = t('CONNECTA.PROTOCOL.LOAD_ERROR');
   } finally {
     isLoading.value = false;
+  }
+};
+
+const loadMore = async () => {
+  if (!nextCursor.value || isLoadingMore.value) return;
+  isLoadingMore.value = true;
+  try {
+    await fetchPage(nextCursor.value);
+  } catch (_) {
+    error.value = t('CONNECTA.PROTOCOL.LOAD_ERROR');
+  } finally {
+    isLoadingMore.value = false;
   }
 };
 
@@ -161,6 +204,19 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown));
             </button>
           </li>
         </ul>
+        <button
+          v-if="hasMore"
+          type="button"
+          class="mt-3 w-full rounded-lg border border-n-weak px-3 py-2 text-sm text-n-slate-11 hover:bg-n-alpha-1 disabled:opacity-50"
+          :disabled="isLoadingMore"
+          @click="loadMore"
+        >
+          {{
+            isLoadingMore
+              ? t('CONNECTA.PROTOCOL.LOADING_MORE')
+              : t('CONNECTA.PROTOCOL.LOAD_MORE')
+          }}
+        </button>
       </div>
     </div>
   </div>
