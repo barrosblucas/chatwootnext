@@ -14,7 +14,7 @@
 # Sem migração: a coluna `state` não tem CHECK no banco (só validação no
 # modelo) e o índice parcial único cobre só NON_TERMINAL, de modo que
 # `closed` já é terminal (não reutilizável, sem conflito de unicidade).
-class Connecta::Scope::ConversationResolution
+class Connecta::Scope::ConversationResolution # rubocop:disable Metrics/ClassLength
   CLOSED_STATE = 'closed'.freeze
 
   class << self

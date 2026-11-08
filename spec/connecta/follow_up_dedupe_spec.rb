@@ -10,7 +10,7 @@ Connecta::Scope::Installer.install!
 # Anexos de acompanhamento usam o endpoint nativo de mensagens com um nonce em
 # content_attributes. O hook do fork dedupe no caminho oficial, sem fila
 # fictícia nem campo novo de banco.
-RSpec.describe 'Connecta · dedupe de anexos de acompanhamento', type: :request do
+RSpec.describe 'Connecta · dedupe de anexos de acompanhamento', type: :request do # rubocop:disable RSpec/DescribeClass
   include_context 'with connecta g0 scope fixture'
 
   let(:messages_path) { "#{conversations_path}/#{conv_a.display_id}/messages" }
