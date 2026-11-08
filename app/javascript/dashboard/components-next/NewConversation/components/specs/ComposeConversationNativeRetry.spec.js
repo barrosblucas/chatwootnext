@@ -469,9 +469,11 @@ describe('ComposeConversation native WhatsApp partial retry', () => {
 
     expect(createCalls()).toHaveLength(1);
     expect(sendCalls()).toHaveLength(3);
-    expect(wrapper.text()).toContain(
-      'There are pending attachments. Retry them or open the created conversation.'
-    );
+    expect(
+      alertFor(
+        'There are pending attachments. Retry them or open the created conversation.'
+      )
+    ).toBeTruthy();
     expect(wrapper.find('[data-test="draft-value"]').text().trim()).toBe(
       'Olá editado'
     );
