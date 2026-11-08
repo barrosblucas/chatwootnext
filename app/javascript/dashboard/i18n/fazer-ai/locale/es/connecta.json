@@ -44,6 +44,7 @@
       "RETRY_ATTACHMENTS": "Reenviar adjuntos pendientes",
       "OPEN_CONVERSATION": "Abrir conversación",
       "PARTIAL_BLOCKED": "Hay adjuntos pendientes. Reenvíelos o abra la conversación creada.",
+      "PARTIAL_ABANDONED": "Conversación creada; los adjuntos pendientes no se reenviaron. Abra la conversación para continuar.",
       "REUSED": "Una atención existente se reabrirá en su sector.",
       "CONFIRM": "Iniciar"
     },

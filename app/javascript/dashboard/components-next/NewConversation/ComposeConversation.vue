@@ -170,6 +170,59 @@ const partialConversationPath = computed(() => {
   return conversation ? conversationPath(conversation) : null;
 });
 
+const samePartialContext = () => {
+  const partial = nativePartial.value;
+  if (!partial) return true;
+
+  return (
+    String(partial.scope.accountId) === String(route.params.accountId) &&
+    String(partial.scope.contactId) === String(selectedContact.value?.id) &&
+    String(partial.scope.inboxId) === String(targetInbox.value?.id)
+  );
+};
+
+const samePartialTarget = payload => {
+  const partial = nativePartial.value;
+  if (!partial) return false;
+
+  return (
+    String(partial.scope.accountId) === String(route.params.accountId) &&
+    String(partial.scope.contactId) ===
+      String(payload.contactId || payload.contact_id) &&
+    String(partial.scope.inboxId) ===
+      String(payload.inboxId || payload.inbox_id)
+  );
+};
+
+const forgetNativePartial = ({ notify = false } = {}) => {
+  const partial = nativePartial.value;
+  if (!partial) return;
+  nativePartial.value = null;
+  if (!notify) return;
+
+  useAlert(t('CONNECTA.MANUAL_ADMISSION.PARTIAL_ABANDONED'), {
+    type: 'link',
+    to: conversationPath(partial.conversation),
+    message: t('CONNECTA.MANUAL_ADMISSION.OPEN_CONVERSATION'),
+  });
+};
+
+// O parcial nativo só vale para o MESMO atendimento (conta+contato+inbox).
+// Trocar de contexto/novo atendimento descarta a fila com aviso explícito;
+// alterar apenas o rascunho preserva a fila para o retry.
+watch(
+  () => [
+    route.params.accountId,
+    selectedContact.value?.id,
+    targetInbox.value?.id,
+  ],
+  () => {
+    if (nativePartial.value && !samePartialContext()) {
+      forgetNativePartial({ notify: true });
+    }
+  }
+);
+
 const resetContacts = () => {
   contacts.value = [];
 };
@@ -249,6 +302,9 @@ const closeCompose = () => {
 };
 
 const discardCompose = () => {
+  // Fechar/descartar encerra o attempt: avisa que a conversa existe e que os
+  // pendentes não serão reenviados neste ciclo; nunca retry de outro contexto.
+  forgetNativePartial({ notify: true });
   clearFormState();
   formState.message = '';
   closeCompose();
@@ -523,9 +579,13 @@ const createConversation = async ({
   // Partial success nativo: a conversa e a primeira mensagem já existem. Um
   // novo submit nunca pode chamar create de novo (segunda conversa ou reenvio
   // da primeira mensagem). O retry é a ação explícita dos anexos pendentes.
+  // Um parcial de OUTRO atendimento não bloqueia este: descarta com aviso.
   if (nativePartial.value) {
-    useAlert(t('CONNECTA.MANUAL_ADMISSION.PARTIAL_BLOCKED'));
-    return false;
+    if (samePartialTarget(payload)) {
+      useAlert(t('CONNECTA.MANUAL_ADMISSION.PARTIAL_BLOCKED'));
+      return false;
+    }
+    forgetNativePartial({ notify: true });
   }
   // Inbox Baileys marcada: resolve setores ANTES de enviar (1 auto, >1 modal,
   // 0 erro acionável). Nunca envia no POST nativo antes da admissão.
@@ -545,7 +605,15 @@ const createConversation = async ({
       sendFollowUp: sendFollowUpFile,
     });
     if (pending.length) {
-      nativePartial.value = { conversation, pending };
+      nativePartial.value = {
+        conversation,
+        pending,
+        scope: {
+          accountId: route.params.accountId,
+          contactId: payload.contactId || payload.contact_id,
+          inboxId: payload.inboxId || payload.inbox_id,
+        },
+      };
       useAlert(
         t('CONNECTA.MANUAL_ADMISSION.PARTIAL_SUCCESS', {
           count: pending.length,
@@ -581,6 +649,7 @@ const onPopoverShow = () => {
 };
 
 const onPopoverHide = () => {
+  if (nativePartial.value) forgetNativePartial({ notify: true });
   composeMode.value = 'conversation';
   if (!props.contactId) {
     selectedContact.value = null;
@@ -701,6 +770,7 @@ onUnmounted(() => {
               v-if="partialConversationPath"
               :to="partialConversationPath"
               class="font-medium text-n-blue-10"
+              @click="forgetNativePartial()"
             >
               {{ t('CONNECTA.MANUAL_ADMISSION.OPEN_CONVERSATION') }}
             </router-link>

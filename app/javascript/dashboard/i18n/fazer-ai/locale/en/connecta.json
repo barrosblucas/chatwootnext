@@ -44,6 +44,7 @@
       "RETRY_ATTACHMENTS": "Retry pending attachments",
       "OPEN_CONVERSATION": "Open conversation",
       "PARTIAL_BLOCKED": "There are pending attachments. Retry them or open the created conversation.",
+      "PARTIAL_ABANDONED": "Conversation created; pending attachments were not resent. Open the conversation to continue.",
       "REUSED": "An existing service will be reopened in your sector.",
       "CONFIRM": "Start"
     },
