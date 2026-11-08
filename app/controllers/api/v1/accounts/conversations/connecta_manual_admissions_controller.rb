@@ -127,14 +127,17 @@ class Api::V1::Accounts::Conversations::ConnectaManualAdmissionsController < Api
   def message_payload
     message = params[:message]
     return nil if message.blank?
+
     invalid_message! unless message.is_a?(ActionController::Parameters)
 
+    # Anexos não passam pelo permit (UploadedFile não é escalar de strong
+    # params); a whitelist é o próprio validador de tipo abaixo.
+    attachments = normalized_attachments(message[:attachments])
+    validate_attachments!(attachments)
     permitted = message.permit(
       :content, :is_voice_message, :is_recorded_audio, :transcode_audio,
-      attachments: [], attachments_metadata: {}
+      attachments_metadata: {}
     )
-    attachments = normalized_attachments(permitted[:attachments])
-    validate_attachments!(attachments)
     return nil if permitted[:content].blank? && attachments.blank?
 
     payload = permitted.to_h.with_indifferent_access

@@ -13,23 +13,11 @@ RSpec.describe Connecta::Purge::Cleanup do
   let(:run_id) { SecureRandom.hex(4) }
   let!(:account) { create(:account) }
   let!(:inbox) { create(:inbox, account: account, name: "Caixa purge #{run_id}") }
-  let!(:user) { create(:user, account: account, role: :agent) }
-  let!(:installation_config) do
-    InstallationConfig.create!(name: "purge_test_#{run_id}", value: 'synthetic', locked: true)
-  end
   let!(:org_unit) { Connecta::Scope::OrgUnit.create!(name: 'Setor sintético', path: "/purge-#{run_id}/") }
   let!(:conversations) do
-    2.times.map do
+    Array.new(2) do
       contact = create(:contact, account: account)
       create(:conversation, account: account, inbox: inbox, contact: contact)
-    end
-  end
-  let!(:scopes) do
-    conversations.map do |conversation|
-      Connecta::Scope::ConversationScope.create!(
-        conversation_id: conversation.id, inbox_id: inbox.id, contact_id: conversation.contact_id,
-        org_unit: org_unit, state: 'active', case_protocol: 'SYNTH-PURGE', case_version: 1
-      )
     end
   end
   let!(:messages) do
@@ -50,6 +38,17 @@ RSpec.describe Connecta::Purge::Cleanup do
     end
   end
   let(:account_ids) { [account.id] }
+
+  before do
+    create(:user, account: account, role: :agent)
+    InstallationConfig.create!(name: "purge_test_#{run_id}", value: 'synthetic', locked: true)
+    conversations.each do |conversation|
+      Connecta::Scope::ConversationScope.create!(
+        conversation_id: conversation.id, inbox_id: inbox.id, contact_id: conversation.contact_id,
+        org_unit: org_unit, state: 'active', case_protocol: 'SYNTH-PURGE', case_version: 1
+      )
+    end
+  end
 
   after do
     blobs.each do |blob|

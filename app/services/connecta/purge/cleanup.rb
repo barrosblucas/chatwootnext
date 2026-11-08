@@ -12,7 +12,7 @@ require 'json'
 #   escopos; o purge dos blobs só roda DEPOIS do commit.
 # - purge_blobs(blob_ids:) => retry exato dos blobs pendentes, sem tocar no banco
 #   de conversas.
-class Connecta::Purge::Cleanup
+class Connecta::Purge::Cleanup # rubocop:disable Metrics/ClassLength
   class Blocked < StandardError; end
 
   PROTECTED_TABLES = %w[
@@ -289,3 +289,4 @@ class Connecta::Purge::Cleanup
     raise Blocked, code
   end
 end
+# rubocop:enable Metrics/ClassLength

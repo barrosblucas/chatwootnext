@@ -15,8 +15,8 @@ RSpec.describe Connecta::Purge::SidekiqCleanup do
     }
   end
 
-  def with_redis(&block)
-    Sidekiq.redis(&block)
+  def with_redis(&)
+    Sidekiq.redis(&)
   end
 
   def clear_keys

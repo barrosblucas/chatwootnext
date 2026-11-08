@@ -98,10 +98,10 @@ class Connecta::Purge::SidekiqCleanup
     normalized.transform_values(&:to_s).freeze
   end
 
-  def with_redis
+  def with_redis(&)
     return yield(@redis) if @redis
 
-    Sidekiq.redis { |conn| yield(conn) }
+    Sidekiq.redis(&)
   end
 
   def counts(rows)

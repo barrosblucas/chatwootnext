@@ -13,7 +13,7 @@ Connecta::Transfer::Installer.install!
 # instalado (callback after_create de recepção + after_update_commit de
 # resolução). Sem transação externa: callbacks after_commit rodam de verdade.
 # A limpeza remove só as linhas sintéticas deste exemplo.
-RSpec.describe 'Connecta · inbound após conversa resolvida (Baileys real)', type: :request do # rubocop:disable RSpec/DescribeClass
+RSpec.describe 'Connecta · inbound após conversa resolvida (Baileys real)', type: :request do
   self.use_transactional_tests = false
 
   let(:webhook_verify_token) { 'valid_token' }
