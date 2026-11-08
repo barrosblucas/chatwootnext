@@ -71,12 +71,14 @@ class Connecta::Purge::SidekiqCleanup
     end
 
     expected_digests = payload[:dead_digests].to_set
-    removed = with_redis do |conn|
-      current[:raw][:dead].sum do |raw|
-        next 0 unless DISCARD_DEAD.include?(job_class(raw))
-        next 0 unless expected_digests.include?(digest(raw))
+    removed = 0
+    with_redis do |conn|
+      current[:raw][:dead].each do |raw|
+        next unless DISCARD_DEAD.include?(job_class(raw))
+        next unless expected_digests.include?(digest(raw))
 
-        conn.zrem(@keys[:dead], raw)
+        result = conn.zrem(@keys[:dead], raw)
+        removed += 1 if result == true || (result.respond_to?(:positive?) && result.positive?)
       end
     end
 

@@ -12,7 +12,7 @@ module Connecta::Scope::FollowUpDedupeHook
 
     @conversation.with_lock do
       existing = @conversation.messages.find_by(
-        "content_attributes ->> '#{NONCE_KEY}' = ?", nonce
+        "((content_attributes #>> '{}')::jsonb) ->> '#{NONCE_KEY}' = ?", nonce
       )
       if existing
         @message = existing

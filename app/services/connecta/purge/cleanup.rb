@@ -316,7 +316,7 @@ class Connecta::Purge::Cleanup # rubocop:disable Metrics/ClassLength
 
   def purge_manifest_entry!(entry)
     services = ActiveStorage::Blob.services
-    service = services[entry[:service_name]] || services[entry[:service_name].to_sym]
+    service = fetch_storage_service(services, entry[:service_name])
     fail!('STORAGE_SERVICE_UNKNOWN') if service.nil?
     delete_variants!(service, entry[:key])
     if service.respond_to?(:exist?) && !service.exist?(entry[:key])
@@ -329,6 +329,16 @@ class Connecta::Purge::Cleanup # rubocop:disable Metrics/ClassLength
   rescue ActiveStorage::FileNotFoundError, Errno::ENOENT
     # Ausência comprovada do objeto: só então remove a metadata.
     delete_blob_metadata!(entry[:id])
+  end
+
+  def fetch_storage_service(services, name)
+    services.fetch(name)
+  rescue KeyError
+    begin
+      services.fetch(name.to_sym)
+    rescue StandardError
+      nil
+    end
   end
 
   def delete_variants!(service, key)

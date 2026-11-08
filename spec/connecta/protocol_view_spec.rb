@@ -130,19 +130,20 @@ RSpec.describe 'Connecta · protocolo, metadados e busca', type: :request do
     end
 
     it 'pagina por cursor sem esconder etapa visível após 200 etapas ocultas' do
+      pagination_protocol = "PAG#{SecureRandom.hex(4).upcase}"
       hidden_contact = create(:contact, account: account)
       200.times do
         conversation = create(:conversation, account: account, inbox: inbox, contact: hidden_contact)
         Connecta::Scope::ConversationScope.create!(
           conversation_id: conversation.id, inbox_id: inbox.id, contact_id: hidden_contact.id,
-          org_unit: org_a, state: 'transferred_out', case_protocol: protocol, case_version: 1
+          org_unit: org_a, state: 'transferred_out', case_protocol: pagination_protocol, case_version: 1
         )
       end
       visible_contact = create(:contact, account: account)
       visible = create(:conversation, account: account, inbox: inbox, contact: visible_contact, assignee: agent_a)
       Connecta::Scope::ConversationScope.create!(
         conversation_id: visible.id, inbox_id: inbox.id, contact_id: visible_contact.id,
-        org_unit: org_a, state: 'active', case_protocol: protocol, case_version: 1
+        org_unit: org_a, state: 'active', case_protocol: pagination_protocol, case_version: 1
       )
       queries = 0
       subscriber = lambda do |_name, _start, _finish, _id, payload|
@@ -150,7 +151,8 @@ RSpec.describe 'Connecta · protocolo, metadados e busca', type: :request do
       end
 
       ActiveSupport::Notifications.subscribed(subscriber, 'sql.active_record') do
-        get protocol_path, params: { limit: 1 }, headers: token_a
+        get "/api/v1/accounts/#{account.id}/connecta/protocols/#{pagination_protocol}",
+            params: { limit: 1 }, headers: token_a
       end
 
       expect(response).to have_http_status(:ok)

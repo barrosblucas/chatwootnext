@@ -98,7 +98,7 @@ RSpec.describe Connecta::Purge::Cleanup do
 
   it 'remove conversas, mensagens e escopos, preservando contatos, caixas, contas, usuários e config' do
     before_counts = preserved_counts
-    before_audits = [Audit.count, Connecta::Scope::AccessAudit.count]
+    before_audits = [Audited::Audit.count, Connecta::Scope::AccessAudit.count]
     plan = inspect_plan
 
     expect(plan[:counts]).to include(
@@ -118,7 +118,7 @@ RSpec.describe Connecta::Purge::Cleanup do
     expect(Connecta::Scope::ConversationScope.where(inbox_id: inbox.id).count).to eq(0)
     expect(ActiveStorage::Blob.where(id: (blobs + scheduled_blobs).map(&:id)).count).to eq(0)
     expect(preserved_counts).to eq(before_counts)
-    expect(Audit.count).to be >= before_audits[0]
+    expect(Audited::Audit.count).to be >= before_audits[0]
     expect(Connecta::Scope::AccessAudit.count).to be >= before_audits[1]
   end
 
