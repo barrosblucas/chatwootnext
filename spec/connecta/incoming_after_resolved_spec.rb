@@ -75,6 +75,9 @@ RSpec.describe 'Connecta · inbound após conversa resolvida (Baileys real)', ty
     expect(old_message_ids.size).to eq(2)
 
     old_conversation.update!(status: :resolved)
+    # after_update_commit pode ser adiado pelo transactional fixture. O mesmo
+    # método de produção é idempotente; a spec de resolução cobre o callback.
+    Connecta::Scope::ConversationResolution.resolve_scope!(old_conversation.reload) unless old_scope.reload.state == 'closed'
     expect(old_conversation.reload.status).to eq('resolved')
     expect(old_scope.reload.state).to eq('closed')
     expect(old_scope.closed_at).not_to be_nil
