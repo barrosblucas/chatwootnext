@@ -29,7 +29,7 @@ class Connecta::Scope::ProtocolSearch
 
     def normalize_protocol(value)
       normalized = normalize(value)
-      normalized if normalized && normalized.match?(PROTOCOL_PATTERN)
+      normalized if normalized&.match?(PROTOCOL_PATTERN)
     end
 
     private

@@ -7,7 +7,7 @@ class Connecta::Scope::ConversationMetadata
 
   class << self
     def for_conversations(conversations)
-      ids = Array(conversations).map(&:id).compact.uniq
+      ids = Array(conversations).filter_map(&:id).uniq
       return {} if ids.empty?
 
       scopes = Connecta::Scope::ConversationScope

@@ -13,7 +13,7 @@ Connecta::G0ScopeSchema.ensure!
 Connecta::G0TransferSchema.ensure!
 Connecta::Transfer::Installer.install!
 
-RSpec.describe 'Connecta G0 · corte temporal da transferência (T0.3)' do # rubocop:disable RSpec/DescribeClass
+RSpec.describe 'Connecta G0 · corte temporal da transferência (T0.3)' do # rubocop:disable RSpec/DescribeClass, RSpec/MultipleMemoizedHelpers
   self.use_transactional_tests = false
 
   # Antes dos let!: a primeira mensagem (semente) já passa pelos stubs.
@@ -75,16 +75,6 @@ RSpec.describe 'Connecta G0 · corte temporal da transferência (T0.3)' do # rub
                                                case_protocol: 'CASO-T03', case_version: 1)
   end
 
-  it 'destino permanece na inbox de origem e a nota não expõe o setor anterior' do
-    destination = Connecta::Transfer::LocalTransaction.new(scope: origin_scope, destination_org_unit: org_b).call
-
-    expect(destination).to be_a(Conversation)
-    expect(destination.inbox_id).to eq(origin_conversation.inbox_id)
-    expect(destination.inbox_id).not_to eq(other_inbox.id)
-    expect(destination.messages.last.content).to include('protocolo CASO-T03')
-    expect(destination.messages.last.content).not_to include('Setor A')
-  end
-
   after do
     # Nesta execução, fonte e destino são as únicas conversas da inbox do exemplo: transfers e dispatches pertencem a
     # elas (tabelas sem account_id, localizadas por conversation_id ANTES de apagar as conversas). A limpeza abaixo
@@ -122,6 +112,16 @@ RSpec.describe 'Connecta G0 · corte temporal da transferência (T0.3)' do # rub
       dispatches_by_conversation: Connecta::Transfer::OutboundDispatchRecord.where(conversation_id: example_conversation_ids).count
     )
     expect(leftovers.reject { |_table, count| count.zero? }).to eq({}) # rubocop:disable RSpec/ExpectInHook
+  end
+
+  it 'destino permanece na inbox de origem e a nota não expõe o setor anterior' do
+    destination = Connecta::Transfer::LocalTransaction.new(scope: origin_scope, destination_org_unit: org_b).call
+
+    expect(destination).to be_a(Conversation)
+    expect(destination.inbox_id).to eq(origin_conversation.inbox_id)
+    expect(destination.inbox_id).not_to eq(other_inbox.id)
+    expect(destination.messages.last.content).to include('protocolo CASO-T03')
+    expect(destination.messages.last.content).not_to include('Setor A')
   end
 
   context 'with incoming messages racing one transfer' do

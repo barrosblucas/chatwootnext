@@ -13,7 +13,7 @@ Connecta::Transfer::Installer.install!
 # pode receber o próximo inbound. Com lock_to_single_conversation=false, o
 # fluxo nativo cria conversa nova na mesma inbox/contato; o novo escopo nasce
 # `reception`. O retry tardio do inbound antigo é idempotente por source_id.
-RSpec.describe 'Connecta · inbound após conversa resolvida (Baileys real)', type: :request do # rubocop:disable RSpec/DescribeClass
+RSpec.describe 'Connecta · inbound após conversa resolvida (Baileys real)', type: :request do
   let(:webhook_verify_token) { 'valid_token' }
   let!(:account) { create(:account) }
   let!(:channel) do
@@ -27,10 +27,13 @@ RSpec.describe 'Connecta · inbound após conversa resolvida (Baileys real)', ty
   before do
     stub_request(:get, /profile-picture-url/).to_return(status: 200, body: { data: { profilePictureUrl: nil } }.to_json)
     Connecta::Scope::ScopedInbox.create!(inbox_id: inbox.id, enforcement: 'enforce', maintenance: false)
-    stub_const('ENV', ENV.to_h.merge(
-      'CONNECTA_HUMAN_NUMBER_ENABLED' => 'true',
-      'CONNECTA_RECEPTION_ORG_UNIT_ID' => reception_unit.id.to_s
-    ))
+    stub_const(
+      'ENV',
+      ENV.to_h.merge(
+        'CONNECTA_HUMAN_NUMBER_ENABLED' => 'true',
+        'CONNECTA_RECEPTION_ORG_UNIT_ID' => reception_unit.id.to_s
+      )
+    )
   end
 
   # O after_create do runtime chama este mesmo criador no boot real; nos specs
@@ -61,7 +64,7 @@ RSpec.describe 'Connecta · inbound após conversa resolvida (Baileys real)', ty
     Whatsapp::IncomingMessageBaileysService.new(inbox: inbox, params: params).perform
   end
 
-  # rubocop:disable RSpec/ExampleLength, RSpec/MultipleExpectations
+  # rubocop:disable RSpec/MultipleExpectations
   it 'cria conversa nova e preserva a anterior resolvida; retry antigo não duplica' do
     deliver('old-1', 'primeira mensagem')
     old_conversation = Conversation.find_by!(inbox: inbox)
@@ -115,7 +118,7 @@ RSpec.describe 'Connecta · inbound após conversa resolvida (Baileys real)', ty
     expect(new_conversation.reload.messages.count).to eq(2)
     expect(old_conversation.reload.messages.order(:id).pluck(:id)).to eq(old_message_ids)
   end
-  # rubocop:enable RSpec/ExampleLength, RSpec/MultipleExpectations
+  # rubocop:enable RSpec/MultipleExpectations
 
   it 'exige lock_to_single_conversation=false para o novo inbound não reutilizar a resolvida' do
     expect(inbox.reload.lock_to_single_conversation).to be(false)

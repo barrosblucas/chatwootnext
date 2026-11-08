@@ -23,19 +23,32 @@ class Api::V1::Accounts::Connecta::ConversationMetadataController < Api::V1::Acc
   private
 
   def parsed_ids
-    raw = params[:ids]
-    values = raw.is_a?(Array) ? raw.flat_map { |value| value.to_s.split(',') } : raw.to_s.split(',')
-    values = values.map(&:strip).reject(&:empty?)
+    values = id_values
     return [] if values.empty?
 
-    ids = values.map do |value|
+    ids = parsed_numbers(values)
+    return nil unless valid_ids?(ids)
+
+    ids.uniq
+  end
+
+  def id_values
+    raw = params[:ids]
+    values = raw.is_a?(Array) ? raw.flat_map { |value| value.to_s.split(',') } : raw.to_s.split(',')
+    values.map(&:strip).reject(&:empty?)
+  end
+
+  def parsed_numbers(values)
+    values.map do |value|
       Integer(value, 10)
     rescue ArgumentError, TypeError
       nil
     end
-    return nil if ids.any?(&:nil?) || ids.any? { |id| id <= 0 }
-    return nil if ids.uniq.length > Connecta::Scope::ConversationMetadata::MAX_IDS
+  end
 
-    ids.uniq
+  def valid_ids?(ids)
+    ids.none?(&:nil?) &&
+      ids.all?(&:positive?) &&
+      ids.uniq.length <= Connecta::Scope::ConversationMetadata::MAX_IDS
   end
 end

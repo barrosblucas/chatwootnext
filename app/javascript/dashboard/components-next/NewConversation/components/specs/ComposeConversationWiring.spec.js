@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 // Regressão do wiring comprovado quebrado: o componente existia, mas não era
@@ -8,7 +9,10 @@ import { describe, expect, it } from 'vitest';
 describe('ComposeConversation sector picker wiring', () => {
   it('imports and renders ConnectaSectorPicker bound to showSectorPicker', () => {
     const source = readFileSync(
-      new URL('../../ComposeConversation.vue', import.meta.url),
+      resolve(
+        process.cwd(),
+        'app/javascript/dashboard/components-next/NewConversation/ComposeConversation.vue'
+      ),
       'utf8'
     );
 

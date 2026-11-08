@@ -8,7 +8,7 @@ require_relative 'support/g0_product_tables'
 Connecta::G0ProductTables.install!
 Connecta::Scope::Installer.install!
 
-# rubocop:disable RSpec/DescribeClass, RSpec/MultipleMemoizedHelpers
+# rubocop:disable RSpec/MultipleMemoizedHelpers
 RSpec.describe 'Connecta · protocolo, metadados e busca', type: :request do
   def body_json
     JSON.parse(response.body)
@@ -40,7 +40,7 @@ RSpec.describe 'Connecta · protocolo, metadados e busca', type: :request do
   let!(:other_org) { Connecta::Scope::OrgUnit.create!(name: 'Outra raiz', path: "/outra-#{SecureRandom.hex(3)}/") }
   let!(:other_conversation) do
     create(:conversation, account: other_account, inbox: other_inbox, contact: other_contact).tap do |conversation|
-      conversation.update_column(:display_id, 999_999)
+      conversation.update!(display_id: 999_999)
     end
   end
 
@@ -62,10 +62,10 @@ RSpec.describe 'Connecta · protocolo, metadados e busca', type: :request do
       create(:inbox_member, inbox: inbox, user: user)
       Connecta::Scope::UserAuthEpoch.create!(user_id: user.id, epoch: 1)
     end
-    Connecta::Scope::UserGrant.create!(user_id: agent_a.id, org_unit: org_a, permission: 'atender')
-    Connecta::Scope::UserGrant.create!(user_id: agent_b.id, org_unit: org_b, permission: 'atender')
-    Connecta::Scope::UserGrant.create!(user_id: admin_nominal.id, org_unit: root_unit, permission: 'admin_nominal')
-    Connecta::Scope::UserGrant.create!(user_id: transfer_only.id, org_unit: org_a, permission: 'transferir')
+    Connecta::UserGrant.create!(user_id: agent_a.id, org_unit_id: org_a.id, permission: 'atender')
+    Connecta::UserGrant.create!(user_id: agent_b.id, org_unit_id: org_b.id, permission: 'atender')
+    Connecta::UserGrant.create!(user_id: admin_nominal.id, org_unit_id: root_unit.id, permission: 'admin_nominal')
+    Connecta::UserGrant.create!(user_id: transfer_only.id, org_unit_id: org_a.id, permission: 'transferir')
     Connecta::Scope::ConversationScope.create!(
       conversation_id: conv_a.id, inbox_id: inbox.id, contact_id: contact_a.id,
       org_unit: org_a, state: 'active', case_protocol: protocol, case_version: 1
@@ -148,8 +148,11 @@ RSpec.describe 'Connecta · protocolo, metadados e busca', type: :request do
 
   describe 'GET /connecta/conversations/metadata' do
     it 'admin nativo recebe raiz/setor/protocolo das conversas visíveis' do
-      get metadata_path, params: { ids: [conv_a.display_id, conv_b.display_id, origin_conversation.display_id, conv_control.display_id] },
-                        headers: token_native
+      get(
+        metadata_path,
+        params: { ids: [conv_a.display_id, conv_b.display_id, origin_conversation.display_id, conv_control.display_id] },
+        headers: token_native
+      )
 
       expect(response).to have_http_status(:ok)
       conversations = body_json.fetch('conversations')
@@ -163,8 +166,11 @@ RSpec.describe 'Connecta · protocolo, metadados e busca', type: :request do
     end
 
     it 'agente A recebe só a própria conversa; agente B não é exposta' do
-      get metadata_path, params: { ids: "#{conv_a.display_id},#{conv_b.display_id},#{conv_control.display_id}" },
-                        headers: token_a
+      get(
+        metadata_path,
+        params: { ids: "#{conv_a.display_id},#{conv_b.display_id},#{conv_control.display_id}" },
+        headers: token_a
+      )
 
       expect(response).to have_http_status(:ok)
       conversations = body_json.fetch('conversations')
@@ -239,4 +245,4 @@ RSpec.describe 'Connecta · protocolo, metadados e busca', type: :request do
     end
   end
 end
-# rubocop:enable RSpec/DescribeClass, RSpec/MultipleMemoizedHelpers
+# rubocop:enable RSpec/MultipleMemoizedHelpers
