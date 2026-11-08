@@ -1,0 +1,22 @@
+import { readFileSync } from 'node:fs';
+import { describe, expect, it } from 'vitest';
+
+// Regressão do wiring comprovado quebrado: o componente existia, mas não era
+// importado nem renderizado no ComposeConversation. O comportamento de abrir
+// e confirmar é coberto em ConnectaSectorPicker.spec.js; este teste impede que
+// o modal volte a ficar fora do template.
+describe('ComposeConversation sector picker wiring', () => {
+  it('imports and renders ConnectaSectorPicker bound to showSectorPicker', () => {
+    const source = readFileSync(
+      new URL('../../ComposeConversation.vue', import.meta.url),
+      'utf8'
+    );
+
+    expect(source).toContain(
+      "import ConnectaSectorPicker from 'dashboard/components-next/NewConversation/components/ConnectaSectorPicker.vue'"
+    );
+    expect(source).toContain('<ConnectaSectorPicker');
+    expect(source).toContain(':show="showSectorPicker"');
+    expect(source).toContain('@admitted="onSectorAdmitted"');
+  });
+});

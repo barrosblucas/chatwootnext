@@ -28,6 +28,7 @@ import conversationStats from './modules/conversationStats';
 import conversationTypingStatus from './modules/conversationTypingStatus';
 import conversationUnreadCounts from './modules/conversationUnreadCounts';
 import conversationWatchers from './modules/conversationWatchers';
+import connectaMetadata from './modules/connectaMetadata';
 import csat from './modules/csat';
 import customRole from './modules/customRole';
 import customViews from './modules/customViews';
@@ -101,6 +102,7 @@ export default createStore({
     conversationTypingStatus,
     conversationUnreadCounts,
     conversationWatchers,
+    connectaMetadata,
     csat,
     customRole,
     customViews,

@@ -61,8 +61,10 @@ const activeInbox = useMapGetter('getSelectedInbox');
 const accountId = useMapGetter('getCurrentAccountId');
 const isPinned = useMapGetter('conversationPins/isPinned');
 const globalConfig = useMapGetter('globalConfig/get');
+const connectaMetadata = useMapGetter('connectaMetadata/getMetadata');
 
 const chatMetadata = computed(() => props.source.meta || {});
+const connecta = computed(() => connectaMetadata.value(props.source.id));
 const assignee = computed(() => chatMetadata.value.assignee || {});
 const senderId = computed(() => chatMetadata.value.sender?.id);
 
@@ -223,6 +225,7 @@ const onTogglePin = () => {
     :current-contact="currentContact"
     :assignee="assignee"
     :inbox="inbox"
+    :connecta="connecta"
     :selected="isConversationSelected(source.id)"
     :is-active-chat="isActiveChat"
     :show-assignee="showAssigneeForExpandedCard"
@@ -242,6 +245,7 @@ const onTogglePin = () => {
     :current-contact="currentContact"
     :assignee="assignee"
     :inbox="inbox"
+    :connecta="connecta"
     :selected="isConversationSelected(source.id)"
     :is-active-chat="isActiveChat"
     :show-assignee="showAssignee"

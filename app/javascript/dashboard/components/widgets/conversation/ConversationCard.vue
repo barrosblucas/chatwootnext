@@ -13,12 +13,14 @@ import UnreadBadge from 'dashboard/components-next/Conversation/ConversationCard
 import SLACardLabel from './components/SLACardLabel.vue';
 import VoiceCallStatus from './VoiceCallStatus.vue';
 import Checkbox from 'dashboard/components-next/checkbox/Checkbox.vue';
+import { connectaLabel as buildConnectaLabel } from 'dashboard/helper/connectaLabel';
 
 const props = defineProps({
   chat: { type: Object, required: true },
   currentContact: { type: Object, required: true },
   assignee: { type: Object, default: () => ({}) },
   inbox: { type: Object, default: () => ({}) },
+  connecta: { type: Object, default: null },
   selected: { type: Boolean, default: false },
   isActiveChat: { type: Boolean, default: false },
   showAssignee: { type: Boolean, default: false },
@@ -61,6 +63,12 @@ const showMetaSection = computed(() => {
 
 const isAgentBotAssignee = computed(
   () => props.chat?.meta?.assignee_type === 'AgentBot'
+);
+
+// Formato dinâmico Raiz | Setor | Atendente. Nunca hardcode município/setor;
+// sem escopo Connecta a linha não aparece e o contato continua identificado.
+const connectaLabel = computed(() =>
+  buildConnectaLabel(props.connecta, props.assignee?.name)
 );
 
 const hasSlaPolicyId = computed(
@@ -189,6 +197,14 @@ watch(
       >
         {{ currentContact.name }}
       </h4>
+      <p
+        v-if="connectaLabel"
+        class="connecta-conversation-label text-xs my-0 mx-2 leading-4 truncate text-n-slate-10"
+        :title="connectaLabel"
+        :aria-label="connectaLabel"
+      >
+        {{ connectaLabel }}
+      </p>
       <VoiceCallStatus
         v-if="voiceCallData.status"
         key="voice-status-row"

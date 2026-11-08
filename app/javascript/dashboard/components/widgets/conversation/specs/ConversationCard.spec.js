@@ -70,4 +70,28 @@ describe('ConversationCard', () => {
 
     expect(wrapper.findComponent({ name: 'CardPinIcon' }).exists()).toBe(true);
   });
+
+  it('shows the dynamic root | sector | assignee label without hiding the contact', () => {
+    const wrapper = mountComponent(
+      {},
+      {},
+      {
+        connecta: { root_unit_name: 'Raiz X', org_unit_name: 'Setor Y' },
+        assignee: { name: 'Pessoa Z' },
+        showAssignee: true,
+      }
+    );
+
+    expect(wrapper.text()).toContain('Jane Doe');
+    expect(wrapper.text()).toContain('Raiz X | Setor Y | Pessoa Z');
+    expect(wrapper.find('.connecta-conversation-label').attributes('aria-label'))
+      .toBe('Raiz X | Setor Y | Pessoa Z');
+  });
+
+  it('does not add the Connecta label without an authorized scope', () => {
+    const wrapper = mountComponent({}, {}, { connecta: null });
+
+    expect(wrapper.text()).toContain('Jane Doe');
+    expect(wrapper.find('.connecta-conversation-label').exists()).toBe(false);
+  });
 });

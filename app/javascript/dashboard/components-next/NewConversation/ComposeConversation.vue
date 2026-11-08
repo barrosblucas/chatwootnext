@@ -25,6 +25,7 @@ import Popover from 'dashboard/components-next/popover/Popover.vue';
 import connectaAPI from 'dashboard/api/connecta';
 import ComposeNewConversationForm from 'dashboard/components-next/NewConversation/components/ComposeNewConversationForm.vue';
 import ComposeNewGroupForm from 'dashboard/components-next/NewConversation/components/ComposeNewGroupForm.vue';
+import ConnectaSectorPicker from 'dashboard/components-next/NewConversation/components/ConnectaSectorPicker.vue';
 
 const props = defineProps({
   contactId: {
@@ -61,6 +62,7 @@ const groupFormRef = ref(null);
 // dedicado. Texto/anexos preservados: nada é limpo até o sucesso.
 const showSectorPicker = ref(false);
 const sectorDestinations = ref([]);
+const sectorReuseInfo = ref(null);
 const pendingAdmissionPayload = ref(null);
 const admissionAttemptKey = ref(null);
 const isAdmitting = ref(false);
@@ -277,8 +279,34 @@ const fetchSectorDestinations = async payload => {
   const inboxId = payload.inboxId || payload.inbox_id;
   const { data } = await connectaAPI.admissionDestinationsForInbox(inboxId);
   sectorDestinations.value = data.eligible_org_units || [];
+  sectorReuseInfo.value = data.reused_from || null;
   pendingAdmissionPayload.value = payload;
   return sectorDestinations.value;
+};
+
+const completeAdmission = data => {
+  const action = {
+    type: 'link',
+    to: `/app/accounts/${data.account_id}/conversations/${data.id}`,
+    message: t('COMPOSE_NEW_CONVERSATION.FORM.GO_TO_CONVERSATION'),
+  };
+  showSectorPicker.value = false;
+  pendingAdmissionPayload.value = null;
+  sectorDestinations.value = [];
+  discardCompose();
+  admissionAttemptKey.value = null;
+  store.dispatch('connectaMetadata/invalidate', data.id);
+  useAlert(t('COMPOSE_NEW_CONVERSATION.FORM.SUCCESS_MESSAGE'), action);
+};
+
+const closeSectorPicker = () => {
+  showSectorPicker.value = false;
+  pendingAdmissionPayload.value = null;
+};
+
+const onSectorAdmitted = data => {
+  closeSectorPicker();
+  completeAdmission(data);
 };
 
 const admitWithSector = async (payload, orgUnitId) => {
@@ -296,14 +324,7 @@ const admitWithSector = async (payload, orgUnitId) => {
         },
       }
     );
-    const action = {
-      type: 'link',
-      to: `/app/accounts/${data.account_id}/conversations/${data.id}`,
-      message: t('COMPOSE_NEW_CONVERSATION.FORM.GO_TO_CONVERSATION'),
-    };
-    discardCompose();
-    admissionAttemptKey.value = null;
-    useAlert(t('COMPOSE_NEW_CONVERSATION.FORM.SUCCESS_MESSAGE'), action);
+    completeAdmission(data);
     return true;
   } catch (error) {
     // Draft/anexos preservados: não limpa o form no erro, só alerta.
@@ -345,7 +366,6 @@ const createBaileysConversation = async payload => {
     if (destinations.length === 1) {
       return admitWithSector(payload, destinations[0].id);
     }
-    sectorDestinations.value = destinations;
     pendingAdmissionPayload.value = payload;
     showSectorPicker.value = true;
     return true;
@@ -537,6 +557,19 @@ onUnmounted(() => {
           :is-super-admin="isSuperAdmin"
           @create-group="createGroup"
           @discard="discardCompose"
+        />
+        <ConnectaSectorPicker
+          :show="showSectorPicker"
+          :inbox-id="pendingAdmissionPayload?.inboxId || pendingAdmissionPayload?.inbox_id || null"
+          :contact-id="pendingAdmissionPayload?.contactId || pendingAdmissionPayload?.contact_id || null"
+          :source-id="pendingAdmissionPayload?.sourceId || pendingAdmissionPayload?.source_id || null"
+          :message="pendingAdmissionPayload?.message || null"
+          :idempotency-key="admissionAttemptKey"
+          :units="sectorDestinations"
+          :reuse-info="sectorReuseInfo"
+          :title="t('CONNECTA.MANUAL_ADMISSION.TITLE')"
+          @close="closeSectorPicker"
+          @admitted="onSectorAdmitted"
         />
       </div>
     </template>

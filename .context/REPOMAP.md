@@ -43,7 +43,10 @@ scripts/connecta/   (novo em 2026-10-22: preparo do ambiente de teste G0)
 - `app/services/connecta/scope/native_admin.rb`: associação atual de administrador da conta do recurso; usada nos hooks/gates existentes.
 - `app/services/connecta/scope/conversation_reuse.rb` e `app/services/connecta/runtime/reception_scope_creator.rb`: reuso/recepção do working tree C, WIP; sem regenerar banco nesta integração.
 - `app/controllers/api/v1/accounts/conversations/connecta_manual_admissions_controller.rb` e `app/services/connecta/runtime/manual_admission_transaction.rb`: endpoint/transação de admissão manual, WIP.
-- `app/javascript/dashboard/components-next/NewConversation/components/ConnectaSectorPicker.vue`: componente incluído mas ainda não conectado ao template do compose no snapshot; não declara fluxo pronto.
+- `app/javascript/dashboard/components-next/NewConversation/components/ConnectaSectorPicker.vue`: conectado ao template do `ComposeConversation` em 2026-11-08; recebe os destinos já carregados e usa o endpoint dedicado de admissão.
+- `app/services/connecta/scope/protocol_search.rb`, `conversation_metadata.rb`, `protocol_view.rb`: busca por protocolo, metadados em lote da lista e visão de etapas com Gate por conversa (2026-11-08; sem migração).
+- `app/controllers/api/v1/accounts/connecta/protocols_controller.rb`, `conversation_metadata_controller.rb`: endpoints account-bound de protocolo e metadados; 404 genérico/omissão de ids ocultos.
+- `app/javascript/dashboard/store/modules/connectaMetadata.js`, `helper/connectaLabel.js`, `components/widgets/conversation/ConnectaProtocolDrawer.vue`: rótulo dinâmico `Raiz | Setor | Atendente`, chip/drawer e cache em lote por lista.
 
 ## Pontos de entrada
 - `config.ru` (Rack); `config/routes.rb` (rotas).

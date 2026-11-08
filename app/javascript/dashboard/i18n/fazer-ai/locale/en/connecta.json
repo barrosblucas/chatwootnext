@@ -10,6 +10,35 @@
       "PARKED_HELD": "This message is held: the conversation is not admitted to the sector yet. Send a message to start serving.",
       "PARKED_TRANSFER": "This message was not sent because the conversation transferred."
     },
+    "PROTOCOL": {
+      "PROTOCOL": "Protocol",
+      "VIEW_STAGES": "View stages",
+      "TITLE": "Protocol stages",
+      "LOADING": "Loading stages…",
+      "LOAD_ERROR": "Could not load the stages.",
+      "EMPTY": "No visible stage for this protocol.",
+      "CURRENT": "Current stage",
+      "CLOSE": "Close",
+      "STATES": {
+        "reception": "Reception",
+        "active": "In progress",
+        "transferring": "Transferring",
+        "transferred_out": "Transferred",
+        "pending_activation": "Pending activation",
+        "activation_stuck": "Activation stuck",
+        "closed": "Resolved"
+      }
+    },
+    "MANUAL_ADMISSION": {
+      "TITLE": "Start service",
+      "LOADING": "Loading your sectors…",
+      "LOAD_ERROR": "Could not load your sectors. Try again.",
+      "NO_ELIGIBLE_UNIT": "You have no sector with service permission. Contact your manager.",
+      "SELECT_UNIT": "Choose the sector to start service.",
+      "ERROR": "Could not start service. Your message was preserved — try again.",
+      "REUSED": "An existing service will be reopened in your sector.",
+      "CONFIRM": "Start"
+    },
     "SETTINGS": {
       "TITLE": "Municipal account",
       "LINK_TITLE": "Link municipal account",

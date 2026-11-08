@@ -298,10 +298,14 @@ class Connecta::Transfer::LocalTransaction # rubocop:disable Metrics/ClassLength
   def open_destination(origin, origin_conversation, summary)
     destination_conversation = Conversation.create!(origin_conversation.slice(:account_id, :inbox_id, :contact_id, :contact_inbox_id))
     adopt_or_create_destination_scope!(origin, origin_conversation, destination_conversation)
+    # Nota privada é única para todos os que leem o destino. Não incluir nome,
+    # id ou link do setor de origem: um agente do destino pode não ter grant na
+    # etapa anterior. A cadeia condicional fica na visão por protocolo, que
+    # aplica Gate por etapa.
     Message.create!(
       account_id: destination_conversation.account_id, inbox_id: destination_conversation.inbox_id,
       conversation: destination_conversation, message_type: :outgoing, private: true,
-      content: "Transferido de #{origin.org_unit.name} · protocolo #{origin.case_protocol} · " \
+      content: "Atendimento transferido · protocolo #{origin.case_protocol} · " \
                "#{Time.current.strftime('%d/%m/%Y %H:%M')}\n\nResumo: #{summary}"
     )
     destination_conversation

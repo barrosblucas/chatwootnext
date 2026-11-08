@@ -57,6 +57,21 @@ class ConnectaApi extends ApiClient {
       `/api/v1/accounts/${this.accountIdFromRoute}/conversations/${conversationId}/connecta_scope`
     );
   }
+
+  // Etapas visíveis do protocolo. O backend filtra por conta/inbox e aplica
+  // Gate por etapa; etapas ocultas não retornam id, nome nem link.
+  getProtocol(protocol) {
+    return axios.get(
+      `${this.url}/protocols/${encodeURIComponent(protocol)}`
+    );
+  }
+
+  // Metadados da lista em lote; ids não visíveis são omitidos pelo servidor.
+  conversationMetadata(ids) {
+    return axios.get(`${this.url}/conversations/metadata`, {
+      params: { ids: ids.join(',') },
+    });
+  }
 }
 
 export default new ConnectaApi();

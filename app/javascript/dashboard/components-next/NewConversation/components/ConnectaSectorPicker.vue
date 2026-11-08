@@ -1,6 +1,6 @@
 <script setup>
-import { ref } from 'vue';
-import { useI18n } from 'dashboard/composables/i18n';
+import { ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import connectaAPI from 'dashboard/api/connecta';
 import { ExceptionWithMessage } from 'shared/helpers/CustomErrors';
 
@@ -12,6 +12,10 @@ const props = defineProps({
   message: { type: Object, default: () => ({}) },
   idempotencyKey: { type: String, default: null },
   title: { type: String, default: '' },
+  // O Compose já buscou os destinos elegíveis para decidir auto-admissão
+  // (1 setor) versus modal (>1). Reutiliza a lista, sem segunda chamada.
+  units: { type: Array, default: null },
+  reuseInfo: { type: Object, default: null },
 });
 
 const emit = defineEmits(['close', 'admitted', 'error']);
@@ -23,11 +27,31 @@ const isLoading = ref(false);
 const error = ref(null);
 const reuseInfo = ref(null);
 
+const applyUnits = units => {
+  destinations.value = units || [];
+  reuseInfo.value = props.reuseInfo || null;
+  selectedUnit.value =
+    destinations.value.length === 1 ? destinations.value[0].id : null;
+  error.value =
+    destinations.value.length === 0
+      ? t(
+          'CONNECTA.MANUAL_ADMISSION.NO_ELIGIBLE_UNIT',
+          'Você não tem setor com permissão de atendimento. Fale com seu gestor.'
+        )
+      : null;
+};
+
 const loadDestinations = async conversationId => {
   isLoading.value = true;
   error.value = null;
   try {
-    const { data } = await connectaAPI.admissionDestinations(conversationId);
+    if (Array.isArray(props.units)) {
+      applyUnits(props.units);
+      return destinations.value;
+    }
+    const { data } = conversationId
+      ? await connectaAPI.admissionDestinations(conversationId)
+      : await connectaAPI.admissionDestinationsForInbox(props.inboxId);
     destinations.value = data.eligible_org_units || [];
     reuseInfo.value = data.reused_from || null;
     if (destinations.value.length === 1) {
@@ -52,6 +76,19 @@ const loadDestinations = async conversationId => {
     isLoading.value = false;
   }
 };
+
+watch(
+  () => props.show,
+  visible => {
+    if (!visible) return;
+    if (Array.isArray(props.units)) {
+      applyUnits(props.units);
+    } else {
+      loadDestinations().catch(() => {});
+    }
+  },
+  { immediate: true }
+);
 
 const confirm = async () => {
   if (!selectedUnit.value) {

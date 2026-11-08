@@ -60,6 +60,7 @@ RSpec.describe 'Connecta G0 · corte temporal da transferência (T0.3)' do # rub
                               validate_provider_config: false, received_messages: false)
   end
   let!(:whatsapp_inbox) { whatsapp_channel.inbox.tap { |inbox| inbox.update!(name: "Caixa T03 #{run_id}", enable_auto_assignment: false) } }
+  let!(:other_inbox) { create(:inbox, account: account, name: "Caixa vizinha T03 #{run_id}") }
   let!(:org_a) { Connecta::Scope::OrgUnit.create!(name: 'Setor A', path: "/t03-#{run_id}/a/") }
   let!(:org_b) { Connecta::Scope::OrgUnit.create!(name: 'Setor B', path: "/t03-#{run_id}/b/") }
 
@@ -72,6 +73,16 @@ RSpec.describe 'Connecta G0 · corte temporal da transferência (T0.3)' do # rub
     Connecta::Scope::ConversationScope.create!(conversation_id: origin_conversation.id, inbox_id: whatsapp_inbox.id,
                                                contact_id: origin_conversation.contact_id, org_unit: org_a, state: 'active',
                                                case_protocol: 'CASO-T03', case_version: 1)
+  end
+
+  it 'destino permanece na inbox de origem e a nota não expõe o setor anterior' do
+    destination = Connecta::Transfer::LocalTransaction.new(scope: origin_scope, destination_org_unit: org_b).call
+
+    expect(destination).to be_a(Conversation)
+    expect(destination.inbox_id).to eq(origin_conversation.inbox_id)
+    expect(destination.inbox_id).not_to eq(other_inbox.id)
+    expect(destination.messages.last.content).to include('protocolo CASO-T03')
+    expect(destination.messages.last.content).not_to include('Setor A')
   end
 
   after do

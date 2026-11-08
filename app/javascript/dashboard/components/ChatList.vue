@@ -30,6 +30,7 @@ import TeleportWithDirection from 'dashboard/components-next/TeleportWithDirecti
 import ConversationResolveAttributesModal from 'dashboard/components-next/ConversationWorkflow/ConversationResolveAttributesModal.vue';
 
 import { useUISettings } from 'dashboard/composables/useUISettings';
+import { useConfig } from 'dashboard/composables/useConfig';
 import { useAlert, useAssignmentError } from 'dashboard/composables';
 import { useBulkActions } from 'dashboard/composables/chatlist/useBulkActions';
 import { useFilter } from 'shared/composables/useFilter';
@@ -81,6 +82,7 @@ const props = defineProps({
 
 const emit = defineEmits(['conversationLoad']);
 const { uiSettings } = useUISettings();
+const { connectaHumanNumberEnabled } = useConfig();
 const { t } = useI18n();
 const router = useRouter();
 const route = useRoute();
@@ -129,6 +131,7 @@ const getAccount = useMapGetter('accounts/getAccount');
 // We can't useFunctionGetter here since it needs to be called on setup?
 const getTeamFn = useMapGetter('teams/getTeam');
 const getConversationById = useMapGetter('getConversationById');
+const connectaMetadataChecked = useMapGetter('connectaMetadata/isChecked');
 
 const {
   selectedConversations,
@@ -897,6 +900,21 @@ watch(conversationList, list => {
     .filter(id => !visible.has(id))
     .forEach(deSelectConversation);
 });
+
+// Rótulo Raiz | Setor | Atendente: uma requisição em lote por página/evento.
+// Transferência cria uma conversa nova (id novo) e o watcher a enriquece;
+// assignee usa o meta nativo e não depende deste fetch.
+watch(
+  conversationList,
+  list => {
+    if (!connectaHumanNumberEnabled) return;
+    const ids = list
+      .map(conversation => conversation.id)
+      .filter(id => !connectaMetadataChecked.value(id));
+    if (ids.length) store.dispatch('connectaMetadata/fetch', ids);
+  },
+  { immediate: true }
+);
 
 // Reconciliation removed the conversation the panel is showing: the server no longer serves it to
 // this agent, deleted or no longer permitted, so leaving it open would keep a panel the next action

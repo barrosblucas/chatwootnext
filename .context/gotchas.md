@@ -5,6 +5,10 @@ Registre só fatos verificados. Formato de cada item (uma linha):
 
 `- AAAA-MM-DD — <fato em 1 linha> — evidência: <arquivo:linha | comando | run>`
 
+- 2026-11-08 — `ConnectaSectorPicker` existia mas não era importado/renderizado no `ComposeConversation`; com >1 setor o modal nunca abria e a admissão parava. Corrigido com import/render, prop `units` (destinos já buscados) e `idempotencyKey` — evidência: `app/javascript/dashboard/components-next/NewConversation/ComposeConversation.vue` e `components/specs/ComposeConversationWiring.spec.js`.
+- 2026-11-08 — nota privada de destino é única para todos os leitores; incluir nome/id/link do setor de origem vaza etapa sem grant. A nota agora é genérica e a navegação condicional fica no protocol view (`ProtocolView` + Gate) — evidência: `app/services/connecta/transfer/local_transaction.rb`.
+- 2026-11-08 — a busca nativa de conversas do Chatwoot cobre conteúdo de mensagem, não custom attributes/protocolo; `ProtocolSearch`/`ConversationFinderHook` adicionam o OR sem ampliar a relação escopada — evidência: `app/services/connecta/scope/protocol_search.rb` e `conversation_finder_hook.rb`.
+
 - 2026-10-29 — F2 inclui WIP de C: ConnectaSectorPicker existe, mas não está conectado ao template de ComposeConversation; o caminho manual não encaminha os `followUpFiles` separados introduzidos em EA; não tratar inclusão como homologação — evidência: os dois componentes em `app/javascript/dashboard/components-next/NewConversation/` e relatório externo `p1/fork/f2/`.
 
 - 2026-10-29 — na continuação F1 autorizada, o escopo foi corrigido em `AllCops/Exclude` somente para `.context/evidence/**/*`; o hook já tinha `--force-exclusion`, permaneceu intacto e inspeciona os mesmos 152 arquivos ativos sem ocorrências; as cópias históricas continuam byte a byte iguais a beaf — evidência: `/home/thanos/backups/consolidacao-20261029/p1/fork/f1-continuation-lint-scope.json` e ledger fork.

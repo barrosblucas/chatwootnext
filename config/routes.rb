@@ -60,6 +60,9 @@ Rails.application.routes.draw do
             resource :identity_link, only: [:create], controller: 'identity_links'
             post 'acl/emergency-revocations', to: 'acl#emergency_revocations'
             patch 'scoped_inboxes/:inbox_id', to: 'scoped_inboxes#update'
+            get 'conversations/metadata', to: 'conversation_metadata#index'
+            resources :protocols, only: [:show], param: :protocol,
+                                   constraints: { protocol: %r{[^/]+} }
             resources :outbound_dispatches, only: [:index] do
               patch :resolve, on: :member
             end

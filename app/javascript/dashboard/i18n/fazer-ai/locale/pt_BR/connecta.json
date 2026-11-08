@@ -10,6 +10,35 @@
       "PARKED_HELD": "Esta mensagem está retida: a conversa ainda não foi admitida no setor. Envie uma mensagem para iniciar o atendimento.",
       "PARKED_TRANSFER": "Esta mensagem não foi enviada porque a conversa foi transferida."
     },
+    "PROTOCOL": {
+      "PROTOCOL": "Protocolo",
+      "VIEW_STAGES": "Ver etapas",
+      "TITLE": "Etapas do protocolo",
+      "LOADING": "Carregando etapas…",
+      "LOAD_ERROR": "Não foi possível carregar as etapas.",
+      "EMPTY": "Nenhuma etapa visível para este protocolo.",
+      "CURRENT": "Etapa atual",
+      "CLOSE": "Fechar",
+      "STATES": {
+        "reception": "Recepção",
+        "active": "Em atendimento",
+        "transferring": "Transferindo",
+        "transferred_out": "Transferida",
+        "pending_activation": "Aguardando ativação",
+        "activation_stuck": "Ativação travada",
+        "closed": "Resolvida"
+      }
+    },
+    "MANUAL_ADMISSION": {
+      "TITLE": "Iniciar atendimento",
+      "LOADING": "Carregando seus setores…",
+      "LOAD_ERROR": "Não foi possível carregar seus setores. Tente novamente.",
+      "NO_ELIGIBLE_UNIT": "Você não tem setor com permissão de atendimento. Fale com seu gestor.",
+      "SELECT_UNIT": "Escolha o setor para iniciar o atendimento.",
+      "ERROR": "Não foi possível iniciar o atendimento. Sua mensagem foi preservada — tente novamente.",
+      "REUSED": "Atendimento existente será reaberto no seu setor.",
+      "CONFIRM": "Iniciar"
+    },
     "SETTINGS": {
       "TITLE": "Conta municipal",
       "LINK_TITLE": "Vincular conta municipal",

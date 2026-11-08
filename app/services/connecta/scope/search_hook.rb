@@ -8,11 +8,14 @@ module Connecta::Scope::SearchHook
   end
 
   def filter_conversations
-    conversations_query = scoped_conversations.where(inbox_id: accessable_inbox_ids)
-                                              .joins('INNER JOIN contacts ON conversations.contact_id = contacts.id')
-                                              .where('cast(conversations.display_id as text) ILIKE :search OR contacts.name ILIKE :search OR ' \
-                                                     'contacts.email ILIKE :search OR contacts.phone_number ILIKE :search OR ' \
-                                                     'contacts.identifier ILIKE :search', search: "%#{search_query}%")
+    base = scoped_conversations.where(inbox_id: accessable_inbox_ids)
+    message_ids = base.joins('INNER JOIN contacts ON conversations.contact_id = contacts.id')
+                      .where('cast(conversations.display_id as text) ILIKE :search OR contacts.name ILIKE :search OR ' \
+                             'contacts.email ILIKE :search OR contacts.phone_number ILIKE :search OR ' \
+                             'contacts.identifier ILIKE :search', search: "%#{search_query}%")
+                      .select(:id)
+    protocol_ids = Connecta::Scope::ProtocolSearch.apply(base, search_query).select(:id)
+    conversations_query = base.where(id: message_ids).or(base.where(id: protocol_ids))
 
     if current_account.feature_enabled?('advanced_search')
       conversations_query = apply_time_filter(conversations_query, 'conversations.last_activity_at')

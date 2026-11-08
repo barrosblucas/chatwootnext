@@ -13,3 +13,4 @@ Decisão em proposta fica rotulada como proposta até aprovação humana.
 | 004 | Envio em recepção só pelo usuário de serviço; parked vira falha visível (menos em manutenção) | Aceita | 2026-11-02 |
 | 005 | Ciclo de vida do escopo na resolução/reabertura (closed terminal) | Aceita | 2026-11-02 |
 | 006 | HTTPS só no ensaio LAN via proxy Caddy dedicado (sem tocar produção) | Aceita | 2026-11-02 |
+| 007 | Protocolo: busca, identificação na lista e visão por etapas | Aceita | 2026-11-08 |

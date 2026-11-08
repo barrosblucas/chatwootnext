@@ -13,12 +13,14 @@ import SLACardLabel from 'dashboard/components-next/Conversation/Sla/SLACardLabe
 import CardStatusIcon from './CardStatusIcon.vue';
 import Checkbox from 'dashboard/components-next/checkbox/Checkbox.vue';
 import Icon from 'dashboard/components-next/icon/Icon.vue';
+import { connectaLabel as buildConnectaLabel } from 'dashboard/helper/connectaLabel';
 
 const props = defineProps({
   chat: { type: Object, required: true },
   currentContact: { type: Object, required: true },
   assignee: { type: Object, default: () => ({}) },
   inbox: { type: Object, default: () => ({}) },
+  connecta: { type: Object, default: null },
   selected: { type: Boolean, default: false },
   isActiveChat: { type: Boolean, default: false },
   showAssignee: { type: Boolean, default: false },
@@ -36,6 +38,9 @@ const emit = defineEmits([
 
 const lastMessageInChat = computed(() => getLastMessage(props.chat));
 const showLabelsSection = computed(() => props.chat.labels?.length > 0);
+const connectaLabel = computed(() =>
+  buildConnectaLabel(props.connecta, props.assignee?.name)
+);
 
 const voiceCallData = computed(() => {
   const last = lastMessageInChat.value;
@@ -72,7 +77,7 @@ const selectedModel = computed({
 
 <template>
   <div
-    class="conversation relative cursor-pointer group grid gap-4 items-center px-3 h-12 border-b border-n-slate-3 hover:border-n-surface-1 hover:z-[1] before:content-[none] before:absolute before:-top-px before:inset-x-0 before:h-px before:bg-n-surface-1 before:pointer-events-none hover:before:content-['']"
+    class="conversation relative cursor-pointer group grid gap-4 items-center px-3 min-h-14 border-b border-n-slate-3 hover:border-n-surface-1 hover:z-[1] before:content-[none] before:absolute before:-top-px before:inset-x-0 before:h-px before:bg-n-surface-1 before:pointer-events-none hover:before:content-['']"
     :class="{
       'active animate-card-select bg-n-alpha-1 dark:bg-n-alpha-3 !border-n-surface-1':
         isActiveChat,
@@ -158,11 +163,21 @@ const selectedModel = computed({
         :hide-thumbnail="false"
       />
 
-      <h4
-        class="text-heading-3 my-0 capitalize truncate text-n-slate-12 font-medium w-32 flex-shrink-0"
-      >
-        {{ currentContact.name }}
-      </h4>
+      <div class="flex flex-col min-w-0 w-32 flex-shrink-0">
+        <h4
+          class="text-heading-3 my-0 capitalize truncate text-n-slate-12 font-medium"
+        >
+          {{ currentContact.name }}
+        </h4>
+        <span
+          v-if="connectaLabel"
+          class="connecta-conversation-label text-xs leading-4 truncate text-n-slate-10"
+          :title="connectaLabel"
+          :aria-label="connectaLabel"
+        >
+          {{ connectaLabel }}
+        </span>
+      </div>
 
       <CardContent
         :last-message="lastMessageInChat"

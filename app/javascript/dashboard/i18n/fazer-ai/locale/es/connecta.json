@@ -10,6 +10,35 @@
       "PARKED_HELD": "Este mensaje está retenido: la conversación aún no fue admitida en el sector. Envíe un mensaje para empezar a atender.",
       "PARKED_TRANSFER": "Este mensaje no se envió porque la conversación fue transferida."
     },
+    "PROTOCOL": {
+      "PROTOCOL": "Protocolo",
+      "VIEW_STAGES": "Ver etapas",
+      "TITLE": "Etapas del protocolo",
+      "LOADING": "Cargando etapas…",
+      "LOAD_ERROR": "No se pudieron cargar las etapas.",
+      "EMPTY": "No hay etapas visibles para este protocolo.",
+      "CURRENT": "Etapa actual",
+      "CLOSE": "Cerrar",
+      "STATES": {
+        "reception": "Recepción",
+        "active": "En atención",
+        "transferring": "Transfiriendo",
+        "transferred_out": "Transferida",
+        "pending_activation": "Esperando activación",
+        "activation_stuck": "Activación trabada",
+        "closed": "Resuelta"
+      }
+    },
+    "MANUAL_ADMISSION": {
+      "TITLE": "Iniciar atención",
+      "LOADING": "Cargando sus sectores…",
+      "LOAD_ERROR": "No se pudieron cargar sus sectores. Intente de nuevo.",
+      "NO_ELIGIBLE_UNIT": "No tiene un sector con permiso de atención. Hable con su gestor.",
+      "SELECT_UNIT": "Elija el sector para iniciar la atención.",
+      "ERROR": "No se pudo iniciar la atención. Su mensaje fue conservado — intente de nuevo.",
+      "REUSED": "Una atención existente se reabrirá en su sector.",
+      "CONFIRM": "Iniciar"
+    },
     "SETTINGS": {
       "TITLE": "Cuenta municipal",
       "LINK_TITLE": "Vincular cuenta municipal",

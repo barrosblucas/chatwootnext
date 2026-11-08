@@ -2,6 +2,15 @@
 
 Estado atual: fase, entregas, próximos marcos e pendências. Criado em 2026-10-22.
 
+## Protocolo no Chatwoot — busca, lista e visão por etapas (2026-11-08, código; CI pendente)
+
+- Implementados `ProtocolSearch`, `ConversationMetadata` + controller, `ProtocolView` + controller; busca por protocolo na busca global e na lista; metadados em lote somente para conversas visíveis; protocol view com `Gate#read?` por etapa, 404 genérico e sem dados de cidadão.
+- Lista: Vuex `connectaMetadata` + rótulo dinâmico `Raiz | Setor | Atendente` no card condensado e expandido; chip de protocolo e drawer de etapas com links condicionais.
+- `ComposeConversation` voltou a renderizar `ConnectaSectorPicker`; o componente recebe os destinos já carregados e o fluxo >1 setor deixa de parar.
+- `LocalTransaction#open_destination` usa nota genérica, sem nome/id/link da origem; a cadeia condicional fica no endpoint.
+- Decisão 005 comprovada no caminho real de ingestão Baileys: conversa resolvida/escopo `closed` não recebe o próximo inbound; `lock_to_single_conversation=false` cria conversa nova/escopo `reception` na mesma inbox/contato; retry antigo é idempotente. Requisito de runtime para operador: a inbox humana precisa de `lock_to_single_conversation=false`.
+- Sem migração. Testes Rails/frontend e build pendentes de GitHub Actions; nenhum deploy, DB de produção ou build local nesta entrega. Detalhe e contrato em `.context/changelog/CHANGELOG_2026_11_08.md`; decisão 007.
+
 ## HTTPS só no ensaio LAN (Chatwoot 3443 + painel 3444) — 2026-11-02 (ativo; sem build/deploy de app)
 
 - Proxy `chatwootnext-tls-proxy-1` (Caddy oficial 2.11.7, `caddy:2-alpine@sha256:e70b...`, Up, 0 restarts, 128m/0.5cpu, sem socket/privileged): binds host só `192.168.1.32:3443→rails:3000` e `:3444→wb-saude-admin:6700` (redes `chatwootnext_default`+`wb-saude_default`); `Valid configuration` (sintaxe conferida na doc oficial via Context7 + `caddy validate`); logs só startup, sem query token.
