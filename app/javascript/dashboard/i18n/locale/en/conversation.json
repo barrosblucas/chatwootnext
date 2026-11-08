@@ -127,7 +127,6 @@
     },
     "HEADER": {
       "RESOLVE_ACTION": "Resolve",
-      "TRANSFER_ACTION": "Transfer",
       "REOPEN_ACTION": "Reopen",
       "OPEN_ACTION": "Open",
       "MORE_ACTIONS": "More actions",
@@ -162,18 +161,6 @@
         "TOMORROW": "Tomorrow",
         "NEXT_WEEK": "Next week"
       }
-    },
-    "TRANSFER": {
-      "TITLE": "Transfer conversation",
-      "DESCRIPTION": "Select the department inbox to transfer this conversation to.",
-      "DESTINATION_PLACEHOLDER": "Select destination",
-      "EMPTY": "No transfer destinations available.",
-      "CONFIRM": "Transfer to {name}? The citizen will be notified.",
-      "SUBMIT": "Transfer",
-      "CANCEL": "Cancel",
-      "SUCCESS": "Conversation transferred successfully.",
-      "ERROR": "Could not transfer the conversation. Please try again.",
-      "LOAD_ERROR": "Could not load transfer destinations. Please try again."
     },
     "MENTION": {
       "AGENTS": "Agents",
@@ -279,12 +266,6 @@
       "MESSAGE_SIGN_TOOLTIP": "Message signature",
       "ENABLE_SIGN_TOOLTIP": "Enable signature",
       "DISABLE_SIGN_TOOLTIP": "Disable signature",
-      "ENABLE_AGENT_NAME_TOOLTIP": "Include agent name",
-      "DISABLE_AGENT_NAME_TOOLTIP": "Do not include agent name",
-      "SIGNATURE_LABEL_TOP": "↓ Signature",
-      "SIGNATURE_LABEL_TOP_TOOLTIP": "The signature will be sent at the top of the message",
-      "SIGNATURE_LABEL_BOTTOM": "↑ Signature",
-      "SIGNATURE_LABEL_BOTTOM_TOOLTIP": "The signature will be sent at the bottom of the message",
       "MSG_INPUT": "Shift + enter for new line. Start with '/' to select a Canned Response.",
       "PRIVATE_MSG_INPUT": "Shift + enter for new line. This will be visible only to Agents",
       "MESSAGING_RESTRICTED": "You cannot reply to this conversation",

@@ -28,6 +28,12 @@ es:
       cannot_delete_processed: No se puede eliminar un mensaje programado que ya se envió o que falló
     conversations:
       already_assigned: "%{agent_name} ya está atendiendo esta conversación."
+      connecta_transfer:
+        disabled: La transferencia Connecta no está habilitada en esta instalación
+        misconfigured: La transferencia Connecta está habilitada, pero faltan la URL o el secreto del gateway
+        timeout: La solicitud al gateway Connecta expiró
+        gateway_error: El gateway Connecta devolvió un error
+        target_department_id_required: target_department_id es obligatorio
     conversation_pins:
       limit_reached: Puede fijar hasta %{limit} conversaciones.
       conversation_resolved: No se puede fijar una conversación resuelta.

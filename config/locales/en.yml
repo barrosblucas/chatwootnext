@@ -116,12 +116,6 @@ en:
       resolved: Conversation is resolved and does not accept new messages
       unread_counts:
         feature_not_enabled: Conversation unread counts feature not enabled for this account
-      connecta_transfer:
-        disabled: Connecta transfer is not enabled on this installation
-        misconfigured: Connecta transfer is enabled but gateway URL or secret is missing
-        timeout: Connecta gateway request timed out
-        gateway_error: Connecta gateway returned an error
-        target_department_id_required: target_department_id is required
     data_import:
       data_type:
         invalid: Invalid data type

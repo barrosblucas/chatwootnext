@@ -8,7 +8,13 @@
     "FOOTER": {
       "ANNOUNCEMENT_MODE_RESTRICTED": "Only administrators are allowed to send messages in this group",
       "GROUP_LEFT_RESTRICTED": "You are no longer part of this group and cannot send messages in it",
-      "GROUPS_DISABLED_RESTRICTED": "Group messages are disabled — enable for free"
+      "GROUPS_DISABLED_RESTRICTED": "Group messages are disabled — enable for free",
+      "ENABLE_AGENT_NAME_TOOLTIP": "Include agent name",
+      "DISABLE_AGENT_NAME_TOOLTIP": "Do not include agent name",
+      "SIGNATURE_LABEL_TOP": "↓ Signature",
+      "SIGNATURE_LABEL_TOP_TOOLTIP": "The signature will be sent at the top of the message",
+      "SIGNATURE_LABEL_BOTTOM": "↑ Signature",
+      "SIGNATURE_LABEL_BOTTOM_TOOLTIP": "The signature will be sent at the bottom of the message"
     },
     "REPLYBOX": {
       "SCHEDULE_SEND": "Schedule send",
@@ -103,7 +109,20 @@
         "SUBJECT": "What is the issue?",
         "COMPLETED": "What has been done?",
         "NEXT_ACTION": "What remains or should happen next?"
-      }
+      },
+      "TITLE": "Transfer conversation",
+      "DESCRIPTION": "Select the department inbox to transfer this conversation to.",
+      "DESTINATION_PLACEHOLDER": "Select destination",
+      "EMPTY": "No transfer destinations available.",
+      "CONFIRM": "Transfer to {name}? The citizen will be notified.",
+      "SUBMIT": "Transfer",
+      "CANCEL": "Cancel",
+      "SUCCESS": "Conversation transferred successfully.",
+      "ERROR": "Could not transfer the conversation. Please try again.",
+      "LOAD_ERROR": "Could not load transfer destinations. Please try again."
+    },
+    "HEADER": {
+      "TRANSFER_ACTION": "Transfer"
     }
   },
   "CONVERSATION_SIDEBAR": {

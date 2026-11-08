@@ -8,7 +8,13 @@
     "FOOTER": {
       "ANNOUNCEMENT_MODE_RESTRICTED": "Solo los administradores pueden enviar mensajes en este grupo",
       "GROUP_LEFT_RESTRICTED": "Ya no forma parte de este grupo y no puede enviar mensajes en él",
-      "GROUPS_DISABLED_RESTRICTED": "Los mensajes de grupo están desactivados: actívelos gratis"
+      "GROUPS_DISABLED_RESTRICTED": "Los mensajes de grupo están desactivados: actívelos gratis",
+      "ENABLE_AGENT_NAME_TOOLTIP": "Incluir nombre del agente",
+      "DISABLE_AGENT_NAME_TOOLTIP": "No incluir nombre del agente",
+      "SIGNATURE_LABEL_TOP": "↓ Firma",
+      "SIGNATURE_LABEL_TOP_TOOLTIP": "La firma se enviará al inicio del mensaje",
+      "SIGNATURE_LABEL_BOTTOM": "↑ Firma",
+      "SIGNATURE_LABEL_BOTTOM_TOOLTIP": "La firma se enviará al final del mensaje"
     },
     "REPLYBOX": {
       "SCHEDULE_SEND": "Programar envío",
@@ -103,7 +109,20 @@
         "NEXT_ACTION": "¿Qué queda o qué debe ocurrir a continuación?",
         "SUBJECT": "¿Cuál es el asunto?",
         "COMPLETED": "¿Qué ya se hizo?"
-      }
+      },
+      "TITLE": "Transferir conversación",
+      "DESCRIPTION": "Seleccione el departamento de destino para transferir esta conversación.",
+      "DESTINATION_PLACEHOLDER": "Seleccione el destino",
+      "EMPTY": "No hay destinos de transferencia disponibles.",
+      "CONFIRM": "¿Transferir a {name}? Se notificará al ciudadano.",
+      "SUBMIT": "Transferir",
+      "CANCEL": "Cancelar",
+      "SUCCESS": "Conversación transferida correctamente.",
+      "ERROR": "No se pudo transferir la conversación. Inténtelo de nuevo.",
+      "LOAD_ERROR": "No se pudieron cargar los destinos de transferencia. Inténtelo de nuevo."
+    },
+    "HEADER": {
+      "TRANSFER_ACTION": "Transferir"
     }
   },
   "CONVERSATION_SIDEBAR": {

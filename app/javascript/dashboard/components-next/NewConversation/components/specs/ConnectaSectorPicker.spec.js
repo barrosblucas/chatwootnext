@@ -37,7 +37,6 @@ describe('ConnectaSectorPicker', () => {
   it('admits with the listed sector, files and emits the conversation', async () => {
     admitConversation.mockResolvedValue({ data: { id: 55, account_id: 1 } });
     const firstFile = new File(['a'], 'a.png', { type: 'image/png' });
-    const followUp = new File(['b'], 'b.png', { type: 'image/png' });
 
     const wrapper = mountPicker({
       units: [{ id: 'unit-1', name: 'Setor Um' }],
@@ -60,9 +59,7 @@ describe('ConnectaSectorPicker', () => {
         files: [firstFile],
       })
     );
-    expect(admitConversation).not.toHaveBeenCalledWith(
-      expect.objectContaining({ files: [followUp] })
-    );
+    expect(admitConversation.mock.calls[0][0].files[0]).toBe(firstFile);
     expect(wrapper.emitted('admitted')?.[0]).toEqual([
       { id: 55, account_id: 1 },
     ]);

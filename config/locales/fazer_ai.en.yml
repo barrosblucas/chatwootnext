@@ -28,6 +28,12 @@ en:
       cannot_delete_processed: Cannot delete a scheduled message that has already been sent or failed
     conversations:
       already_assigned: "%{agent_name} is already handling this conversation."
+      connecta_transfer:
+        disabled: Connecta transfer is not enabled on this installation
+        misconfigured: Connecta transfer is enabled but gateway URL or secret is missing
+        timeout: Connecta gateway request timed out
+        gateway_error: Connecta gateway returned an error
+        target_department_id_required: target_department_id is required
     conversation_pins:
       limit_reached: You can pin up to %{limit} conversations.
       conversation_resolved: A resolved conversation cannot be pinned.
