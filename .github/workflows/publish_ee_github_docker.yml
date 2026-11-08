@@ -82,15 +82,44 @@ jobs:
 
       - name: Record protected-tag baseline (latest-ee, fix-producao-20261106-ee)
         run: |
+          set -euo pipefail
           REPO="ghcr.io/${{ github.repository }}"
           : > protected.txt
           for T in latest-ee fix-producao-20261106-ee; do
-            if OUT="$(docker buildx imagetools inspect "$REPO:$T" 2>&1)"; then
-              echo "$T $(printf '%s' "$OUT" | sha256sum | cut -d' ' -f1)" >> protected.txt
-            else
-              echo "$T ABSENT" >> protected.txt
+            if ! OUT="$(docker buildx imagetools inspect "$REPO:$T" 2>&1)"; then
+              printf '%s\n' "$OUT" >&2
+              echo "Refusing: could not inspect protected tag $T (registry/auth/network/not-found?). Failing closed." >&2
+              exit 1
+            fi
+            DIGEST="$(printf '%s\n' "$OUT" | grep -i '^Digest:' | grep -oE 'sha256:[0-9a-f]{64}' | head -n 1 || true)"
+            COUNT="$(printf '%s\n' "$OUT" | grep -ci '^Digest:' || true)"
+            if [ "$COUNT" != "1" ] || [ -z "$DIGEST" ]; then
+              echo "Refusing: could not extract a single canonical manifest digest for $T (ambiguous output?). Failing closed." >&2
+              printf '%s\n' "$OUT" >&2
+              exit 1
+            fi
+            echo "$T $DIGEST" >> protected.txt
+          done
+          # Strict baseline shape: exactly the two expected protected tags,
+          # once each, each with a full canonical digest; nothing else.
+          # Never hash human-readable inspect output: only the Digest: value.
+          if [ "$(wc -l < protected.txt | tr -d ' ')" != "2" ]; then
+            echo "Refusing: baseline must hold exactly 2 entries. Failing closed." >&2
+            cat protected.txt >&2
+            exit 1
+          fi
+          for T in latest-ee fix-producao-20261106-ee; do
+            if [ "$(grep -cE "^${T} sha256:[0-9a-f]{64}$" protected.txt || true)" != "1" ]; then
+              echo "Refusing: baseline entry for $T missing, duplicated or malformed. Failing closed." >&2
+              cat protected.txt >&2
+              exit 1
             fi
           done
+          if grep -qvE '^(latest-ee|fix-producao-20261106-ee) sha256:[0-9a-f]{64}$' protected.txt; then
+            echo "Refusing: baseline holds an unexpected entry. Failing closed." >&2
+            cat protected.txt >&2
+            exit 1
+          fi
           cat protected.txt
 
       - name: Upload protected-tag baseline
@@ -248,19 +277,46 @@ jobs:
 
       - name: Abort if a protected tag drifted before publication
         run: |
+          set -euo pipefail
           REPO="ghcr.io/${{ github.repository }}"
+          BASE="${{ runner.temp }}/protected/protected.txt"
+          # Fail closed on malformed/missing/duplicated baseline entries.
+          if [ "$(wc -l < "$BASE" | tr -d ' ')" != "2" ]; then
+            echo "Refusing: baseline must hold exactly 2 entries. Failing closed." >&2
+            cat "$BASE" >&2
+            exit 1
+          fi
+          for T in latest-ee fix-producao-20261106-ee; do
+            if [ "$(grep -cE "^${T} sha256:[0-9a-f]{64}$" "$BASE" || true)" != "1" ]; then
+              echo "Refusing: baseline entry for $T missing, duplicated or malformed. Failing closed." >&2
+              cat "$BASE" >&2
+              exit 1
+            fi
+          done
+          if grep -qvE '^(latest-ee|fix-producao-20261106-ee) sha256:[0-9a-f]{64}$' "$BASE"; then
+            echo "Refusing: baseline holds an unexpected entry. Failing closed." >&2
+            cat "$BASE" >&2
+            exit 1
+          fi
           while IFS=' ' read -r TAG OLD; do
-            if OUT="$(docker buildx imagetools inspect "$REPO:$TAG" 2>&1)"; then
-              NEW="$(printf '%s' "$OUT" | sha256sum | cut -d' ' -f1)"
-            else
-              NEW="ABSENT"
+            if ! OUT="$(docker buildx imagetools inspect "$REPO:$TAG" 2>&1)"; then
+              printf '%s\n' "$OUT" >&2
+              echo "Refusing: could not re-inspect protected tag $TAG (registry/auth/network/not-found?). Failing closed." >&2
+              exit 1
+            fi
+            NEW="$(printf '%s\n' "$OUT" | grep -i '^Digest:' | grep -oE 'sha256:[0-9a-f]{64}' | head -n 1 || true)"
+            COUNT="$(printf '%s\n' "$OUT" | grep -ci '^Digest:' || true)"
+            if [ "$COUNT" != "1" ] || [ -z "$NEW" ]; then
+              echo "Refusing: could not extract a single canonical manifest digest for $TAG. Failing closed." >&2
+              printf '%s\n' "$OUT" >&2
+              exit 1
             fi
             if [ "$NEW" != "$OLD" ]; then
               echo "Refusing: protected tag $TAG changed since preflight ($OLD -> $NEW)." >&2
               exit 1
             fi
-          done < "${{ runner.temp }}/protected/protected.txt"
-          echo "Protected tags unchanged since preflight."
+          done < "$BASE"
+          echo "Protected tags unchanged since preflight (canonical digests match)."
 
       - name: Create the single isolated tag from both digests
         id: create
@@ -283,19 +339,46 @@ jobs:
 
       - name: Confirm protected tags still untouched after publication
         run: |
+          set -euo pipefail
           REPO="ghcr.io/${{ github.repository }}"
+          BASE="${{ runner.temp }}/protected/protected.txt"
+          # Fail closed on malformed/missing/duplicated baseline entries.
+          if [ "$(wc -l < "$BASE" | tr -d ' ')" != "2" ]; then
+            echo "ALERT: baseline must hold exactly 2 entries. Failing closed." >&2
+            cat "$BASE" >&2
+            exit 1
+          fi
+          for T in latest-ee fix-producao-20261106-ee; do
+            if [ "$(grep -cE "^${T} sha256:[0-9a-f]{64}$" "$BASE" || true)" != "1" ]; then
+              echo "ALERT: baseline entry for $T missing, duplicated or malformed. Failing closed." >&2
+              cat "$BASE" >&2
+              exit 1
+            fi
+          done
+          if grep -qvE '^(latest-ee|fix-producao-20261106-ee) sha256:[0-9a-f]{64}$' "$BASE"; then
+            echo "ALERT: baseline holds an unexpected entry. Failing closed." >&2
+            cat "$BASE" >&2
+            exit 1
+          fi
           while IFS=' ' read -r TAG OLD; do
-            if OUT="$(docker buildx imagetools inspect "$REPO:$TAG" 2>&1)"; then
-              NEW="$(printf '%s' "$OUT" | sha256sum | cut -d' ' -f1)"
-            else
-              NEW="ABSENT"
+            if ! OUT="$(docker buildx imagetools inspect "$REPO:$TAG" 2>&1)"; then
+              printf '%s\n' "$OUT" >&2
+              echo "ALERT: could not re-inspect protected tag $TAG after publication. Failing closed." >&2
+              exit 1
+            fi
+            NEW="$(printf '%s\n' "$OUT" | grep -i '^Digest:' | grep -oE 'sha256:[0-9a-f]{64}' | head -n 1 || true)"
+            COUNT="$(printf '%s\n' "$OUT" | grep -ci '^Digest:' || true)"
+            if [ "$COUNT" != "1" ] || [ -z "$NEW" ]; then
+              echo "ALERT: could not extract a single canonical manifest digest for $TAG. Failing closed." >&2
+              printf '%s\n' "$OUT" >&2
+              exit 1
             fi
             if [ "$NEW" != "$OLD" ]; then
               echo "ALERT: protected tag $TAG changed during publication ($OLD -> $NEW)." >&2
               exit 1
             fi
-          done < "${{ runner.temp }}/protected/protected.txt"
-          echo "Protected tags untouched by publication."
+          done < "$BASE"
+          echo "Protected tags untouched by publication (canonical digests match)."
 
       - name: Record deployment identity in summary
         run: |

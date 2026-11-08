@@ -81,3 +81,21 @@ Preparar, sem executar, um build GitHub Actions da imagem Enterprise a partir do
 - Nenhum dispatch, build, publicação ou deploy executado nesta correção; digest protegido `24a106` existente inalterado.
 - Checkout original (`fix/producao-20261106`, Baileys) segue intocado e somente leitura.
 - Falta aprovar/executar: novo commit+push da correção (este passo) e, em passo seguinte separado, o `gh workflow run`.
+
+## EE Actions isolado — guard de tags protegidas por digest canônico (fail closed)
+
+### Contexto verificado
+- Actions run https://github.com/barrosblucas/chatwootnext/actions/runs/42492783634 falhou no merge, não no build: ambos os builds por plataforma passaram nas verificações EE/fonte (`CW_EDITION=ee`, `/app/enterprise`, `/app/.git_sha == 15fa2b33`).
+- A falha veio antes da criação da tag final: o guard antigo aplicava `sha256sum` sobre toda a saída legível de `docker buildx imagetools inspect`, cuja ordem de anotações varia; dois hashes distintos foram reproduzidos para o mesmo digest canônico protegido (`24a106`), então a comparação antes da publicação abortou corretamente sem publicar.
+- Manifestos intermediários sem tag estão no registry; a tag dedicada final `ee-src-15fa2b33...` segue ausente. Nenhum deploy ou limpeza foi executado.
+- Alerta do explorer: o guard anterior tratava `inspect` com falha como `ABSENT`; o novo guard falha fechado em qualquer falha de inspeção/extração.
+
+### Mudanças (somente no worktree `ci/ee-build-15fa2b33`)
+- `.github/workflows/publish_ee_github_docker.yml`: baseline do preflight e ambas as verificações (antes/depois da publicação) agora comparam o digest canônico real do manifesto (`sha256:` + 64 hex minúsculos extraído da linha `Digest:`), nunca hash da saída legível; baseline exige exatamente as duas tags esperadas uma vez cada, sem entradas vazias/malformadas/duplicadas/ausentes; falhas de rede/auth/not-found/ambiguidade/extração fecham o run. Guard da tag dedicada, pin exato do fonte, builds por digest sem tag, proveniência padrão, checagens EE, publicação só da tag isolada e tags `main`/produção intactos.
+- Validação sem build local nem Docker: parse YAML, cheques estruturais e harness stub sem instalação (digest estável com ordenação variada passa; mudança real de digest, falhas de auth/rede/not-found e baselines malformadas/duplicadas/ausentes falham nos caminhos before/after); `git diff --check`. Semântica plena do GitHub não declarada como validada.
+- Este changelog (append, conteúdo existente preservado).
+
+### Fora do escopo / pendências
+- Nenhum dispatch, escrita de tag/registry, deploy, mudança de banco/runtime, limpeza/remoção de artefatos, edição de app, merge, reset ou force push neste passo; sem alteração de credenciais.
+- Checkout original segue somente leitura; nenhuma limpeza operacional executada.
+- Falta, em passo seguinte separado e autorizado: dispatch do workflow via Actions.
