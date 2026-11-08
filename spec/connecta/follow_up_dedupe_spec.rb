@@ -48,10 +48,10 @@ RSpec.describe 'Connecta · dedupe de anexos de acompanhamento', type: :request 
     end.to change(Message, :count).by(2)
   end
 
-  it 'ignora content_attributes escalar/null/array/string e deduplica objeto e serializado' do
+  it 'ignora content_attributes escalar/null/array e deduplica objeto e serializado' do
     base_params = { account: account, inbox: whatsapp_inbox, conversation: conv_a,
                     sender: agent_a, message_type: :outgoing }
-    ['texto connecta_followup_nonce sem json', 123, nil, [1, 2]].each do |value|
+    [123, nil, [1, 2]].each do |value|
       raw_content_attribute(create(:message, **base_params, content: "formato #{value.inspect}"), value)
     end
     legacy = create(:message, **base_params, content: 'legado')
@@ -64,6 +64,17 @@ RSpec.describe 'Connecta · dedupe de anexos de acompanhamento', type: :request 
     expect { post_follow_up('legacy-nonce', 'legado retry') }.not_to change(Message, :count)
     expect(response).to have_http_status(:ok)
     expect(Message.find_by!(content: 'legado').id).to eq(legacy.id)
+  end
+
+  it 'decodifica objeto e serializado e ignora string/escalar/null/array malformados' do
+    decoder = Object.new.extend(Connecta::Scope::FollowUpDedupeHook)
+
+    expect(decoder.send(:follow_up_nonce, { connecta_followup_nonce: 'objeto' }.to_json)).to eq('objeto')
+    expect(decoder.send(:follow_up_nonce, { connecta_followup_nonce: 'serializado' }.to_json.to_json))
+      .to eq('serializado')
+    ['texto connecta_followup_nonce sem json', '123', 'null', '[1,2]'].each do |raw|
+      expect(decoder.send(:follow_up_nonce, raw)).to be_nil
+    end
   end
 
   it 'retry de dois anexos após perda de resposta mantém uma mensagem por nonce' do
