@@ -124,7 +124,7 @@ RSpec.describe 'Connecta G0 · corte temporal da transferência (T0.3)' do # rub
     expect(destination.messages.last.content).not_to include('Setor A')
   end
 
-  context 'with incoming messages racing one transfer' do
+  context 'with incoming messages racing one transfer' do # rubocop:disable RSpec/MultipleMemoizedHelpers
     # Cada repetição é um exemplo com dados próprios (a limpeza roda entre elas).
     [1, 2, 3, 4, 5].each do |repetition|
       # rubocop:disable RSpec/ExampleLength

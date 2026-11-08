@@ -28,7 +28,7 @@ A transferência humana cria uma conversa nova na mesma inbox e mantém o mesmo 
 ### Privacidade / ACL
 - Toda busca/metadado/visão parte de `Current.account` e de relação escopada; não há lookup global de protocolo.
 - Protocol view aplica `Connecta::Scope::Gate#read?` por etapa, com auditoria `connecta_access_audits`.
-- Admin nativo mantém acesso total same-account; `admin_nominal` não ganha escrita nem etapa `transferred_out`; agente só vê etapas em `READ_STATES` e no caminho de grants `acompanhar`/`atender`.
+- Admin nativo mantém acesso total same-account; `admin_nominal` mantém a leitura auditada já existente do `Gate`, sem ganhar escrita; agente só vê etapas em `READ_STATES` e no caminho de grants `acompanhar`/`atender`.
 - Nota privada não revela etapa de origem; links só pelo endpoint condicional.
 
 ### Validação

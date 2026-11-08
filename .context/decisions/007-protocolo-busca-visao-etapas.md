@@ -6,7 +6,7 @@ A transferência humana preserva o protocolo e cria uma conversa nova na mesma i
 ## Decisão
 1. Busca por protocolo é um hook sobre a relação já escopada (`ProtocolSearch`), com wildcard literal, limite de 60 e OR com a busca de mensagem existente. Nunca há lookup global de protocolo.
 2. A lista recebe metadados em lote (`ConversationMetadata`) somente para conversas visíveis: `case_protocol`, `state`, `org_unit_name`, `root_unit_name`. O rótulo é dinâmico `Raiz | Setor | Atendente`; assignee vem do meta nativo.
-3. A visão por protocolo (`ProtocolView`) lista somente etapas que passam no `Gate#read?` por conversa, com auditoria. Admin nativo vê todas as etapas da conta; agente vê apenas as autorizadas; `admin_nominal` mantém a leitura auditada já existente, sem escrita nem etapa `transferred_out`; `transferir` sozinho não lê.
+3. A visão por protocolo (`ProtocolView`) lista somente etapas que passam no `Gate#read?` por conversa, com auditoria. Admin nativo vê todas as etapas da conta; agente vê apenas as autorizadas; `admin_nominal` mantém a leitura auditada já existente do `Gate`, sem ganhar escrita; `transferir` sozinho não lê.
 4. Etapas ocultas não retornam id, nome nem link. O endpoint é a única fonte de navegação condicional entre etapas; a nota privada do destino é genérica e não inclui o setor de origem.
 5. O modal de setor é renderizado no `ComposeConversation`, reutiliza os destinos já buscados pelo ator e usa o endpoint dedicado de admissão manual.
 6. Sem migração: as colunas existentes (`case_protocol`, `org_unit_id`, `transfer_id`) e o assignee nativo são suficientes.

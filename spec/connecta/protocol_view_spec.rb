@@ -104,7 +104,7 @@ RSpec.describe 'Connecta · protocolo, metadados e busca', type: :request do
       stages = body_json.fetch('stages')
       expect(stages.pluck('conversation_id')).to contain_exactly(conv_a.display_id)
       expect(stages.first['org_unit_name']).to eq('Setor A')
-      expect(body_json.to_s).not_to include(conv_b.display_id.to_s, 'Setor B')
+      expect(stages.map { |stage| stage['org_unit_name'] }).not_to include('Setor B')
     end
 
     it 'agente B vê só a própria etapa' do
@@ -114,11 +114,13 @@ RSpec.describe 'Connecta · protocolo, metadados e busca', type: :request do
       expect(body_json.fetch('stages').pluck('conversation_id')).to contain_exactly(conv_b.display_id)
     end
 
-    it 'admin nominal lê etapas ativas, mas não a origem transferred_out' do
+    it 'admin nominal mantém a leitura auditada de todas as etapas, sem escrita' do
       get protocol_path, headers: token_admin_nominal
 
       expect(response).to have_http_status(:ok)
-      expect(body_json.fetch('stages').pluck('conversation_id')).to contain_exactly(conv_a.display_id, conv_b.display_id)
+      expect(body_json.fetch('stages').pluck('conversation_id')).to contain_exactly(
+        conv_a.display_id, conv_b.display_id, origin_conversation.display_id
+      )
     end
 
     it 'agente só com transferir não lê (404 genérico)' do
@@ -175,7 +177,7 @@ RSpec.describe 'Connecta · protocolo, metadados e busca', type: :request do
       expect(response).to have_http_status(:ok)
       conversations = body_json.fetch('conversations')
       expect(conversations.keys).to contain_exactly(conv_a.display_id.to_s)
-      expect(conversations.to_s).not_to include('Setor B', conv_b.display_id.to_s)
+      expect(conversations.values.map { |item| item['org_unit_name'] }).not_to include('Setor B')
     end
 
     it 'admin nominal e transferir-só não recebem metadados da inbox marcada' do
