@@ -167,6 +167,41 @@ export const followUpPendingMessage = ({
     private: false,
   });
 
+// Envia somente os itens informados, preservando o índice original de cada
+// arquivo (o nonce depende dele). Falha de um anexo não impede os demais; o
+// retorno é a fila exata que ainda precisa ser reenviada.
+export const sendFollowUpBatch = async ({ conversationId, items, send }) => {
+  const pending = [];
+  for (const item of items) {
+    try {
+      // Sequencial de propósito: preserva a ordem e evita tempestade.
+      // eslint-disable-next-line no-await-in-loop
+      await send(conversationId, item.index, item.file);
+    } catch (_) {
+      pending.push(item);
+    }
+  }
+  return pending;
+};
+
+// Caminho nativo: create e primeira mensagem acontecem UMA vez. Uma falha nos
+// anexos de acompanhamento vira fila pendente, nunca erro de criação.
+export const runNativeConversation = async ({
+  payload,
+  followUpFiles = [],
+  isFromWhatsApp,
+  create,
+  sendFollowUp,
+}) => {
+  const conversation = await create({ payload, isFromWhatsApp });
+  const pending = await sendFollowUpBatch({
+    conversationId: conversation.id,
+    items: followUpFiles.map((file, index) => ({ index, file })),
+    send: sendFollowUp,
+  });
+  return { conversation, pending };
+};
+
 // Repete UMA vez o mesmo envio. A closure mantém o pending message/echo_id e
 // o nonce, então uma resposta perdida é deduplicada no servidor e a linha
 // otimista é substituída, nunca duplicada.

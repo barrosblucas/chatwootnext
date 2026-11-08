@@ -40,6 +40,10 @@
       "ERROR": "No se pudo iniciar la atención. Su mensaje fue conservado — intente de nuevo.",
       "ATTACHMENT_UNAVAILABLE": "No se pudo preparar el adjunto. Elimine el archivo y selecciónelo de nuevo antes de iniciar.",
       "FOLLOW_UP_ERROR": "La atención se inició, pero algunos adjuntos no se enviaron. Inténtelo de nuevo; los adjuntos ya enviados no se duplican.",
+      "PARTIAL_SUCCESS": "Conversación creada, pero {count} adjunto(s) están pendientes.",
+      "RETRY_ATTACHMENTS": "Reenviar adjuntos pendientes",
+      "OPEN_CONVERSATION": "Abrir conversación",
+      "PARTIAL_BLOCKED": "Hay adjuntos pendientes. Reenvíelos o abra la conversación creada.",
       "REUSED": "Una atención existente se reabrirá en su sector.",
       "CONFIRM": "Iniciar"
     },

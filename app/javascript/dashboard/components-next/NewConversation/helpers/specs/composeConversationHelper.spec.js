@@ -312,6 +312,94 @@ describe('composeConversationHelper', () => {
     });
   });
 
+  describe('native partial success', () => {
+    it('cria uma vez, guarda o id e o retry envia só os pendentes', async () => {
+      const create = vi.fn().mockResolvedValue({ id: 9, account_id: 3 });
+      const files = [{ name: 'a' }, { name: 'b' }];
+      const send = vi
+        .fn()
+        .mockResolvedValueOnce('a-ok')
+        .mockRejectedValueOnce(new Error('lost after retry'));
+
+      const first = await helpers.runNativeConversation({
+        payload: { inboxId: 1 },
+        followUpFiles: files,
+        isFromWhatsApp: false,
+        create,
+        sendFollowUp: send,
+      });
+
+      expect(create).toHaveBeenCalledTimes(1);
+      expect(first.conversation).toEqual({ id: 9, account_id: 3 });
+      expect(first.pending).toEqual([{ index: 1, file: files[1] }]);
+      expect(send.mock.calls).toEqual([
+        [9, 0, files[0]],
+        [9, 1, files[1]],
+      ]);
+
+      const retrySend = vi.fn().mockResolvedValueOnce('b-ok');
+      const pending = await helpers.sendFollowUpBatch({
+        conversationId: 9,
+        items: first.pending,
+        send: retrySend,
+      });
+
+      expect(pending).toEqual([]);
+      expect(retrySend).toHaveBeenCalledTimes(1);
+      expect(retrySend).toHaveBeenCalledWith(9, 1, files[1]);
+      expect(create).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([false, true])(
+      'retry nativo não chama create de novo (lock_to_single=%s)',
+      async lockToSingle => {
+        const firstConversation = { id: 9, account_id: 3 };
+        const secondConversation = {
+          id: lockToSingle ? 9 : 10,
+          account_id: 3,
+        };
+        const create = vi
+          .fn()
+          .mockResolvedValueOnce(firstConversation)
+          .mockResolvedValueOnce(secondConversation);
+        const send = vi.fn().mockRejectedValue(new Error('lost'));
+
+        const result = await helpers.runNativeConversation({
+          payload: {},
+          followUpFiles: [{ name: 'a' }],
+          isFromWhatsApp: false,
+          create,
+          sendFollowUp: send,
+        });
+        await helpers.sendFollowUpBatch({
+          conversationId: result.conversation.id,
+          items: result.pending,
+          send: vi.fn().mockResolvedValue(),
+        });
+
+        expect(create).toHaveBeenCalledTimes(1);
+        expect(result.conversation.id).toBe(9);
+      }
+    );
+
+    it('sucesso sem pendências preserva o fluxo e a fila vazia', async () => {
+      const create = vi.fn().mockResolvedValue({ id: 9, account_id: 3 });
+      const send = vi.fn().mockResolvedValue('ok');
+
+      const result = await helpers.runNativeConversation({
+        payload: {},
+        followUpFiles: [{ name: 'a' }],
+        isFromWhatsApp: true,
+        create,
+        sendFollowUp: send,
+      });
+
+      expect(result.pending).toEqual([]);
+      expect(create).toHaveBeenCalledTimes(1);
+      expect(send).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('withFollowUpRetry', () => {
     it('repete uma vez o mesmo envio após resposta perdida', async () => {
       const send = vi

@@ -163,12 +163,15 @@ RSpec.describe 'Connecta · protocolo, metadados e busca', type: :request do
 
     it 'admin nativo pagina 201+ etapas sem perder, repetir ou perder auditoria' do
       pagination_protocol = "NAT#{SecureRandom.hex(4).upcase}"
-      pairs = Array.new(205) do
-        contact = create(:contact, account: account)
+      contact = create(:contact, account: account)
+      pairs = Array.new(205) do |index|
         conversation = create(:conversation, account: account, inbox: inbox, contact: contact)
+        # Histórico terminal + etapa atual ativa: formato compatível com o
+        # índice parcial do par (só há um escopo não-terminal).
         scope = Connecta::Scope::ConversationScope.create!(
           conversation_id: conversation.id, inbox_id: inbox.id, contact_id: contact.id,
-          org_unit: org_a, state: 'active', case_protocol: pagination_protocol, case_version: 1
+          org_unit: org_a, state: index == 204 ? 'active' : 'closed',
+          case_protocol: pagination_protocol, case_version: 1
         )
         [scope, conversation]
       end

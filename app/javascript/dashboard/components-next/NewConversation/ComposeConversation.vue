@@ -18,6 +18,8 @@ import {
   followUpPendingMessage,
   processContactableInboxes,
   mergeInboxDetails,
+  runNativeConversation,
+  sendFollowUpBatch,
   withFollowUpRetry,
 } from 'dashboard/components-next/NewConversation/helpers/composeConversationHelper';
 import { frontendURL, conversationUrl } from 'dashboard/helper/URLHelper';
@@ -68,6 +70,9 @@ const sectorReuseInfo = ref(null);
 const pendingAdmissionPayload = ref(null);
 const admissionAttemptKey = ref(null);
 const isAdmitting = ref(false);
+// Caminho nativo: a conversa e a primeira mensagem já foram criadas; só os
+// anexos de acompanhamento ficaram pendentes. Nunca reentra no create.
+const nativePartial = ref(null);
 
 const isBaileysMarkedInbox = computed(() => {
   const inbox = targetInbox.value;
@@ -151,6 +156,19 @@ const directUploadsEnabled = computed(
 );
 
 const activeContact = computed(() => contactById.value(props.contactId));
+
+const conversationPath = conversation =>
+  frontendURL(
+    conversationUrl({
+      accountId: conversation.account_id || route.params.accountId,
+      id: conversation.id,
+    })
+  );
+
+const partialConversationPath = computed(() => {
+  const conversation = nativePartial.value?.conversation;
+  return conversation ? conversationPath(conversation) : null;
+});
 
 const resetContacts = () => {
   contacts.value = [];
@@ -459,26 +477,86 @@ const createBaileysConversation = async (
   }
 };
 
+const partialToastAction = conversation => ({
+  type: 'link',
+  to: conversationPath(conversation),
+  message: t('CONNECTA.MANUAL_ADMISSION.OPEN_CONVERSATION'),
+});
+
+const retryNativeFollowUps = async () => {
+  const partial = nativePartial.value;
+  if (!partial) return false;
+
+  const pending = await sendFollowUpBatch({
+    conversationId: partial.conversation.id,
+    items: partial.pending,
+    send: sendFollowUpFile,
+  });
+
+  if (pending.length) {
+    nativePartial.value = { ...partial, pending };
+    useAlert(
+      t('CONNECTA.MANUAL_ADMISSION.PARTIAL_SUCCESS', {
+        count: pending.length,
+      }),
+      partialToastAction(partial.conversation)
+    );
+    return false;
+  }
+
+  nativePartial.value = null;
+  discardCompose();
+  useAlert(t('COMPOSE_NEW_CONVERSATION.FORM.SUCCESS_MESSAGE'), {
+    type: 'link',
+    to: conversationPath(partial.conversation),
+    message: t('COMPOSE_NEW_CONVERSATION.FORM.GO_TO_CONVERSATION'),
+  });
+  return true;
+};
+
 const createConversation = async ({
   payload,
   followUpFiles = [],
   admissionFiles = [],
   isFromWhatsApp,
 }) => {
+  // Partial success nativo: a conversa e a primeira mensagem já existem. Um
+  // novo submit nunca pode chamar create de novo (segunda conversa ou reenvio
+  // da primeira mensagem). O retry é a ação explícita dos anexos pendentes.
+  if (nativePartial.value) {
+    useAlert(t('CONNECTA.MANUAL_ADMISSION.PARTIAL_BLOCKED'));
+    return false;
+  }
   // Inbox Baileys marcada: resolve setores ANTES de enviar (1 auto, >1 modal,
   // 0 erro acionável). Nunca envia no POST nativo antes da admissão.
   if (isBaileysMarkedInbox.value && !payload?.skipConnectaAdmission) {
     return createBaileysConversation(payload, followUpFiles, admissionFiles);
   }
   try {
-    const data = await store.dispatch('contactConversations/create', {
-      params: payload,
+    const { conversation, pending } = await runNativeConversation({
+      payload,
+      followUpFiles,
       isFromWhatsApp,
+      create: createPayload =>
+        store.dispatch('contactConversations/create', {
+          params: createPayload.payload,
+          isFromWhatsApp: createPayload.isFromWhatsApp,
+        }),
+      sendFollowUp: sendFollowUpFile,
     });
-    if (followUpFiles.length) await sendFollowUpFiles(data.id, followUpFiles);
+    if (pending.length) {
+      nativePartial.value = { conversation, pending };
+      useAlert(
+        t('CONNECTA.MANUAL_ADMISSION.PARTIAL_SUCCESS', {
+          count: pending.length,
+        }),
+        partialToastAction(conversation)
+      );
+      return true;
+    }
     const action = {
       type: 'link',
-      to: `/app/accounts/${data.account_id}/conversations/${data.id}`,
+      to: conversationPath(conversation),
       message: t('COMPOSE_NEW_CONVERSATION.FORM.GO_TO_CONVERSATION'),
     };
     discardCompose();
@@ -599,6 +677,34 @@ onUnmounted(() => {
           >
             {{ t('COMPOSE_NEW_CONVERSATION.TAB_GROUP') }}
           </button>
+        </div>
+        <div
+          v-if="!isGroupMode && nativePartial"
+          class="mx-4 mt-3 rounded-lg border border-n-amber-7 bg-n-amber-2 p-3 text-sm text-n-slate-12"
+        >
+          <p>
+            {{
+              t('CONNECTA.MANUAL_ADMISSION.PARTIAL_SUCCESS', {
+                count: nativePartial.pending.length,
+              })
+            }}
+          </p>
+          <div class="mt-2 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              class="font-medium text-n-brand"
+              @click="retryNativeFollowUps"
+            >
+              {{ t('CONNECTA.MANUAL_ADMISSION.RETRY_ATTACHMENTS') }}
+            </button>
+            <router-link
+              v-if="partialConversationPath"
+              :to="partialConversationPath"
+              class="font-medium text-n-blue-10"
+            >
+              {{ t('CONNECTA.MANUAL_ADMISSION.OPEN_CONVERSATION') }}
+            </router-link>
+          </div>
         </div>
         <ComposeNewConversationForm
           v-if="!isGroupMode"

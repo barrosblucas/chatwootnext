@@ -48,4 +48,21 @@ describe('ComposeConversation sector picker wiring', () => {
     expect(source).toContain('files: admissionFiles');
     expect(source).toContain('connectaMetadata/refresh');
   });
+
+  it('keeps the native partial success out of the create path', () => {
+    const source = readFileSync(
+      resolve(
+        process.cwd(),
+        'app/javascript/dashboard/components-next/NewConversation/ComposeConversation.vue'
+      ),
+      'utf8'
+    );
+
+    expect(source).toContain('if (nativePartial.value) {');
+    expect(source).toContain('runNativeConversation({');
+    expect(source).toContain('items: partial.pending');
+    expect(source).toContain('retryNativeFollowUps');
+    expect(source).toContain('PARTIAL_SUCCESS');
+    expect(source).toContain('RETRY_ATTACHMENTS');
+  });
 });
