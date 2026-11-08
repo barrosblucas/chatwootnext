@@ -70,7 +70,10 @@ const destinationOptions = computed(() =>
     value:
       destination.id || destination.departmentId || destination.department_id,
     label:
-      destination.display_name || destination.displayName || destination.code,
+      destination.name ||
+      destination.display_name ||
+      destination.displayName ||
+      destination.code,
   }))
 );
 
@@ -82,6 +85,7 @@ const selectedDestinationName = computed(() => {
   );
 
   return (
+    destination?.name ||
     destination?.display_name ||
     destination?.displayName ||
     destination?.code ||

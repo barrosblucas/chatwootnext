@@ -194,6 +194,49 @@ describe('TransferAction.vue', () => {
     });
   });
 
+  describe('Destination labels', () => {
+    it('shows the Connecta destination name in the options and confirmation text', async () => {
+      conversationAPI.getConnectaTransferDestinations.mockResolvedValue({
+        data: { destinations: [{ id: 'u1', name: 'Farmácia Municipal' }] },
+      });
+
+      const wrapper = mountComponent();
+      await wrapper.find('button').trigger('click');
+      await flushPromises();
+
+      const combobox = wrapper.findComponent({ name: 'ComboBox' });
+      expect(combobox.props('options')).toEqual([
+        { value: 'u1', label: 'Farmácia Municipal' },
+      ]);
+
+      combobox.vm.$emit('update:modelValue', 'u1');
+      await wrapper.vm.$nextTick();
+
+      expect(wrapper.text()).toContain(
+        'Transfer to Farmácia Municipal? The citizen will be notified.'
+      );
+    });
+
+    it('keeps the legacy displayName label for non-Connecta destinations', async () => {
+      conversationAPI.getConnectaTransferDestinations.mockResolvedValue({
+        data: {
+          destinations: [
+            { departmentId: 'dept-1', displayName: 'UBS Centro' },
+          ],
+        },
+      });
+
+      const wrapper = mountComponent();
+      await wrapper.find('button').trigger('click');
+      await flushPromises();
+
+      const combobox = wrapper.findComponent({ name: 'ComboBox' });
+      expect(combobox.props('options')).toEqual([
+        { value: 'dept-1', label: 'UBS Centro' },
+      ]);
+    });
+  });
+
   describe('Transfer Execution', () => {
     it('executes transfer successfully and redirects to new conversation', async () => {
       conversationAPI.getConnectaTransferDestinations.mockResolvedValue({
