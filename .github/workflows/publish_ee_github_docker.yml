@@ -111,8 +111,6 @@ jobs:
           - platform: linux/arm64
             runner: ubuntu-22.04-arm
     runs-on: ${{ matrix.runner }}
-    env:
-      GIT_REF: ${{ env.EE_TAG }}
     steps:
       - name: Checkout pinned EE source (full SHA, not the workflow branch)
         uses: actions/checkout@v4
@@ -142,6 +140,8 @@ jobs:
           echo -en '\nENV CW_EDITION="ee"' >> docker/Dockerfile
 
       - name: Update version in app.yml
+        env:
+          GIT_REF: ${{ env.EE_TAG }}
         run: |
           if [[ "$GIT_REF" =~ ^v(.+)$ ]]; then
             VERSION="${BASH_REMATCH[1]}"

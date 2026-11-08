@@ -65,3 +65,19 @@ Preparar, sem executar, um build GitHub Actions da imagem Enterprise a partir do
 ### Fora do escopo / pendências
 - Nada foi comitado, publicado, despachado ou construído; o checkout preparado original (`fix/producao-20261106`, Baileys) segue intocado.
 - Falta decidir/aprovar: commit, push da branch, `gh workflow run` com `GITHUB_TOKEN` mínimo e leitura do digest final no summary como identidade de deploy.
+
+## EE Actions isolado — correção de expressão do workflow (sem dispatch, sem deploy)
+
+### Contexto verificado
+- O commit anterior do workflow (`ci(ee): isolated Actions build from pinned source 15fa2b33`) foi comitado e pushed para a branch isolada `ci/ee-build-15fa2b33`.
+- O dispatch inicial foi rejeitado com HTTP 422 na linha 115 (`jobs.build.env.GIT_REF: ${{ env.EE_TAG }}`); o GitHub não permite o contexto `env` em `env` de nível de job.
+- Nenhum Actions run foi criado e nenhuma imagem/tag foi publicada por esse dispatch rejeitado.
+
+### Mudanças (somente no worktree `ci/ee-build-15fa2b33`)
+- `.github/workflows/publish_ee_github_docker.yml`: removido `GIT_REF` do `env` de nível de job; movido como `env` do step `Update version in app.yml` (seu único consumidor), onde o contexto `env` é suportado. Nenhuma outra alteração: guard de branch, pin de SHA do fonte, tag isolada, verificações EE, proveniência e tags protegidas inalterados.
+- Este changelog (append, conteúdo existente preservado).
+
+### Fora do escopo / pendências
+- Nenhum dispatch, build, publicação ou deploy executado nesta correção; digest protegido `24a106` existente inalterado.
+- Checkout original (`fix/producao-20261106`, Baileys) segue intocado e somente leitura.
+- Falta aprovar/executar: novo commit+push da correção (este passo) e, em passo seguinte separado, o `gh workflow run`.
