@@ -1,4 +1,10 @@
 class Connecta::Runtime::Installer
+  # Objeto único do callback de recepção, para o teste conseguir removê-lo
+  # sem resetar todos os callbacks nativos de Conversation.
+  RECEPTION_CALLBACK = proc do
+    Connecta::Runtime::ReceptionScopeCreator.call(self) if Connecta::Runtime::Feature.enabled?
+  end
+
   def self.install!
     return unless Connecta::Runtime::Feature.enabled?
     return if @installed
@@ -25,9 +31,8 @@ class Connecta::Runtime::Installer
     # O callback é instalado uma vez por processo; a checagem em tempo de execução
     # impede que ele continue agindo em specs/hosts que desligaram o recurso depois
     # do boot (o ENV é lido de novo a cada conversa criada).
-    Conversation.after_create do
-      Connecta::Runtime::ReceptionScopeCreator.call(self) if Connecta::Runtime::Feature.enabled?
-    end
+    Conversation.after_create(RECEPTION_CALLBACK) unless
+      Conversation._create_callbacks.any? { |callback| callback.filter.equal?(RECEPTION_CALLBACK) }
     # Fail-open no boot: numa conta fresca a primeira inbox marcada ainda não existe quando
     # este verify roda (o enforce vem depois, via upsert oficial), então a unidade de
     # recepção ausente não pode travar o boot — só registra o evento com a contagem.
@@ -40,5 +45,13 @@ class Connecta::Runtime::Installer
       )
     end
     @installed = true
+  end
+
+  # Só para specs: remove o callback de criação que o installer global deixou
+  # no processo, sem tocar nos demais callbacks nativos de Conversation.
+  def self.uninstall_reception_callback!
+    return unless Conversation._create_callbacks.any? { |callback| callback.filter.equal?(RECEPTION_CALLBACK) }
+
+    Conversation.skip_callback(:create, :after, RECEPTION_CALLBACK)
   end
 end

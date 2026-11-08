@@ -86,6 +86,81 @@ RSpec.describe 'Connecta G0 · admissão manual fim a fim (micro passo 3)', type
     expect(Message.where(conversation_id: created.id, message_type: :outgoing).count).to eq(1)
   end
 
+  it 'dois nonces distintos na mesma conversa criam duas mensagens, preservando caso e setor' do
+    source = "55119#{SecureRandom.random_number(8).to_s.rjust(8, '0')}"
+    base = { inbox_id: whatsapp_inbox.id, contact_id: wa_contact.id, source_id: source,
+             org_unit_id: org_a.id.to_s }
+
+    post admit_path, params: base.merge(message: { content: 'primeira' }, idempotency_key: 'nonce-a'),
+                     headers: agent_a.create_new_auth_token
+    first = Conversation.order(:id).last
+    expect(response).to have_http_status(:created)
+
+    post admit_path, params: base.merge(message: { content: 'segunda' }, idempotency_key: 'nonce-b'),
+                     headers: agent_a.create_new_auth_token
+    expect(response).to have_http_status(:ok)
+
+    expect(Conversation.where(inbox: whatsapp_inbox, contact: wa_contact).count).to eq(1)
+    expect(Conversation.order(:id).last.id).to eq(first.id)
+    expect(first.reload.messages.where(message_type: :outgoing).order(:id).pluck(:content))
+      .to contain_exactly('primeira', 'segunda')
+    scope = Connecta::Scope::ConversationScope.find_by!(conversation_id: first.id)
+    expect(scope).to have_attributes(state: 'active', case_protocol: 'BND00000001', case_version: 1)
+    expect(scope.org_unit_id).to eq(org_a.id)
+  end
+
+  it 'payload adulterado não cria mensagem incoming/private nem troca o autor' do
+    other = create(:user, account: account, role: :agent)
+    source = "55119#{SecureRandom.random_number(8).to_s.rjust(8, '0')}"
+
+    post admit_path,
+         params: { inbox_id: whatsapp_inbox.id, contact_id: wa_contact.id, source_id: source,
+                   org_unit_id: org_a.id.to_s,
+                   message: { content: 'texto', message_type: 'incoming', private: true,
+                              sender_type: 'AgentBot', sender_id: other.id },
+                   idempotency_key: 'tamper-1' },
+         headers: agent_a.create_new_auth_token
+
+    expect(response).to have_http_status(:created)
+    message = Message.where(message_type: :outgoing).order(:id).last
+    expect(message).to be_present
+    expect(message).not_to be_private
+    expect(message.sender).to eq(agent_a)
+  end
+
+  it 'aceita anexo multipart nativo na primeira mensagem' do
+    source = "55119#{SecureRandom.random_number(8).to_s.rjust(8, '0')}"
+    upload = Rack::Test::UploadedFile.new('spec/assets/avatar.png', 'image/png')
+
+    post admit_path,
+         params: { inbox_id: whatsapp_inbox.id, contact_id: wa_contact.id, source_id: source,
+                   org_unit_id: org_a.id.to_s,
+                   message: { content: 'com anexo', attachments: [upload] },
+                   idempotency_key: 'attach-1' },
+         headers: agent_a.create_new_auth_token
+
+    expect(response).to have_http_status(:created)
+    message = Message.where(message_type: :outgoing).order(:id).last
+    expect(message.attachments.count).to eq(1)
+  end
+
+  it 'recusa signed id solto em attachments sem criar mensagem' do
+    source = "55119#{SecureRandom.random_number(8).to_s.rjust(8, '0')}"
+    blob = get_blob_for('spec/assets/avatar.png', 'image/png')
+
+    expect do
+      post admit_path,
+           params: { inbox_id: whatsapp_inbox.id, contact_id: wa_contact.id, source_id: source,
+                     org_unit_id: org_a.id.to_s,
+                     message: { content: 'signed', attachments: [blob.signed_id] },
+                     idempotency_key: 'signed-1' },
+           headers: agent_a.create_new_auth_token
+    end.not_to change(Message, :count)
+
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(Conversation.where(inbox: whatsapp_inbox, contact: wa_contact).count).to eq(0)
+  end
+
   it 'destinos lista só unidades ATENDER do ator (WP stub) e exige inbox show?' do
     get destinations_path, params: { inbox_id: whatsapp_inbox.id }, headers: agent_a.create_new_auth_token
 

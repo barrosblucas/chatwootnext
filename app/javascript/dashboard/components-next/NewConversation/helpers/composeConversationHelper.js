@@ -125,6 +125,19 @@ export const prepareAttachmentPayload = (
   return files;
 };
 
+// A admissão manual envia o primeiro anexo como upload multipart nativo.
+// O File cru fica no anexo mesmo quando o direct upload já criou o blob;
+// signed ID solto não é aceito no endpoint porque não prova vínculo de conta.
+export const prepareAdmissionFiles = (attachedFiles = []) =>
+  attachedFiles
+    .map(
+      attachment =>
+        attachment.rawFile ||
+        attachment.resource?.file ||
+        (attachment.resource instanceof File ? attachment.resource : null)
+    )
+    .filter(Boolean);
+
 export const prepareNewMessagePayload = ({
   targetInbox,
   selectedContact,

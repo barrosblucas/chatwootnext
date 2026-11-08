@@ -123,6 +123,7 @@ class ActionCableConnector extends BaseActionCableConnector {
 
   onConnectaScopeRevoked = data => {
     this.app.$store.commit('REVOKE_CONNECTA_SCOPE', data);
+    this.app.$store.dispatch('connectaMetadata/bumpEpoch');
   };
 
   onConnectaAclRevoked = data => {
@@ -133,6 +134,7 @@ class ActionCableConnector extends BaseActionCableConnector {
     // otherwise the server-side policy filters the next fetch. The socket is
     // dropped and must not reconnect with the revoked epoch.
     this.app.$store.commit('REVOKE_CONNECTA_SCOPE', data || {});
+    this.app.$store.dispatch('connectaMetadata/bumpEpoch');
     this.disconnect();
   };
 

@@ -10,11 +10,32 @@ module Connecta::Transfer::IncomingHook
 
   def set_conversation
     Connecta::Transfer::LocalTransaction.lock!(inbox_id: inbox.id, contact_id: @contact.id)
-    scope = Connecta::Scope::ConversationScope.find_by(
-      inbox_id: inbox.id, contact_id: @contact.id, state: Connecta::Scope::ConversationScope::NON_TERMINAL_STATES
-    )
+    scope = open_scope
     return super unless scope
 
-    @conversation = Conversation.find(scope.conversation_id)
+    conversation = Conversation.find(scope.conversation_id)
+    if conversation.resolved?
+      # Compensação de borda: um callback de resolução que falhou (ou um
+      # estado transitório antigo) não pode receber inbound na conversa
+      # resolvida. Fecha/aborta sob o mesmo lock e só então deixa o fluxo
+      # nativo criar a conversa nova; se ainda houver escopo não-terminal,
+      # falha alto em vez de reabrir histórico.
+      Connecta::Scope::ConversationResolution.resolve_scope!(conversation)
+      scope = open_scope
+      return super unless scope
+
+      conversation = Conversation.find(scope.conversation_id)
+      if conversation.resolved?
+        raise ActiveRecord::RecordNotFound, 'resolved conversation still has a non-terminal Connecta scope'
+      end
+    end
+
+    @conversation = conversation
+  end
+
+  def open_scope
+    Connecta::Scope::ConversationScope.find_by(
+      inbox_id: inbox.id, contact_id: @contact.id, state: Connecta::Scope::ConversationScope::NON_TERMINAL_STATES
+    )
   end
 end

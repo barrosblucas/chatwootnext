@@ -139,6 +139,7 @@ const { onFileUpload } = useFileUpload({
     reader.onloadend = () => {
       const newFile = {
         resource: blob || file,
+        rawFile: file.file,
         isPrivate: false,
         thumb: reader.result,
         blobSignedId: blob?.signed_id,

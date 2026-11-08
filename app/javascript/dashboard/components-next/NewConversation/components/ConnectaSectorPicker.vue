@@ -10,6 +10,7 @@ const props = defineProps({
   contactId: { type: [Number, String], default: null },
   sourceId: { type: String, default: null },
   message: { type: Object, default: () => ({}) },
+  files: { type: Array, default: () => [] },
   idempotencyKey: { type: String, default: null },
   title: { type: String, default: '' },
   // O Compose já buscou os destinos elegíveis para decidir auto-admissão
@@ -41,51 +42,19 @@ const applyUnits = units => {
       : null;
 };
 
-const loadDestinations = async conversationId => {
-  isLoading.value = true;
-  error.value = null;
-  try {
-    if (Array.isArray(props.units)) {
-      applyUnits(props.units);
-      return destinations.value;
-    }
-    const { data } = conversationId
-      ? await connectaAPI.admissionDestinations(conversationId)
-      : await connectaAPI.admissionDestinationsForInbox(props.inboxId);
-    destinations.value = data.eligible_org_units || [];
-    reuseInfoMessage.value = data.reused_from || null;
-    if (destinations.value.length === 1) {
-      selectedUnit.value = destinations.value[0].id;
-    }
-    if (destinations.value.length === 0) {
+watch(
+  () => [props.show, props.units],
+  ([visible]) => {
+    if (!visible) return;
+    if (!Array.isArray(props.units)) {
+      destinations.value = [];
       error.value = t(
-        'CONNECTA.MANUAL_ADMISSION.NO_ELIGIBLE_UNIT',
-        'Você não tem setor com permissão de atendimento. Fale com seu gestor.'
-      );
-    }
-    return destinations.value;
-  } catch (e) {
-    error.value =
-      e?.response?.data?.error ||
-      t(
         'CONNECTA.MANUAL_ADMISSION.LOAD_ERROR',
         'Não foi possível carregar seus setores. Tente novamente.'
       );
-    throw e;
-  } finally {
-    isLoading.value = false;
-  }
-};
-
-watch(
-  () => props.show,
-  visible => {
-    if (!visible) return;
-    if (Array.isArray(props.units)) {
-      applyUnits(props.units);
-    } else {
-      loadDestinations().catch(() => {});
+      return;
     }
+    applyUnits(props.units);
   },
   { immediate: true }
 );
@@ -108,6 +77,7 @@ const confirm = async () => {
       orgUnitId: selectedUnit.value,
       message: props.message,
       idempotencyKey: props.idempotencyKey,
+      files: props.files,
     });
     emit('admitted', data);
   } catch (e) {
@@ -125,8 +95,6 @@ const confirm = async () => {
 };
 
 const close = () => emit('close');
-
-defineExpose({ loadDestinations });
 </script>
 
 <template>

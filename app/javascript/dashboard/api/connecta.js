@@ -31,6 +31,8 @@ class ConnectaApi extends ApiClient {
   }
 
   // Admissão manual + primeira mensagem UMA VEZ (fork cria/admite/ativa/envia).
+  // Anexos vão como upload multipart nativo; signed IDs soltos são recusados
+  // pelo servidor, porque não provam vínculo de conta.
   admitConversation({
     inboxId,
     contactId,
@@ -38,17 +40,27 @@ class ConnectaApi extends ApiClient {
     orgUnitId,
     message,
     idempotencyKey,
+    files = [],
   }) {
+    const form = new FormData();
+    form.append('inbox_id', inboxId ?? '');
+    form.append('contact_id', contactId ?? '');
+    if (sourceId != null && sourceId !== '') {
+      form.append('source_id', sourceId);
+    }
+    form.append('org_unit_id', orgUnitId ?? '');
+    form.append('idempotency_key', idempotencyKey ?? '');
+    if (message?.content != null) {
+      form.append('message[content]', message.content);
+    }
+    (message?.attachments || []).forEach(file =>
+      form.append('message[attachments][]', file)
+    );
+    files.forEach(file => form.append('message[attachments][]', file));
+
     return axios.post(
       `/api/v1/accounts/${this.accountIdFromRoute}/conversations/connecta_manual_admission`,
-      {
-        inbox_id: inboxId,
-        contact_id: contactId,
-        source_id: sourceId,
-        org_unit_id: orgUnitId,
-        message,
-        idempotency_key: idempotencyKey,
-      }
+      form
     );
   }
 

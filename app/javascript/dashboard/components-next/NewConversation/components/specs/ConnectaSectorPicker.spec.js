@@ -2,8 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ConnectaSectorPicker from '../ConnectaSectorPicker.vue';
 
-const { admissionDestinations, admitConversation } = vi.hoisted(() => ({
-  admissionDestinations: vi.fn(),
+const { admitConversation } = vi.hoisted(() => ({
   admitConversation: vi.fn(),
 }));
 
@@ -11,13 +10,7 @@ vi.mock('vue-i18n', () => ({
   useI18n: () => ({ t: key => key }),
 }));
 vi.mock('dashboard/api/connecta', () => ({
-  default: {
-    admissionDestinations,
-    admissionDestinationsForInbox: vi.fn().mockResolvedValue({
-      data: { eligible_org_units: [] },
-    }),
-    admitConversation,
-  },
+  default: { admitConversation },
 }));
 
 const mountPicker = (props = {}) =>
@@ -38,15 +31,17 @@ const mountPicker = (props = {}) =>
 
 describe('ConnectaSectorPicker', () => {
   beforeEach(() => {
-    admissionDestinations.mockReset();
     admitConversation.mockReset();
   });
 
-  it('admits with the listed sector and emits the conversation', async () => {
+  it('admits with the listed sector, files and emits the conversation', async () => {
     admitConversation.mockResolvedValue({ data: { id: 55, account_id: 1 } });
+    const firstFile = new File(['a'], 'a.png', { type: 'image/png' });
+    const followUp = new File(['b'], 'b.png', { type: 'image/png' });
 
     const wrapper = mountPicker({
       units: [{ id: 'unit-1', name: 'Setor Um' }],
+      files: [firstFile],
     });
     await flushPromises();
 
@@ -62,7 +57,11 @@ describe('ConnectaSectorPicker', () => {
         contactId: 4,
         sourceId: 'synthetic-source',
         idempotencyKey: 'attempt-1',
+        files: [firstFile],
       })
+    );
+    expect(admitConversation).not.toHaveBeenCalledWith(
+      expect.objectContaining({ files: [followUp] })
     );
     expect(wrapper.emitted('admitted')?.[0]).toEqual([
       { id: 55, account_id: 1 },
@@ -76,5 +75,13 @@ describe('ConnectaSectorPicker', () => {
     expect(wrapper.text()).toContain(
       'CONNECTA.MANUAL_ADMISSION.NO_ELIGIBLE_UNIT'
     );
+  });
+
+  it('shows a load error instead of calling a missing fallback when units are absent', async () => {
+    const wrapper = mountPicker({ units: null });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('CONNECTA.MANUAL_ADMISSION.LOAD_ERROR');
+    expect(admitConversation).not.toHaveBeenCalled();
   });
 });

@@ -12,12 +12,14 @@ class Connecta::Scope::Gate
     @projection = Connecta::Scope::Projection.new(user)
   end
 
-  def read?(conversation, access_path:)
-    decide(conversation, :read, access_path)
+  # `scope:` permite ao chamador passar o escopo já carregado (com org_unit)
+  # para evitar uma consulta por etapa. O Gate continua auditando cada decisão.
+  def read?(conversation, access_path:, scope: nil)
+    decide(conversation, :read, access_path, scope: scope)
   end
 
-  def write?(conversation, access_path:)
-    decide(conversation, :write, access_path)
+  def write?(conversation, access_path:, scope: nil)
+    decide(conversation, :write, access_path, scope: scope)
   end
 
   # Notificação e menção não são leitura por detalhe: admin nominal fica de fora, mesmo quando o Gate lhe daria leitura.
@@ -33,8 +35,9 @@ class Connecta::Scope::Gate
 
   private
 
-  def decide(conversation, action, access_path)
-    allowed = native_admin_authorized?(conversation) || (@projection.admin? ? action == :read : agent_allowed?(conversation, action))
+  def decide(conversation, action, access_path, scope: nil)
+    allowed = native_admin_authorized?(conversation) ||
+              (@projection.admin? ? action == :read : agent_allowed?(conversation, action, scope: scope))
     Connecta::Scope::AccessAudit.create!(
       user_id: @user.id, conversation_id: conversation.id, surface: 'conversation',
       access_path: access_path, decision: allowed ? 'allow' : 'deny'
@@ -46,11 +49,17 @@ class Connecta::Scope::Gate
   # conta DA CONVERSA (reconsultado a cada chamada). Recurso de outra conta
   # nunca libera. Não depende de grant setorial nem amplia admin_nominal.
   def native_admin_authorized?(conversation)
-    Connecta::Scope::NativeAdmin.authorized_for?(@user, conversation)
+    @native_admin_cache ||= {}
+    account_id = conversation.account_id
+    return @native_admin_cache[account_id] if @native_admin_cache.key?(account_id)
+
+    @native_admin_cache[account_id] =
+      Connecta::Scope::NativeAdmin.authorized_for?(@user, conversation)
   end
 
-  def agent_allowed?(conversation, action)
-    scope_allowed?(Connecta::Scope::ConversationScope.find_by(conversation_id: conversation.id), conversation.inbox_id, action)
+  def agent_allowed?(conversation, action, scope: nil)
+    scope ||= Connecta::Scope::ConversationScope.find_by(conversation_id: conversation.id)
+    scope_allowed?(scope, conversation.inbox_id, action)
   end
 
   # T3.9: manutenção bloqueia o envio humano (write) com 409. Entrada continua
@@ -73,6 +82,13 @@ class Connecta::Scope::Gate
   end
 
   def enforced?(inbox_id)
+    @enforced_cache ||= {}
+    return @enforced_cache[inbox_id] if @enforced_cache.key?(inbox_id)
+
+    @enforced_cache[inbox_id] = calculate_enforced(inbox_id)
+  end
+
+  def calculate_enforced(inbox_id)
     scoped_inbox = Connecta::Scope::ScopedInbox.find_by(inbox_id: inbox_id)
     return false if scoped_inbox.nil?
 
@@ -106,8 +122,18 @@ class Connecta::Scope::Gate
     scope.state == 'active' && scope.case_version.positive?
   end
 
+  def admin_only_inbox?(inbox_id)
+    @admin_only_cache ||= {}
+    return @admin_only_cache[inbox_id] if @admin_only_cache.key?(inbox_id)
+
+    @admin_only_cache[inbox_id] = Connecta::Scope::ScopedInbox.exists?(inbox_id: inbox_id, enforcement: 'admin_only')
+  end
+
   def maintenance_inbox?(inbox_id)
-    Connecta::Scope::ScopedInbox.where(inbox_id: inbox_id).exists?(
+    @maintenance_cache ||= {}
+    return @maintenance_cache[inbox_id] if @maintenance_cache.key?(inbox_id)
+
+    @maintenance_cache[inbox_id] = Connecta::Scope::ScopedInbox.where(inbox_id: inbox_id).exists?(
       ['maintenance = ? OR enforcement = ?', true, 'maintenance']
     )
   end
@@ -118,7 +144,7 @@ class Connecta::Scope::Gate
     # T3.9 admin_only: não-admin nega em TODAS as superfícies já hookadas —
     # membresia da inbox ou team_id forçado não bastam (a policy nativa
     # liberaria por inbox_access?/team_access?; aqui o Gate nega antes).
-    return @projection.admin? && action == :read if Connecta::Scope::ScopedInbox.exists?(inbox_id: inbox_id, enforcement: 'admin_only')
+    return @projection.admin? && action == :read if admin_only_inbox?(inbox_id)
     # Manutenção nega leitura de não-admin no detalhe (a lista já exclui a inbox: ConversationQuery#enforced_inbox_ids).
     return false if !@projection.admin? && maintenance_inbox?(inbox_id)
 

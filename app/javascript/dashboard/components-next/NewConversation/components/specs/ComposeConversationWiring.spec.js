@@ -21,6 +21,27 @@ describe('ComposeConversation sector picker wiring', () => {
     );
     expect(source).toContain('<ConnectaSectorPicker');
     expect(source).toContain(':show="showSectorPicker"');
+    expect(source).toContain(
+      ':files="pendingAdmissionPayload?.admissionFiles || []"'
+    );
     expect(source).toContain('@admitted="onSectorAdmitted"');
+  });
+
+  it('keeps follow-up files for the Baileys path after admission', () => {
+    const source = readFileSync(
+      resolve(
+        process.cwd(),
+        'app/javascript/dashboard/components-next/NewConversation/ComposeConversation.vue'
+      ),
+      'utf8'
+    );
+
+    expect(source).toContain(
+      'return createBaileysConversation(payload, followUpFiles, admissionFiles);'
+    );
+    expect(source).toContain(
+      'await sendAdmissionFollowUps(data, followUpFiles);'
+    );
+    expect(source).toContain('files: admissionFiles');
   });
 });

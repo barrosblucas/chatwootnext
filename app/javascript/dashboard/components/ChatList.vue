@@ -127,11 +127,13 @@ const inboxesList = useMapGetter('inboxes/getInboxes');
 const campaigns = useMapGetter('campaigns/getAllCampaigns');
 const labels = useMapGetter('labels/getLabels');
 const currentAccountId = useMapGetter('getCurrentAccountId');
+const currentUserId = useMapGetter('getCurrentUserID');
 const getAccount = useMapGetter('accounts/getAccount');
 // We can't useFunctionGetter here since it needs to be called on setup?
 const getTeamFn = useMapGetter('teams/getTeam');
 const getConversationById = useMapGetter('getConversationById');
 const connectaMetadataChecked = useMapGetter('connectaMetadata/isChecked');
+const connectaMetadataEpoch = useMapGetter('connectaMetadata/getEpoch');
 
 const {
   selectedConversations,
@@ -902,17 +904,29 @@ watch(conversationList, list => {
 });
 
 // Rótulo Raiz | Setor | Atendente: uma requisição em lote por página/evento.
-// Transferência cria uma conversa nova (id novo) e o watcher a enriquece;
-// assignee usa o meta nativo e não depende deste fetch.
+// O cache é escopado por conta/ator/epoch (display_id se repete entre contas),
+// e o epoch é renovado em revogação de ACL/escopo. Transferência cria uma
+// conversa nova (id novo) e o watcher a enriquece; assignee usa o meta nativo.
+const refreshConnectaMetadata = list => {
+  if (!connectaHumanNumberEnabled) return;
+  const ids = list
+    .map(conversation => conversation.id)
+    .filter(id => !connectaMetadataChecked.value(id));
+  if (ids.length) store.dispatch('connectaMetadata/fetch', ids);
+};
+
 watch(
-  conversationList,
-  list => {
-    if (!connectaHumanNumberEnabled) return;
-    const ids = list
-      .map(conversation => conversation.id)
-      .filter(id => !connectaMetadataChecked.value(id));
-    if (ids.length) store.dispatch('connectaMetadata/fetch', ids);
+  [currentAccountId, currentUserId],
+  async ([accountId, userId]) => {
+    await store.dispatch('connectaMetadata/setScope', { accountId, userId });
+    refreshConnectaMetadata(conversationList.value);
   },
+  { immediate: true }
+);
+
+watch(
+  [conversationList, connectaMetadataEpoch],
+  ([list]) => refreshConnectaMetadata(list),
   { immediate: true }
 );
 

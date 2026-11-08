@@ -76,6 +76,7 @@ module Connecta::G0ScopeSchema
       t.string :state, null: false
       t.string :case_protocol
       t.integer :case_version, null: false, default: 0
+      t.datetime :closed_at
       t.integer :lock_version, null: false, default: 0
       t.timestamps
     end

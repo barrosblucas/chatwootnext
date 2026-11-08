@@ -10,6 +10,7 @@ import {
 } from 'dashboard/helper/editorHelper';
 import {
   buildContactableInboxesList,
+  prepareAdmissionFiles,
   prepareNewMessagePayload,
   prepareWhatsAppMessagePayload,
   splitAttachmentsForChannel,
@@ -163,7 +164,11 @@ const newMessagePayload = () => {
     messageSignature: props.messageSignature,
     signatureSettings: props.signatureSettings,
   });
-  return { payload, followUpFiles: rest };
+  return {
+    payload,
+    followUpFiles: rest,
+    admissionFiles: prepareAdmissionFiles(first),
+  };
 };
 
 const contactableInboxesList = computed(() => {
@@ -287,10 +292,11 @@ const handleSendMessage = async () => {
   if (!isValid) return;
 
   try {
-    const { payload, followUpFiles } = newMessagePayload();
+    const { payload, followUpFiles, admissionFiles } = newMessagePayload();
     const success = await emit('createConversation', {
       payload,
       followUpFiles,
+      admissionFiles,
       isFromWhatsApp: false,
     });
     if (success) {

@@ -95,4 +95,21 @@ describe('ConversationCard', () => {
     expect(wrapper.text()).toContain('Jane Doe');
     expect(wrapper.find('.connecta-conversation-label').exists()).toBe(false);
   });
+
+  it('updates the assignee part natively when the assignee changes', async () => {
+    const wrapper = mountComponent(
+      {},
+      {},
+      {
+        connecta: { root_unit_name: 'Raiz X', org_unit_name: 'Setor Y' },
+        assignee: { name: 'Pessoa Z' },
+        showAssignee: true,
+      }
+    );
+
+    await wrapper.setProps({ assignee: { name: 'Pessoa W' } });
+
+    expect(wrapper.text()).toContain('Raiz X | Setor Y | Pessoa W');
+    expect(wrapper.text()).not.toContain('Pessoa Z');
+  });
 });

@@ -22,21 +22,33 @@ class Connecta::Scope::Projection
     @user = user
   end
 
+  # Memoização por instância (uma por Gate/request): a mesma resposta serve
+  # todas as etapas do protocolo sem repetir UserGrant/OrgUnit por linha.
   def verified?
-    Connecta::Scope::UserAuthEpoch.exists?(user_id: user.id, revoked_locally_at: nil)
+    return @verified if defined?(@verified)
+
+    @verified = Connecta::Scope::UserAuthEpoch.exists?(user_id: user.id, revoked_locally_at: nil)
   end
 
   def fresh?
-    Connecta::Scope::AclSyncState.exists?(['last_heartbeat_at > ?', self.class.heartbeat_ttl.ago])
+    return @fresh if defined?(@fresh)
+
+    @fresh = Connecta::Scope::AclSyncState.exists?(['last_heartbeat_at > ?', self.class.heartbeat_ttl.ago])
   end
 
   def admin?
-    verified? && Connecta::Scope::UserGrant.exists?(user_id: user.id, permission: 'admin_nominal')
+    return @admin if defined?(@admin)
+
+    @admin = verified? && Connecta::Scope::UserGrant.exists?(user_id: user.id, permission: 'admin_nominal')
   end
 
   def granted_paths(permissions)
-    Connecta::Scope::UserGrant.joins(:org_unit)
-                              .where(user_id: user.id, permission: permissions, connecta_g0_org_units: { enabled: true })
-                              .pluck('connecta_g0_org_units.path')
+    @granted_paths ||= {}
+    key = Array(permissions).map(&:to_s).sort.freeze
+    @granted_paths[key] ||= Connecta::Scope::UserGrant.joins(:org_unit)
+                                                      .where(user_id: user.id, permission: permissions,
+                                                             connecta_g0_org_units: { enabled: true })
+                                                      .pluck('connecta_g0_org_units.path')
+                                                      .freeze
   end
 end

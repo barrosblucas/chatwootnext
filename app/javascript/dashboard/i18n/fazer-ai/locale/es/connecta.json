@@ -36,6 +36,8 @@
       "NO_ELIGIBLE_UNIT": "No tiene un sector con permiso de atención. Hable con su gestor.",
       "SELECT_UNIT": "Elija el sector para iniciar la atención.",
       "ERROR": "No se pudo iniciar la atención. Su mensaje fue conservado — intente de nuevo.",
+      "ATTACHMENT_UNAVAILABLE": "No se pudo preparar el adjunto. Elimine el archivo y selecciónelo de nuevo antes de iniciar.",
+      "FOLLOW_UP_ERROR": "La atención se inició, pero algunos adjuntos no se enviaron. Vuelva a enviar los archivos en la conversación.",
       "REUSED": "Una atención existente se reabrirá en su sector.",
       "CONFIRM": "Iniciar"
     },

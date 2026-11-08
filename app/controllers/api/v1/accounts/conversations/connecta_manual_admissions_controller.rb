@@ -34,7 +34,8 @@ class Api::V1::Accounts::Conversations::ConnectaManualAdmissionsController < Api
       contact_inbox: @contact_inbox,
       actor: current_user,
       org_unit_id: admission_params[:org_unit_id],
-      message_params: message_payload
+      message_params: message_payload,
+      idempotency_key: idempotency_key
     ).call
     @conversation = result[:conversation]
     render 'api/v1/accounts/conversations/show', status: result[:reused] ? :ok : :created
@@ -103,10 +104,59 @@ class Api::V1::Accounts::Conversations::ConnectaManualAdmissionsController < Api
     params.permit(:org_unit_id)
   end
 
+  # Nonce explícito e estável por tentativa. O browser não decide o tipo,
+  # privacidade nem o autor: o serviço sempre cria outgoing público com
+  # sender=actor do servidor.
+  def idempotency_key
+    key = params[:idempotency_key].to_s.strip
+    return nil if key.empty?
+
+    unless key.match?(Connecta::Runtime::ManualAdmissionTransaction::IDEMPOTENCY_KEY_PATTERN)
+      raise Connecta::Runtime::ManualAdmissionTransaction::Error.new(
+        'idempotency_key is invalid', status: :unprocessable_entity
+      )
+    end
+
+    key
+  end
+
+  # Whitelist estrita da primeira mensagem. Anexos só entram como upload
+  # multipart nativo (UploadedFile); signed IDs de outra conta são recusados
+  # porque o blob não prova vínculo de conta neste endpoint. Campos de
+  # autor/tipo/privacidade enviados pelo browser são descartados.
   def message_payload
     message = params[:message]
     return nil if message.blank?
 
-    message.is_a?(ActionController::Parameters) ? message.permit!.to_h : message
+    unless message.is_a?(ActionController::Parameters)
+      raise Connecta::Runtime::ManualAdmissionTransaction::Error.new(
+        'message is invalid', status: :unprocessable_entity
+      )
+    end
+
+    permitted = message.permit(
+      :content, :is_voice_message, :is_recorded_audio, :transcode_audio,
+      attachments: [], attachments_metadata: {}
+    )
+    attachments = permitted[:attachments]
+    attachments = [attachments] if attachments.present? && !attachments.is_a?(Array)
+    if attachments.present? && !attachments.all? { |attachment| uploaded_file?(attachment) }
+      raise Connecta::Runtime::ManualAdmissionTransaction::Error.new(
+        'message attachments must be uploaded files', status: :unprocessable_entity
+      )
+    end
+    return nil if permitted[:content].blank? && attachments.blank?
+
+    payload = permitted.to_h.with_indifferent_access
+    payload[:attachments] = attachments
+    payload[:message_type] = 'outgoing'
+    payload[:private] = false
+    payload
+  end
+
+  def uploaded_file?(attachment)
+    attachment.respond_to?(:tempfile) &&
+      attachment.respond_to?(:original_filename) &&
+      attachment.respond_to?(:content_type)
   end
 end

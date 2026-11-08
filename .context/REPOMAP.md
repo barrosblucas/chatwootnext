@@ -45,6 +45,7 @@ scripts/connecta/   (novo em 2026-10-22: preparo do ambiente de teste G0)
 - `app/controllers/api/v1/accounts/conversations/connecta_manual_admissions_controller.rb` e `app/services/connecta/runtime/manual_admission_transaction.rb`: endpoint/transação de admissão manual, WIP.
 - `app/javascript/dashboard/components-next/NewConversation/components/ConnectaSectorPicker.vue`: conectado ao template do `ComposeConversation` em 2026-11-08; recebe os destinos já carregados e usa o endpoint dedicado de admissão.
 - `app/services/connecta/scope/protocol_search.rb`, `conversation_metadata.rb`, `protocol_view.rb`: busca por protocolo, metadados em lote da lista e visão de etapas com Gate por conversa (2026-11-08; sem migração).
+- `app/services/connecta/purge/cleanup.rb`, `sidekiq_cleanup.rb`: contrato interno de manutenção (sem rota HTTP) para inventário/apply transacional e dead set do Sidekiq; specs sintéticas em `spec/connecta/purge_cleanup_spec.rb` e `purge_sidekiq_cleanup_spec.rb`.
 - `app/controllers/api/v1/accounts/connecta/protocols_controller.rb`, `conversation_metadata_controller.rb`: endpoints account-bound de protocolo e metadados; 404 genérico/omissão de ids ocultos.
 - `app/javascript/dashboard/store/modules/connectaMetadata.js`, `helper/connectaLabel.js`, `components/widgets/conversation/ConnectaProtocolDrawer.vue`: rótulo dinâmico `Raiz | Setor | Atendente`, chip/drawer e cache em lote por lista.
 

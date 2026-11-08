@@ -285,6 +285,30 @@ describe('composeConversationHelper', () => {
     });
   });
 
+  describe('prepareAdmissionFiles', () => {
+    it('uses the raw File even after a direct upload', () => {
+      const raw = new File(['a'], 'a.png', { type: 'image/png' });
+      const files = [{ rawFile: raw, resource: { id: 1 } }];
+
+      expect(helpers.prepareAdmissionFiles(files)).toEqual([raw]);
+    });
+
+    it('keeps every raw file from one or two attachments in order', () => {
+      const first = new File(['a'], 'a.png', { type: 'image/png' });
+      const second = new File(['b'], 'b.png', { type: 'image/png' });
+
+      expect(
+        helpers.prepareAdmissionFiles([{ rawFile: first }, { rawFile: second }])
+      ).toEqual([first, second]);
+    });
+
+    it('never falls back to a signed id', () => {
+      expect(
+        helpers.prepareAdmissionFiles([{ blobSignedId: 'signed-id' }])
+      ).toEqual([]);
+    });
+  });
+
   describe('prepareNewMessagePayload', () => {
     const baseParams = {
       targetInbox: { id: 1, sourceId: 'source1' },

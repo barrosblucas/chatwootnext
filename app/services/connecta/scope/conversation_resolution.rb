@@ -37,20 +37,36 @@ class Connecta::Scope::ConversationResolution
       Rails.logger.error("Connecta resolution sync failed for conversation #{conversation.id}: #{e.class}: #{e.message}")
     end
 
-    # Resolve → terminal. Só os estados estáveis (`reception`, `active`) são
-    # fechados: os estados da máquina de transferência (`transferring`,
-    # `pending_activation`, `activation_stuck`) pertencem ao transfer e não são
-    # tocados aqui. Mantém org_unit/case_protocol/case_version; carimba
-    # closed_at. Sem escopo (conversa legada) ou já terminal: nada faz.
+    # Resolve → terminal. Fecha os estados estáveis (`reception`, `active`) e
+    # também os transitórios da transferência, sob o lock do par para não correr
+    # com begin!/commit_local!:
+    # - `transferring`: aborta o preparo pré-commit e fecha a origem; sem isso,
+    #   um inbound novo encontraria o escopo não-terminal e cairia na conversa
+    #   resolvida (ou colidiria no índice único do par).
+    # - `pending_activation`: destino já commitado; fecha e marca o transfer
+    #   como `activation_stuck`, para a ativação tardia não reabrir sozinha.
+    # - `activation_stuck`: fecha direto.
+    # Mantém org_unit/case_protocol/case_version; carimba closed_at. Sem escopo
+    # (conversa legada) ou já terminal: nada faz.
     def resolve_scope!(conversation)
       return unless lifecycle_enforced?(conversation)
 
-      scope = Connecta::Scope::ConversationScope.find_by(conversation_id: conversation.id)
-      return if scope.nil?
-      return if terminal_scope_state?(scope.state)
-      return unless %w[reception active].include?(scope.state)
+      ActiveRecord::Base.transaction do
+        Connecta::Transfer::LocalTransaction.lock!(
+          inbox_id: conversation.inbox_id, contact_id: conversation.contact_id
+        )
+        scope = Connecta::Scope::ConversationScope.lock.find_by(conversation_id: conversation.id)
+        next if scope.nil? || terminal_scope_state?(scope.state)
 
-      scope.update!(state: CLOSED_STATE, closed_at: Time.current)
+        case scope.state
+        when 'reception', 'active', 'activation_stuck'
+          close_scope!(scope)
+        when 'transferring'
+          abort_inflight_transfer!(scope)
+        when 'pending_activation'
+          close_pending_activation!(scope)
+        end
+      end
     end
 
     # Reabertura explícita do operador → volta ao atendimento anterior.
@@ -85,6 +101,40 @@ class Connecta::Scope::ConversationResolution
     end
 
     private
+
+    def close_scope!(scope)
+      scope.update!(state: CLOSED_STATE, closed_at: Time.current)
+    end
+
+    # Só registros pré-commit são abortáveis. Se o transfer já commitou, a
+    # origem deveria estar transferred_out (terminal) e o caso não chega aqui.
+    def abort_inflight_transfer!(scope)
+      if transfer_records_available?
+        Connecta::Transfer::TransferRecord.where(
+          source_conversation_id: scope.conversation_id,
+          state: %w[requested awaiting_dispatch prepared unknown]
+        ).update_all(state: 'aborted', updated_at: Time.current)
+      end
+      close_scope!(scope)
+    end
+
+    # O destino já pertence a um transfer commitado; fechar sem marcar o
+    # registro permitiria uma ativação tardia em conversa resolvida.
+    def close_pending_activation!(scope)
+      if transfer_records_available?
+        Connecta::Transfer::TransferRecord.where(
+          destination_conversation_id: scope.conversation_id,
+          state: 'committed_local'
+        ).update_all(state: 'activation_stuck', updated_at: Time.current)
+      end
+      close_scope!(scope)
+    end
+
+    def transfer_records_available?
+      Connecta::Transfer::TransferRecord.table_exists?
+    rescue StandardError
+      false
+    end
 
     def lifecycle_enforced?(conversation)
       Connecta::Runtime::Feature.enabled? && Connecta::Scope::Projection.marked?(conversation.inbox_id)

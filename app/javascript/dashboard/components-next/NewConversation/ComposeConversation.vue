@@ -67,6 +67,17 @@ const pendingAdmissionPayload = ref(null);
 const admissionAttemptKey = ref(null);
 const isAdmitting = ref(false);
 
+// O nonce é estável apenas enquanto o rascunho não muda: retry do mesmo
+// conteúdo deduplica; conteúdo/anexo novo depois de uma falha ganha nonce novo
+// e não pode retornar a mensagem anterior. Não regenera durante o envio.
+watch(
+  () => [formState.message, formState.attachedFiles],
+  () => {
+    if (!isAdmitting.value) admissionAttemptKey.value = null;
+  },
+  { deep: true }
+);
+
 const isBaileysMarkedInbox = computed(() => {
   const inbox = targetInbox.value;
   return (
@@ -304,12 +315,44 @@ const closeSectorPicker = () => {
   pendingAdmissionPayload.value = null;
 };
 
-const onSectorAdmitted = data => {
-  closeSectorPicker();
+const sendAdmissionFollowUps = async (data, followUpFiles) => {
+  if (!followUpFiles.length) return;
+  try {
+    await sendFollowUpFiles(data.id, followUpFiles);
+  } catch (_) {
+    // A conversa e a primeira mensagem já existem; não reabre o draft (o retry
+    // do nonce deduplicaria a primeira, mas os follow-ups não têm nonce).
+    useAlert(
+      t(
+        'CONNECTA.MANUAL_ADMISSION.FOLLOW_UP_ERROR',
+        'Atendimento iniciado, mas alguns anexos não foram enviados. Reenvie os arquivos na conversa.'
+      )
+    );
+  }
+};
+
+const onSectorAdmitted = async data => {
+  const followUpFiles = pendingAdmissionPayload.value?.followUpFiles || [];
+  showSectorPicker.value = false;
+  await sendAdmissionFollowUps(data, followUpFiles);
   completeAdmission(data);
 };
 
-const admitWithSector = async (payload, orgUnitId) => {
+const admitWithSector = async (
+  payload,
+  orgUnitId,
+  admissionFiles = [],
+  followUpFiles = []
+) => {
+  if (payload.files?.length && !admissionFiles.length) {
+    useAlert(
+      t(
+        'CONNECTA.MANUAL_ADMISSION.ATTACHMENT_UNAVAILABLE',
+        'O anexo não pôde ser preparado. Remova o arquivo e selecione novamente antes de iniciar.'
+      )
+    );
+    return false;
+  }
   try {
     const data = await store.dispatch(
       'contactConversations/createManualAdmission',
@@ -321,9 +364,11 @@ const admitWithSector = async (payload, orgUnitId) => {
           orgUnitId,
           message: payload.message,
           idempotencyKey: admissionAttemptKey.value,
+          files: admissionFiles,
         },
       }
     );
+    await sendAdmissionFollowUps(data, followUpFiles);
     completeAdmission(data);
     return true;
   } catch (error) {
@@ -343,16 +388,25 @@ const admitWithSector = async (payload, orgUnitId) => {
 // Fluxo Baileys: busca destinos elegíveis; 1 setor admite direto, >1 abre o
 // modal, 0 mostra erro acionável. Nonce estável por attempt evita duplicar a
 // primeira mensagem em double-click/retry (dedupe server por source_id).
-const createBaileysConversation = async payload => {
+const createBaileysConversation = async (
+  payload,
+  followUpFiles = [],
+  admissionFiles = []
+) => {
   if (!admissionAttemptKey.value) {
     admissionAttemptKey.value = `attempt-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   }
+  if (payload.files?.length && !admissionFiles.length) {
+    useAlert(
+      t(
+        'CONNECTA.MANUAL_ADMISSION.ATTACHMENT_UNAVAILABLE',
+        'O anexo não pôde ser preparado. Remova o arquivo e selecione novamente antes de iniciar.'
+      )
+    );
+    return false;
+  }
   isAdmitting.value = true;
   try {
-    // Precisa de uma conversa (ou reuso) para pedir destinos: usa o contactInbox
-    // existente sem criar mensagem, via endpoint de destinos com a conversa 0?
-    // Em vez disso, pede destinos pela conversa existente ou cria rascunho:
-    // o endpoint de destinos exige conversationId; usa lookup de reuso local.
     const destinations = await fetchSectorDestinations(payload);
     if (!destinations.length) {
       useAlert(
@@ -364,9 +418,18 @@ const createBaileysConversation = async payload => {
       return false;
     }
     if (destinations.length === 1) {
-      return admitWithSector(payload, destinations[0].id);
+      return admitWithSector(
+        payload,
+        destinations[0].id,
+        admissionFiles,
+        followUpFiles
+      );
     }
-    pendingAdmissionPayload.value = payload;
+    pendingAdmissionPayload.value = {
+      ...payload,
+      admissionFiles,
+      followUpFiles,
+    };
     showSectorPicker.value = true;
     return true;
   } catch (error) {
@@ -384,12 +447,13 @@ const createBaileysConversation = async payload => {
 const createConversation = async ({
   payload,
   followUpFiles = [],
+  admissionFiles = [],
   isFromWhatsApp,
 }) => {
   // Inbox Baileys marcada: resolve setores ANTES de enviar (1 auto, >1 modal,
   // 0 erro acionável). Nunca envia no POST nativo antes da admissão.
   if (isBaileysMarkedInbox.value && !payload?.skipConnectaAdmission) {
-    return createBaileysConversation(payload);
+    return createBaileysConversation(payload, followUpFiles, admissionFiles);
   }
   try {
     const data = await store.dispatch('contactConversations/create', {
@@ -577,6 +641,7 @@ onUnmounted(() => {
           "
           :message="pendingAdmissionPayload?.message || null"
           :idempotency-key="admissionAttemptKey"
+          :files="pendingAdmissionPayload?.admissionFiles || []"
           :units="sectorDestinations"
           :reuse-info="sectorReuseInfo"
           :title="t('CONNECTA.MANUAL_ADMISSION.TITLE')"

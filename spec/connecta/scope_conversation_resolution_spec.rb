@@ -60,6 +60,46 @@ RSpec.describe 'Connecta · ciclo de vida do escopo na resolução/reabertura (d
 
       expect(Connecta::Scope::ConversationScope.find_by!(conversation_id: conv_b.id).state).to eq('active')
     end
+
+    it 'activation_stuck vira closed (terminal)' do
+      scope_of_conv_a.update!(state: 'activation_stuck')
+
+      expect { conv_a.update!(status: :resolved) }
+        .to change { scope_of_conv_a.reload.state }.from('activation_stuck').to('closed')
+    end
+
+    it 'pending_activation fecha e marca o transfer como activation_stuck' do
+      scope_of_conv_a.update!(state: 'pending_activation', case_version: 0)
+      record = Connecta::Transfer::TransferRecord.create!(
+        source_conversation_id: conv_a1.id, destination_conversation_id: conv_a.id,
+        destination_org_unit_id: org_b.id, state: 'committed_local', target_case_version: 1
+      )
+
+      conv_a.update!(status: :resolved)
+
+      expect(scope_of_conv_a.reload.state).to eq('closed')
+      expect(record.reload.state).to eq('activation_stuck')
+    end
+
+    it 'transferring aborta o preparo pré-commit e fecha a origem' do
+      scope_of_conv_a.update!(state: 'transferring')
+      record = Connecta::Transfer::TransferRecord.create!(
+        source_conversation_id: conv_a.id, destination_org_unit_id: org_b.id,
+        state: 'requested', target_case_version: 1
+      )
+
+      conv_a.update!(status: :resolved)
+
+      expect(scope_of_conv_a.reload.state).to eq('closed')
+      expect(record.reload.state).to eq('aborted')
+    end
+
+    it 'transferred_out continua terminal e não é reaberto pela resolução' do
+      scope_of_conv_a.update!(state: 'transferred_out')
+
+      expect { conv_a.update!(status: :resolved) }
+        .not_to change { scope_of_conv_a.reload.state }
+    end
   end
 
   describe 'mensagem do cidadão após resolver não reabre (AC2)' do

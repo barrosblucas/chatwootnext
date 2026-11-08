@@ -36,6 +36,8 @@
       "NO_ELIGIBLE_UNIT": "You have no sector with service permission. Contact your manager.",
       "SELECT_UNIT": "Choose the sector to start service.",
       "ERROR": "Could not start service. Your message was preserved — try again.",
+      "ATTACHMENT_UNAVAILABLE": "The attachment could not be prepared. Remove the file and select it again before starting.",
+      "FOLLOW_UP_ERROR": "Service started, but some attachments were not sent. Resend the files in the conversation.",
       "REUSED": "An existing service will be reopened in your sector.",
       "CONFIRM": "Start"
     },

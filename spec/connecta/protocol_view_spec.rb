@@ -114,12 +114,12 @@ RSpec.describe 'Connecta · protocolo, metadados e busca', type: :request do
       expect(body_json.fetch('stages').pluck('conversation_id')).to contain_exactly(conv_b.display_id)
     end
 
-    it 'admin nominal mantém a leitura auditada de todas as etapas, sem escrita' do
+    it 'admin nominal não enumera a etapa transferred_out (sem escrita)' do
       get protocol_path, headers: token_admin_nominal
 
       expect(response).to have_http_status(:ok)
       expect(body_json.fetch('stages').pluck('conversation_id')).to contain_exactly(
-        conv_a.display_id, conv_b.display_id, origin_conversation.display_id
+        conv_a.display_id, conv_b.display_id
       )
     end
 
@@ -145,6 +145,52 @@ RSpec.describe 'Connecta · protocolo, metadados e busca', type: :request do
 
       get "/api/v1/accounts/#{account.id}/connecta/protocols/#{'A' * 61}", headers: token_native
       expect(response).to have_http_status(:not_found)
+    end
+
+    it 'encontra protocolo em minúsculas/mixed case e devolve o valor armazenado' do
+      Connecta::Scope::ConversationScope.where(case_protocol: protocol)
+                                        .update_all(case_protocol: protocol.downcase)
+
+      get "/api/v1/accounts/#{account.id}/connecta/protocols/#{protocol.downcase}", headers: token_native
+
+      expect(response).to have_http_status(:ok)
+      expect(body_json.fetch('protocol')).to eq(protocol.downcase)
+      expect(body_json.fetch('stages').size).to eq(3)
+    end
+
+    it 'protocolo existente só em outra conta responde 404 na conta consultada' do
+      other_protocol = "OUTRA#{SecureRandom.hex(3).upcase}"
+      Connecta::Scope::ConversationScope.find_by!(conversation_id: other_conversation.id)
+                                        .update!(case_protocol: other_protocol)
+
+      get "/api/v1/accounts/#{account.id}/connecta/protocols/#{other_protocol}", headers: token_native
+
+      expect(response).to have_http_status(:not_found)
+    end
+
+    it 'não repete consultas de grant/org unit por etapa para o mesmo ator' do
+      extra_contact = create(:contact, account: account)
+      extra = create(:conversation, account: account, inbox: inbox, contact: extra_contact, assignee: agent_a)
+      Connecta::Scope::ConversationScope.create!(
+        conversation_id: extra.id, inbox_id: inbox.id, contact_id: extra_contact.id,
+        org_unit: org_a, state: 'active', case_protocol: protocol, case_version: 1
+      )
+      grant_queries = 0
+      org_queries = 0
+      callback = lambda do |_name, _start, _finish, _id, payload|
+        sql = payload[:sql].to_s
+        grant_queries += 1 if sql.match?(/connecta_user_grants/i)
+        org_queries += 1 if sql.match?(/connecta_org_units/i)
+      end
+
+      ActiveSupport::Notifications.subscribed(callback, 'sql.active_record') do
+        get protocol_path, headers: token_a
+      end
+
+      expect(response).to have_http_status(:ok)
+      expect(body_json.fetch('stages').size).to eq(2)
+      expect(grant_queries).to be <= 2
+      expect(org_queries).to be <= 3
     end
   end
 

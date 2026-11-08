@@ -36,6 +36,8 @@
       "NO_ELIGIBLE_UNIT": "Você não tem setor com permissão de atendimento. Fale com seu gestor.",
       "SELECT_UNIT": "Escolha o setor para iniciar o atendimento.",
       "ERROR": "Não foi possível iniciar o atendimento. Sua mensagem foi preservada — tente novamente.",
+      "ATTACHMENT_UNAVAILABLE": "O anexo não pôde ser preparado. Remova o arquivo e selecione novamente antes de iniciar.",
+      "FOLLOW_UP_ERROR": "Atendimento iniciado, mas alguns anexos não foram enviados. Reenvie os arquivos na conversa.",
       "REUSED": "Atendimento existente será reaberto no seu setor.",
       "CONFIRM": "Iniciar"
     },
