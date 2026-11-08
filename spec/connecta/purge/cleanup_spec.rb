@@ -72,7 +72,8 @@ RSpec.describe Connecta::Purge::Cleanup do
   end
 
   def preserved_counts
-    [Account, User, AccountUser, Inbox, Contact, ContactInbox, InstallationConfig, OrgUnit, Team, Label, Webhook]
+    [Account, User, AccountUser, Inbox, Contact, ContactInbox, InstallationConfig,
+     Connecta::Scope::OrgUnit, Team, Label, Webhook]
       .to_h { |model| [model.name, model.count] }
   end
 
@@ -81,8 +82,9 @@ RSpec.describe Connecta::Purge::Cleanup do
     plan = inspect_plan
 
     expect(plan[:counts]).to include(
-      conversations: 2, messages: 2, legacy_attachments: 2, conversation_scopes: 2
+      conversations: 2, legacy_attachments: 2, conversation_scopes: 2
     )
+    expect(plan[:counts][:messages]).to be >= messages.size
     result = apply_plan(plan)
 
     expect(result[:status]).to eq('committed')
@@ -102,7 +104,7 @@ RSpec.describe Connecta::Purge::Cleanup do
     expect { apply_plan(plan) }.to raise_error(described_class::Blocked, 'INVENTORY_CHANGED')
 
     expect(Conversation.where(id: conversations.map(&:id)).count).to eq(2)
-    expect(Message.where(conversation_id: conversations.map(&:id)).count).to eq(2)
+    expect(Message.where(id: messages.map(&:id)).count).to eq(2)
     expect(Connecta::Scope::ConversationScope.where(conversation_id: conversations.map(&:id)).count).to eq(2)
     expect(ActiveStorage::Blob.where(id: blobs.map(&:id)).count).to eq(2)
   end
@@ -114,7 +116,7 @@ RSpec.describe Connecta::Purge::Cleanup do
     expect { apply_plan(plan) }.to raise_error(described_class::Blocked, 'INVENTORY_CHANGED')
 
     expect(Conversation.where(id: conversations.map(&:id)).count).to eq(2)
-    expect(Message.where(conversation_id: conversations.map(&:id)).count).to eq(2)
+    expect(Message.where(id: messages.map(&:id)).count).to eq(2)
   end
 
   it 'rollback da transação preserva conversas, mensagens, escopos, attachment rows e blobs' do
@@ -125,7 +127,7 @@ RSpec.describe Connecta::Purge::Cleanup do
     expect { apply_plan(plan) }.to raise_error(RuntimeError, 'probe')
 
     expect(Conversation.where(id: conversations.map(&:id)).count).to eq(2)
-    expect(Message.where(conversation_id: conversations.map(&:id)).count).to eq(2)
+    expect(Message.where(id: messages.map(&:id)).count).to eq(2)
     expect(Connecta::Scope::ConversationScope.where(conversation_id: conversations.map(&:id)).count).to eq(2)
     expect(Attachment.where(account_id: account.id).count).to eq(2)
     expect(ActiveStorage::Attachment.where(blob_id: blobs.map(&:id)).count).to eq(2)

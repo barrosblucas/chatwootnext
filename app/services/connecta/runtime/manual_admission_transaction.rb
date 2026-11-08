@@ -95,6 +95,8 @@ class Connecta::Runtime::ManualAdmissionTransaction
 
       conversation = ConversationBuilder.new(params: ActionController::Parameters.new,
                                              contact_inbox: @contact_inbox).perform
+      # display_id vem de trigger do banco; recarrega antes do WP e do lock.
+      conversation.reload
       [conversation, false]
     end
   rescue ActiveRecord::RecordNotUnique
@@ -173,6 +175,7 @@ class Connecta::Runtime::ManualAdmissionTransaction
     raise Error.new('You are not authorized to do this action', status: :forbidden) unless gate.write?(conversation,
                                                                                                        access_path: 'manual_admission_message')
 
+    conversation.reload
     conversation.with_lock do
       dedupe_key = first_message_dedupe_key(conversation)
       existing = conversation.messages.find_by(source_id: dedupe_key)

@@ -59,6 +59,7 @@ RSpec.describe 'Connecta · inbound após conversa resolvida (Baileys real)', ty
     Connecta::Scope::ScopedInbox.where(inbox_id: inbox.id).delete_all
     ContactInbox.where(inbox_id: inbox.id).delete_all
     Connecta::Scope::OrgUnit.where('path LIKE ?', "/recepcao-#{run_id}/%").delete_all
+    InternalChat::Channel.where(account_id: account.id).destroy_all
 
     connection = ActiveRecord::Base.connection
     account_tables = (connection.tables - ['accounts']).select { |table| connection.column_exists?(table, :account_id) }

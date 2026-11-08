@@ -66,9 +66,13 @@ class Connecta::Runtime::G0Adapter
     end
 
     def granted_paths(permissions)
-      Connecta::Scope::UserGrant.joins(:org_unit)
-                                .where(user_id: user.id, permission: permissions, connecta_org_units: { enabled: true })
-                                .pluck('connecta_org_units.path')
+      @granted_paths ||= {}
+      key = Array(permissions).map(&:to_s).sort.freeze
+      @granted_paths[key] ||= Connecta::Scope::UserGrant.joins(:org_unit)
+                                                        .where(user_id: user.id, permission: permissions,
+                                                               connecta_org_units: { enabled: true })
+                                                        .pluck('connecta_org_units.path')
+                                                        .freeze
     end
   end
 

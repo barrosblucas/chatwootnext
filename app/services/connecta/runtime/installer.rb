@@ -1,9 +1,12 @@
 class Connecta::Runtime::Installer
-  # Objeto único do callback de recepção, para o teste conseguir removê-lo
-  # sem resetar todos os callbacks nativos de Conversation.
-  RECEPTION_CALLBACK = proc do
-    Connecta::Runtime::ReceptionScopeCreator.call(self) if Connecta::Runtime::Feature.enabled?
+  # Callback por símbolo (não proc) para o teste remover de forma determinística
+  # sem resetar os demais callbacks nativos de Conversation.
+  module ReceptionCallback
+    def connecta_reception_after_create
+      Connecta::Runtime::ReceptionScopeCreator.call(self) if Connecta::Runtime::Feature.enabled?
+    end
   end
+  RECEPTION_CALLBACK = :connecta_reception_after_create
 
   def self.install!
     return unless Connecta::Runtime::Feature.enabled?
@@ -31,8 +34,9 @@ class Connecta::Runtime::Installer
     # O callback é instalado uma vez por processo; a checagem em tempo de execução
     # impede que ele continue agindo em specs/hosts que desligaram o recurso depois
     # do boot (o ENV é lido de novo a cada conversa criada).
+    Conversation.include(ReceptionCallback) unless Conversation <= ReceptionCallback
     Conversation.after_create(RECEPTION_CALLBACK) unless
-      Conversation._create_callbacks.any? { |callback| callback.filter.equal?(RECEPTION_CALLBACK) }
+      Conversation._create_callbacks.any? { |callback| callback.filter == RECEPTION_CALLBACK }
     # Fail-open no boot: numa conta fresca a primeira inbox marcada ainda não existe quando
     # este verify roda (o enforce vem depois, via upsert oficial), então a unidade de
     # recepção ausente não pode travar o boot — só registra o evento com a contagem.
@@ -50,7 +54,7 @@ class Connecta::Runtime::Installer
   # Só para specs: remove o callback de criação que o installer global deixou
   # no processo, sem tocar nos demais callbacks nativos de Conversation.
   def self.uninstall_reception_callback!
-    return unless Conversation._create_callbacks.any? { |callback| callback.filter.equal?(RECEPTION_CALLBACK) }
+    return unless Conversation._create_callbacks.any? { |callback| callback.filter == RECEPTION_CALLBACK }
 
     Conversation.skip_callback(:create, :after, RECEPTION_CALLBACK)
   end

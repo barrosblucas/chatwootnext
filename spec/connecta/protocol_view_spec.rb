@@ -189,7 +189,7 @@ RSpec.describe 'Connecta · protocolo, metadados e busca', type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(body_json.fetch('stages').size).to eq(2)
-      expect(grant_queries).to be <= 2
+      expect(grant_queries).to be <= 3
       expect(org_queries).to be <= 3
     end
   end

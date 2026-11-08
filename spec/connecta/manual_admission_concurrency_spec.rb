@@ -77,6 +77,7 @@ RSpec.describe 'Connecta · admissão manual concorrente', type: :request do
     Connecta::Scope::AclSyncState.where(id: acl_state.id).delete_all
     ContactInbox.where(inbox_id: inbox.id).delete_all
     Connecta::Scope::OrgUnit.where('path LIKE ?', "/conc-#{run_id}/%").delete_all
+    InternalChat::Channel.where(account_id: account.id).destroy_all
 
     connection = ActiveRecord::Base.connection
     account_tables = (connection.tables - ['accounts']).select { |table| connection.column_exists?(table, :account_id) }
@@ -111,7 +112,7 @@ RSpec.describe 'Connecta · admissão manual concorrente', type: :request do
       Thread.new do
         ActiveRecord::Base.connection_pool.with_connection do
           session = ActionDispatch::Integration::Session.new(Rails.application)
-          session.headers.merge!(headers)
+          headers.each { |key, value| session.header(key, value) }
           ready << true
           go.pop
           session.post(
