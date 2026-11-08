@@ -7,6 +7,8 @@ on:
   # No branch filter: stacked PRs target another feature branch, and filtering
   # on `main` would let them merge without ever running this gate.
   pull_request:
+  # Manual gate on a feature SHA, without opening a PR or touching main.
+  workflow_dispatch:
 
 jobs:
   fork-translations:
