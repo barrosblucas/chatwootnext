@@ -67,17 +67,6 @@ const pendingAdmissionPayload = ref(null);
 const admissionAttemptKey = ref(null);
 const isAdmitting = ref(false);
 
-// O nonce é estável apenas enquanto o rascunho não muda: retry do mesmo
-// conteúdo deduplica; conteúdo/anexo novo depois de uma falha ganha nonce novo
-// e não pode retornar a mensagem anterior. Não regenera durante o envio.
-watch(
-  () => [formState.message, formState.attachedFiles],
-  () => {
-    if (!isAdmitting.value) admissionAttemptKey.value = null;
-  },
-  { deep: true }
-);
-
 const isBaileysMarkedInbox = computed(() => {
   const inbox = targetInbox.value;
   return (
@@ -92,6 +81,17 @@ const formState = reactive({
   bccEmails: '',
   attachedFiles: [],
 });
+
+// O nonce é estável apenas enquanto o rascunho não muda: retry do mesmo
+// conteúdo deduplica; conteúdo/anexo novo depois de uma falha ganha nonce novo
+// e não pode retornar a mensagem anterior. Não regenera durante o envio.
+watch(
+  () => [formState.message, formState.attachedFiles],
+  () => {
+    if (!isAdmitting.value) admissionAttemptKey.value = null;
+  },
+  { deep: true }
+);
 
 const clearFormState = () => {
   Object.assign(formState, {

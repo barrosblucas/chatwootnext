@@ -84,6 +84,8 @@ export const actions = {
     for (let index = 0; index < normalized.length; index += MAX_BATCH_SIZE) {
       const batch = normalized.slice(index, index + MAX_BATCH_SIZE);
       try {
+        // Sequencial de propósito: evita tempestade de requisições.
+        // eslint-disable-next-line no-await-in-loop
         const { data } = await ConnectaAPI.conversationMetadata(batch);
         // Conta/ator/epoch mudou durante a requisição: a resposta pertence ao
         // escopo antigo e não pode contaminar o novo.
@@ -99,7 +101,7 @@ export const actions = {
     }
   },
 
-  invalidate: ({ commit, state: $state }, id) => {
+  invalidate: ({ commit }, id) => {
     const normalized = normalizeId(id);
     if (!normalized) return;
     commit('INVALIDATE', normalized);
