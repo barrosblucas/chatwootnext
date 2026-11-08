@@ -69,7 +69,12 @@ class Connecta::Scope::ConversationResolution
         end
       end
       remote_abort_ids.each do |transfer_id|
-        Connecta::Runtime::TransferAbortJob.perform_later(transfer_id, 'conversation_resolved')
+        # Pode rodar dentro da transação do IncomingHook: só enfileira depois
+        # de TODAS as transações da conexão commitarem. Em rollback o callback
+        # é descartado e o abort remoto não é disparado.
+        ActiveRecord.after_all_transactions_commit do
+          Connecta::Runtime::TransferAbortJob.perform_later(transfer_id, 'conversation_resolved')
+        end
       end
     end
 

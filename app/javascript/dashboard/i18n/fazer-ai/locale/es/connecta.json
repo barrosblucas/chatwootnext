@@ -39,7 +39,7 @@
       "SELECT_UNIT": "Elija el sector para iniciar la atención.",
       "ERROR": "No se pudo iniciar la atención. Su mensaje fue conservado — intente de nuevo.",
       "ATTACHMENT_UNAVAILABLE": "No se pudo preparar el adjunto. Elimine el archivo y selecciónelo de nuevo antes de iniciar.",
-      "FOLLOW_UP_ERROR": "La atención se inició, pero algunos adjuntos no se enviaron. Vuelva a enviar los archivos en la conversación.",
+      "FOLLOW_UP_ERROR": "La atención se inició, pero algunos adjuntos no se enviaron. Inténtelo de nuevo; los adjuntos ya enviados no se duplican.",
       "REUSED": "Una atención existente se reabrirá en su sector.",
       "CONFIRM": "Iniciar"
     },

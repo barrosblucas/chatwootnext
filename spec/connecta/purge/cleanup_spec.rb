@@ -203,6 +203,48 @@ RSpec.describe Connecta::Purge::Cleanup do
     expect(preserved_counts).to eq(before_counts)
   end
 
+  it 'rollback depois de Conversation#destroy! não enfileira purge e preserva anexos agendados' do
+    plan = inspect_plan
+    destroyed_conversations = 0
+    queued_before = ActiveJob::Base.queue_adapter.enqueued_jobs.count { |job| job[:job] == ActiveStorage::PurgeJob }
+    # rubocop:disable RSpec/AnyInstance
+    allow_any_instance_of(Conversation).to receive(:destroy!).and_wrap_original do |original, *args|
+      result = original.call(*args)
+      destroyed_conversations += 1
+      result
+    end
+    allow_any_instance_of(described_class).to receive(:verify_targets_gone!)
+      .and_raise(RuntimeError, 'post destroy probe')
+    # rubocop:enable RSpec/AnyInstance
+
+    expect { apply_plan(plan) }.to raise_error(RuntimeError, 'post destroy probe')
+    expect(destroyed_conversations).to eq(2)
+    expect(ActiveJob::Base.queue_adapter.enqueued_jobs.count { |job| job[:job] == ActiveStorage::PurgeJob })
+      .to eq(queued_before)
+    expect(ScheduledMessage.where(account_id: account.id).count).to eq(1)
+    expect(RecurringScheduledMessage.where(account_id: account.id).count).to eq(1)
+    expect(ActiveStorage::Attachment.where(blob_id: (blobs + scheduled_blobs).map(&:id)).count).to eq(4)
+    expect(ActiveStorage::Blob.where(id: (blobs + scheduled_blobs).map(&:id)).count).to eq(4)
+    (blobs + scheduled_blobs).each do |blob|
+      expect(ActiveStorage::Blob.service.exist?(blob.key)).to be(true)
+    end
+
+    # rubocop:disable RSpec/AnyInstance
+    allow_any_instance_of(Conversation).to receive(:destroy!).and_call_original
+    allow_any_instance_of(described_class).to receive(:verify_targets_gone!).and_call_original
+    # rubocop:enable RSpec/AnyInstance
+    result = apply_plan(plan)
+
+    expect(result[:status]).to eq('committed')
+    expect(ScheduledMessage.where(account_id: account.id).count).to eq(0)
+    expect(RecurringScheduledMessage.where(account_id: account.id).count).to eq(0)
+    expect(ActiveStorage::Attachment.where(blob_id: (blobs + scheduled_blobs).map(&:id)).count).to eq(0)
+    expect(ActiveStorage::Blob.where(id: (blobs + scheduled_blobs).map(&:id)).count).to eq(0)
+    (blobs + scheduled_blobs).each do |blob|
+      expect(ActiveStorage::Blob.service.exist?(blob.key)).to be(false)
+    end
+  end
+
   it 'falha real de service.delete deixa manifesto pending e retry exato mesmo com row ausente' do
     plan = inspect_plan
     failing = plan[:payload][:blobs].first

@@ -154,6 +154,43 @@ RSpec.describe 'Connecta · inbound após conversa resolvida (Baileys real)', ty
   end
   # rubocop:enable RSpec/MultipleExpectations
 
+  # rubocop:disable RSpec/MultipleExpectations
+  it 'compensa resolved com transferring/unknown e só enfileira o abort após o commit' do
+    deliver('edge-1', 'primeira mensagem')
+    old_conversation = Conversation.find_by!(inbox: inbox)
+    scope = Connecta::Scope::ConversationScope.find_by!(conversation_id: old_conversation.id)
+    scope.update!(state: 'transferring', case_version: 1, case_protocol: 'CASO-EDGE')
+    record = Connecta::Transfer::TransferRecord.create!(
+      source_conversation_id: old_conversation.id, destination_org_unit_id: reception_unit.id,
+      state: 'unknown', platform_session_ref: 'sess-unknown', target_case_version: 1
+    )
+    old_conversation.update_column(:status, 'resolved')
+
+    jobs_before = ActiveJob::Base.queue_adapter.enqueued_jobs.count do |job|
+      job[:job] == Connecta::Runtime::TransferAbortJob
+    end
+    allow_any_instance_of(Whatsapp::IncomingMessageBaileysService) # rubocop:disable RSpec/AnyInstance
+      .to receive(:handle_create_message).and_raise(RuntimeError, 'rollback probe')
+    expect { deliver('edge-rollback', 'rollback') }.to raise_error(RuntimeError, 'rollback probe')
+    expect(ActiveJob::Base.queue_adapter.enqueued_jobs.count { |job| job[:job] == Connecta::Runtime::TransferAbortJob })
+      .to eq(jobs_before)
+    expect(record.reload.state).to eq('unknown')
+    expect(scope.reload.state).to eq('transferring')
+    expect(old_conversation.reload.status).to eq('resolved')
+    expect(Conversation.where(inbox: inbox).count).to eq(1)
+
+    allow_any_instance_of(Whatsapp::IncomingMessageBaileysService) # rubocop:disable RSpec/AnyInstance
+      .to receive(:handle_create_message).and_call_original
+    expect do
+      deliver('edge-commit', 'commit')
+    end.to have_enqueued_job(Connecta::Runtime::TransferAbortJob)
+      .with(record.id, 'conversation_resolved')
+    expect(record.reload.state).to eq('aborted')
+    expect(scope.reload.state).to eq('closed')
+    expect(Conversation.where(inbox: inbox).count).to eq(2)
+  end
+  # rubocop:enable RSpec/MultipleExpectations
+
   it 'exige lock_to_single_conversation=false para o novo inbound não reutilizar a resolvida' do
     expect(inbox.reload.lock_to_single_conversation).to be(false)
   end

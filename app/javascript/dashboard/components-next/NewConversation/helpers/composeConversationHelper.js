@@ -6,6 +6,7 @@ import {
 } from 'dashboard/helper/editorHelper';
 import camelcaseKeys from 'camelcase-keys';
 import ContactAPI from 'dashboard/api/contacts';
+import { createPendingMessage } from 'dashboard/helper/commons';
 
 const CHANNEL_PRIORITY = {
   'Channel::Email': 1,
@@ -145,6 +146,40 @@ export const followUpNonce = (conversationId, index, attachment = {}) => {
     0,
     200
   );
+};
+
+// Draft único por anexo de acompanhamento: o mesmo objeto (echo_id) e nonce
+// são reutilizados no retry, para o store substituir a linha otimista e o
+// servidor deduplicar a mensagem.
+export const followUpPendingMessage = ({
+  conversationId,
+  index,
+  file,
+  directUploadsEnabled,
+}) =>
+  createPendingMessage({
+    conversationId,
+    files: [directUploadsEnabled ? file.blobSignedId : file.resource.file],
+    contentAttributes: {
+      connecta_followup_nonce: followUpNonce(conversationId, index, file),
+    },
+    message: '',
+    private: false,
+  });
+
+// Repete UMA vez o mesmo envio. A closure mantém o pending message/echo_id e
+// o nonce, então uma resposta perdida é deduplicada no servidor e a linha
+// otimista é substituída, nunca duplicada.
+export const withFollowUpRetry = async send => {
+  try {
+    return await send();
+  } catch (firstError) {
+    try {
+      return await send();
+    } catch (_) {
+      throw firstError;
+    }
+  }
 };
 
 // A admissão manual envia o primeiro anexo como upload multipart nativo.

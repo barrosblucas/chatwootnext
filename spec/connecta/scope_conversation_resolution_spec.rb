@@ -142,6 +142,30 @@ RSpec.describe 'Connecta · ciclo de vida do escopo na resolução/reabertura (d
         .not_to have_enqueued_job(Connecta::Runtime::TransferAbortJob)
     end
 
+    it 'unknown com platform_session_ref adia o abort para o commit e descarta em rollback' do
+      scope_of_conv_a.update!(state: 'transferring')
+      record = Connecta::Transfer::TransferRecord.create!(
+        source_conversation_id: conv_a.id, destination_org_unit_id: org_b.id,
+        state: 'unknown', platform_session_ref: 'sess-unknown', target_case_version: 1
+      )
+      conv_a.update_column(:status, 'resolved')
+
+      expect do
+        ActiveRecord::Base.transaction do
+          Connecta::Scope::ConversationResolution.resolve_scope!(conv_a.reload)
+          raise ActiveRecord::Rollback
+        end
+      end.not_to have_enqueued_job(Connecta::Runtime::TransferAbortJob)
+      expect(record.reload.state).to eq('unknown')
+      expect(scope_of_conv_a.reload.state).to eq('transferring')
+
+      expect { Connecta::Scope::ConversationResolution.resolve_scope!(conv_a.reload) }
+        .to have_enqueued_job(Connecta::Runtime::TransferAbortJob)
+        .with(record.id, 'conversation_resolved')
+      expect(record.reload.state).to eq('aborted')
+      expect(scope_of_conv_a.reload.state).to eq('closed')
+    end
+
     it 'transferred_out continua terminal e não é reaberto pela resolução' do
       scope_of_conv_a.update!(state: 'transferred_out')
 

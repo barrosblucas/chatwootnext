@@ -40,8 +40,11 @@ describe('ComposeConversation sector picker wiring', () => {
       'return createBaileysConversation(payload, followUpFiles, admissionFiles);'
     );
     expect(source).toContain(
-      'await sendAdmissionFollowUps(data, followUpFiles);'
+      'const followUpsSent = await sendAdmissionFollowUps(data, followUpFiles);'
     );
+    expect(source).toContain('if (!followUpsSent) return false;');
+    expect(source).toContain('withFollowUpRetry(() =>');
+    expect(source).toContain('followUpPendingMessage({');
     expect(source).toContain('files: admissionFiles');
     expect(source).toContain('connectaMetadata/refresh');
   });

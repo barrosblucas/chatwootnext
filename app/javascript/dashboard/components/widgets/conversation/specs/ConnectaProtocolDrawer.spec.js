@@ -110,6 +110,13 @@ describe('ConnectaProtocolDrawer', () => {
         data: {
           native_admin: true,
           stages: [{ conversation_id: 12, state: 'closed' }],
+          next_cursor: 'cursor-2',
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          native_admin: true,
+          stages: [{ conversation_id: 13, state: 'transferred_out' }],
           next_cursor: null,
         },
       });
@@ -119,7 +126,11 @@ describe('ConnectaProtocolDrawer', () => {
 
     expect(wrapper.text()).toContain('#11');
     expect(wrapper.text()).toContain('#12');
-    expect(getProtocol).toHaveBeenCalledTimes(2);
+    expect(wrapper.text()).toContain('#13');
+    expect(getProtocol).toHaveBeenCalledTimes(3);
+    expect(getProtocol).toHaveBeenLastCalledWith('PROT1', {
+      cursor: 'cursor-2',
+    });
   });
 
   it('shows the empty state when no stage is visible', async () => {

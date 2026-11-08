@@ -161,6 +161,67 @@ RSpec.describe 'Connecta · protocolo, metadados e busca', type: :request do
       expect(queries).to be <= 20
     end
 
+    it 'admin nativo pagina 201+ etapas sem perder, repetir ou perder auditoria' do
+      pagination_protocol = "NAT#{SecureRandom.hex(4).upcase}"
+      contact = create(:contact, account: account)
+      pairs = Array.new(205) do
+        conversation = create(:conversation, account: account, inbox: inbox, contact: contact)
+        scope = Connecta::Scope::ConversationScope.create!(
+          conversation_id: conversation.id, inbox_id: inbox.id, contact_id: contact.id,
+          org_unit: org_a, state: 'active', case_protocol: pagination_protocol, case_version: 1
+        )
+        [scope, conversation]
+      end
+      expected_ids = pairs.sort_by { |scope, _conversation| [scope.created_at, scope.id] }
+                         .map { |_scope, conversation| conversation.display_id }
+      seen = []
+      cursor = nil
+      pages = 0
+
+      loop do
+        params = { limit: 50 }
+        params[:cursor] = cursor if cursor
+        get "/api/v1/accounts/#{account.id}/connecta/protocols/#{pagination_protocol}",
+            params: params, headers: token_native
+        expect(response).to have_http_status(:ok)
+        page_ids = body_json.fetch('stages').pluck('conversation_id')
+        expect(page_ids).not_to be_empty
+        seen.concat(page_ids)
+        cursor = body_json['next_cursor']
+        pages += 1
+        break if cursor.nil? || pages >= 10
+      end
+
+      expect(pages).to be >= 5
+      expect(seen).to eq(expected_ids)
+      expect(
+        Connecta::Scope::AccessAudit.where(
+          user_id: native_admin.id, access_path: 'protocol_view', decision: 'allow'
+        ).count
+      ).to eq(205)
+    end
+
+    it 'página final vazia do cursor responde 200 sem repetir etapa' do
+      cursor = Connecta::Scope::ProtocolView.send(:encode_cursor, 1.hour.from_now, 10**9)
+
+      get protocol_path, params: { cursor: cursor }, headers: token_native
+
+      expect(response).to have_http_status(:ok)
+      expect(body_json.fetch('stages')).to eq([])
+      expect(body_json['next_cursor']).to be_nil
+    end
+
+    it 'cursor e limit inválidos respondem 422 sem enumerar etapa' do
+      get protocol_path, params: { cursor: 'nao-e-cursor' }, headers: token_native
+      expect(response).to have_http_status(:unprocessable_entity)
+
+      get protocol_path, params: { limit: 101 }, headers: token_native
+      expect(response).to have_http_status(:unprocessable_entity)
+
+      get protocol_path, params: { limit: 'abc' }, headers: token_native
+      expect(response).to have_http_status(:unprocessable_entity)
+    end
+
     it 'agente só com transferir não lê (404 genérico)' do
       get protocol_path, headers: token_transfer_only
 

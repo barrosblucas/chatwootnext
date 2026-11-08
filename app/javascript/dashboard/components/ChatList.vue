@@ -17,6 +17,7 @@ import {
   useMapGetter,
   useFunctionGetter,
 } from 'dashboard/composables/store.js';
+import { startConnectaMetadataTimer } from 'dashboard/helper/connectaMetadataTimer';
 
 import ChatListHeader from './ChatListHeader.vue';
 import ConversationList from './ConversationList.vue';
@@ -987,7 +988,7 @@ const subscribePresenceForTopChats = () => {
 };
 
 let presenceInterval = null;
-let connectaMetadataInterval = null;
+let stopConnectaMetadataTimer = null;
 
 onMounted(() => {
   store.dispatch('setChatListFilters', conversationFilters.value);
@@ -1000,9 +1001,8 @@ onMounted(() => {
     store.dispatch('campaigns/get');
   }
   presenceInterval = setInterval(subscribePresenceForTopChats, 60000);
-  connectaMetadataInterval = setInterval(
-    () => refreshConnectaMetadata(conversationList.value),
-    60000
+  stopConnectaMetadataTimer = startConnectaMetadataTimer(() =>
+    refreshConnectaMetadata(conversationList.value)
   );
 });
 
@@ -1014,7 +1014,7 @@ watch(assigneeTabItems, items => {
 
 onBeforeUnmount(() => {
   if (presenceInterval) clearInterval(presenceInterval);
-  if (connectaMetadataInterval) clearInterval(connectaMetadataInterval);
+  if (stopConnectaMetadataTimer) stopConnectaMetadataTimer();
 });
 
 const deleteConversationDialogRef = ref(null);

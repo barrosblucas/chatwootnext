@@ -15,9 +15,10 @@ import {
   createContactSearcher,
   createNewContact,
   fetchContactableInboxes,
-  followUpNonce,
+  followUpPendingMessage,
   processContactableInboxes,
   mergeInboxDetails,
+  withFollowUpRetry,
 } from 'dashboard/components-next/NewConversation/helpers/composeConversationHelper';
 import { frontendURL, conversationUrl } from 'dashboard/helper/URLHelper';
 import { pendingGroupNavigation } from 'dashboard/helper/pendingGroupNavigation';
@@ -267,22 +268,25 @@ const createGroup = async ({ inboxId, subject, participants }) => {
 // here with a non-empty list — see splitAttachmentsForChannel.
 // Chained rather than fired together, so the attachments arrive in the order they were
 // picked: WhatsApp orders by arrival, and a Promise.all reorders them for the contact.
+const sendFollowUpFile = (conversationId, index, file) => {
+  const pendingMessage = followUpPendingMessage({
+    conversationId,
+    index,
+    file,
+    directUploadsEnabled: directUploadsEnabled.value,
+  });
+
+  // O mesmo pending/echo_id e o mesmo nonce nas duas tentativas: a resposta
+  // perdida é deduplicada no servidor e a linha otimista é substituída.
+  return withFollowUpRetry(() =>
+    store.dispatch('sendMessageWithData', pendingMessage)
+  );
+};
+
 const sendFollowUpFiles = (conversationId, followUpFiles) =>
   followUpFiles.reduce(
     (previous, file, index) =>
-      previous.then(() =>
-        store.dispatch('createPendingMessageAndSend', {
-          conversationId,
-          files: [
-            directUploadsEnabled.value ? file.blobSignedId : file.resource.file,
-          ],
-          contentAttributes: {
-            connecta_followup_nonce: followUpNonce(conversationId, index, file),
-          },
-          message: '',
-          private: false,
-        })
-      ),
+      previous.then(() => sendFollowUpFile(conversationId, index, file)),
     Promise.resolve()
   );
 
@@ -320,25 +324,31 @@ const closeSectorPicker = () => {
 };
 
 const sendAdmissionFollowUps = async (data, followUpFiles) => {
-  if (!followUpFiles.length) return;
+  if (!followUpFiles.length) return true;
   try {
     await sendFollowUpFiles(data.id, followUpFiles);
+    return true;
   } catch (_) {
-    // A conversa e a primeira mensagem já existem; não reabre o draft. O
-    // reenvio do mesmo anexo deduplica pelo nonce no endpoint nativo.
+    // Draft/nonce/batch preservados: o mesmo attempt key e os mesmos nonces
+    // tornam o reenvio idempotente (a mensagem já enviada não duplica).
     useAlert(
       t(
         'CONNECTA.MANUAL_ADMISSION.FOLLOW_UP_ERROR',
-        'Atendimento iniciado, mas alguns anexos não foram enviados. Reenvie os arquivos na conversa.'
+        'Atendimento iniciado, mas alguns anexos não foram enviados. Tente novamente; os anexos já enviados não duplicam.'
       )
     );
+    return false;
   }
 };
 
 const onSectorAdmitted = async data => {
   const followUpFiles = pendingAdmissionPayload.value?.followUpFiles || [];
   showSectorPicker.value = false;
-  await sendAdmissionFollowUps(data, followUpFiles);
+  const followUpsSent = await sendAdmissionFollowUps(data, followUpFiles);
+  if (!followUpsSent) {
+    showSectorPicker.value = true;
+    return;
+  }
   completeAdmission(data);
 };
 
@@ -357,24 +367,19 @@ const admitWithSector = async (
     );
     return false;
   }
+  let data;
   try {
-    const data = await store.dispatch(
-      'contactConversations/createManualAdmission',
-      {
-        params: {
-          inboxId: payload.inboxId || payload.inbox_id,
-          contactId: payload.contactId || payload.contact_id,
-          sourceId: payload.sourceId || payload.source_id,
-          orgUnitId,
-          message: payload.message,
-          idempotencyKey: admissionAttemptKey.value,
-          files: admissionFiles,
-        },
-      }
-    );
-    await sendAdmissionFollowUps(data, followUpFiles);
-    completeAdmission(data);
-    return true;
+    data = await store.dispatch('contactConversations/createManualAdmission', {
+      params: {
+        inboxId: payload.inboxId || payload.inbox_id,
+        contactId: payload.contactId || payload.contact_id,
+        sourceId: payload.sourceId || payload.source_id,
+        orgUnitId,
+        message: payload.message,
+        idempotencyKey: admissionAttemptKey.value,
+        files: admissionFiles,
+      },
+    });
   } catch (error) {
     // Draft/anexos preservados: não limpa o form no erro, só alerta.
     useAlert(
@@ -387,6 +392,12 @@ const admitWithSector = async (
     );
     return false;
   }
+
+  const followUpsSent = await sendAdmissionFollowUps(data, followUpFiles);
+  if (!followUpsSent) return false;
+
+  completeAdmission(data);
+  return true;
 };
 
 // Fluxo Baileys: busca destinos elegíveis; 1 setor admite direto, >1 abre o

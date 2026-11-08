@@ -285,6 +285,52 @@ describe('composeConversationHelper', () => {
     });
   });
 
+  describe('followUpPendingMessage', () => {
+    it('mantém draft/echo_id, lote e nonce iguais no retry', async () => {
+      const pending = helpers.followUpPendingMessage({
+        conversationId: 9,
+        index: 1,
+        file: {
+          resource: { name: 'a.png', size: 10, lastModified: 7 },
+          blobSignedId: 'signed-1',
+        },
+        directUploadsEnabled: true,
+      });
+      const send = vi
+        .fn()
+        .mockRejectedValueOnce(new Error('lost response'))
+        .mockResolvedValueOnce('ok');
+
+      await helpers.withFollowUpRetry(() => send(pending));
+
+      expect(send.mock.calls[0][0]).toBe(send.mock.calls[1][0]);
+      expect(send.mock.calls[0][0].echo_id).toBeTruthy();
+      expect(
+        send.mock.calls[0][0].contentAttributes.connecta_followup_nonce
+      ).toContain('connecta-followup:9:1:');
+      expect(send.mock.calls[0][0].files).toHaveLength(1);
+    });
+  });
+
+  describe('withFollowUpRetry', () => {
+    it('repete uma vez o mesmo envio após resposta perdida', async () => {
+      const send = vi
+        .fn()
+        .mockRejectedValueOnce(new Error('lost response'))
+        .mockResolvedValueOnce('ok');
+
+      await expect(helpers.withFollowUpRetry(send)).resolves.toBe('ok');
+      expect(send).toHaveBeenCalledTimes(2);
+    });
+
+    it('não repete mais de uma vez', async () => {
+      const send = vi.fn().mockRejectedValue(new Error('offline'));
+
+      await expect(helpers.withFollowUpRetry(send)).rejects.toThrow('offline');
+      expect(send).toHaveBeenCalledTimes(2);
+    });
+  });
+
   describe('followUpNonce', () => {
     it('is stable for the same file and differs by index', () => {
       const file = { resource: { name: 'a.png', size: 10, lastModified: 7 } };
