@@ -1,6 +1,34 @@
 /* global axios */
-import { DataManager } from '../helper/CacheHelper/DataManager';
+import {
+  DataManager,
+  DATA_MANAGER_INIT_TIMEOUT_MS,
+} from '../helper/CacheHelper/DataManager';
 import ApiClient from './ApiClient';
+
+// How long a cached read (IndexedDB open, cache-key check, local rows) may
+// take before the list falls back to the authenticated network request.
+// Longer than the IndexedDB open timeout so a slow-but-working open still
+// resolves first; the race below only aborts reads that would hang the
+// spinner indefinitely. Late cache settlements are read-only and ignored.
+export const CACHE_READ_TIMEOUT_MS =
+  DATA_MANAGER_INIT_TIMEOUT_MS + 3000;
+
+// Races a read-only cache probe against a timeout. The probe never writes,
+// so abandoning it cannot corrupt local state; its late settlement is
+// consumed here and never surfaces as an unhandled rejection.
+const withCacheReadTimeout = (probe, timeoutMs = CACHE_READ_TIMEOUT_MS) => {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error('Cached read timed out'));
+    }, timeoutMs);
+  });
+  probe.then(
+    () => clearTimeout(timeoutId),
+    () => clearTimeout(timeoutId)
+  );
+  return Promise.race([probe, timeout]);
+};
 
 class CacheEnabledApiClient extends ApiClient {
   constructor(resource, options = {}) {
@@ -65,31 +93,48 @@ class CacheEnabledApiClient extends ApiClient {
   }
 
   async getFromCache() {
+    // Fail loud on a misconfigured subclass instead of silently serving the
+    // network on every read: the probe below would turn a missing model name
+    // into a fallback.
+    const cacheModelName = this.cacheModelName;
+
     try {
-      // IDB is not supported in Firefox private mode: https://bugzilla.mozilla.org/show_bug.cgi?id=781982
-      await this.dataManager.initDb();
+      const cached = await withCacheReadTimeout(
+        this.loadFromCache(cacheModelName)
+      );
+      if (cached.hit) return this.marshallData(cached.records);
+      return this.refetchAndCommit(cached.apiKey);
     } catch {
-      return this.getFromNetwork();
+      // IndexedDB blocked/failed or a local read hung: fall back to the
+      // existing authenticated network request instead of holding the list
+      // spinner. Genuine network or authorization failures still reject inside
+      // refetchAndCommit, so callers keep reporting them and no stale or
+      // cross-account data is ever returned as success.
+      return this.refetchAndCommit();
     }
+  }
+
+  // Read-only cache probe: IndexedDB open, /cache_keys comparison and local
+  // rows. Never writes, so it is safe to abandon when the timeout wins.
+  async loadFromCache(cacheModelName) {
+    // IDB is not supported in Firefox private mode: https://bugzilla.mozilla.org/show_bug.cgi?id=781982
+    await this.dataManager.initDb();
 
     const { data } = await axios.get(
       `/api/v1/accounts/${this.accountIdFromRoute}/cache_keys`
     );
-    const cacheKeyFromApi = data.cache_keys[this.cacheModelName];
+    const cacheKeyFromApi = data.cache_keys[cacheModelName];
     const isCacheValid = await this.validateCacheKey(cacheKeyFromApi);
 
-    let localData = [];
-    if (isCacheValid) {
-      localData = await this.dataManager.get({
-        modelName: this.cacheModelName,
-      });
-    }
+    if (!isCacheValid) return { hit: false, apiKey: cacheKeyFromApi };
 
-    if (localData.length === 0) {
-      return this.refetchAndCommit(cacheKeyFromApi);
-    }
+    const records = await this.dataManager.get({
+      modelName: cacheModelName,
+    });
 
-    return this.marshallData(localData);
+    if (records.length === 0) return { hit: false, apiKey: cacheKeyFromApi };
+
+    return { hit: true, records };
   }
 
   async refetchAndCommit(newKey = null) {

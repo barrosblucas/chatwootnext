@@ -1,0 +1,184 @@
+# Changelog 2026-11-09
+
+## Intenção da feature
+Corrigir o popup enganoso "You are not authorized to do this action" exibido para o
+agente legítimo ao abrir `settings/connecta`: o vínculo de identidade (POST
+`identity_link`) sempre funcionou, mas o GET `outbound_dispatches` da mesma tela
+exigia `admin_nominal` e a negação Pundit virava 401 pelo handler global — e o
+frontend só suprime 403. A correção responde 403 local no filtro, sem tocar o
+handler global: login válido sem `admin_nominal` vê 403 silencioso, sessão ausente
+continua 401. Correção 02 (spinner/caixas) fica para o próximo passo no mesmo
+worktree; sem deploy, sem mutação de produção.
+
+## Correção 01 — dispatches 403 silencioso para agente vinculado
+
+### Contexto
+`ConnectaSettings.vue` faz GET `outbound_dispatches` no mount para todo usuário
+logado; o endpoint exige `Connecta::Scope::Projection#admin?` e levantava
+`Pundit::NotAuthorizedError`, convertido em 401 pelo `RequestExceptionHandler`
+global. O vínculo de identidade (POST separado) não era afetado — por isso o
+usuário conseguia se vincular mesmo com o popup.
+
+### Mudanças
+- `app/controllers/api/v1/accounts/connecta/outbound_dispatches_controller.rb`:
+  `authorize_nominal_admin!` resgata `Pundit::NotAuthorizedError` no próprio
+  filtro e responde `403 { error: 'Admin nominal permission required' }` — mesmo
+  padrão de `acl_controller.rb` e `scoped_inboxes_controller.rb`. Vale para GET
+  (index) e PATCH (resolve), que compartilham o filtro. Handler global intacto;
+  `authenticate_user!` continua 401 para sessão ausente/inválida; acesso a dados
+  e auditoria inalterados para `admin_nominal`.
+- `spec/requests/connecta/outbound_dispatches_authorization_spec.rb` (novo):
+  agente vinculado 403 sem chave `dispatches`; PATCH do agente 403 sem mutar
+  estado e sem `AccessAudit`; nominal lista 200; nominal resolve 200 com
+  `connector_message_id`; sem token 401.
+- `app/javascript/dashboard/routes/dashboard/settings/connecta/specs/ConnectaSettings.spec.js`
+  (novo): 403 não dispara `useAlert`; 500 exibe o erro; nominal renderiza a linha.
+
+### Validação
+- `git diff --check` local OK; sintaxe do spec JS via `node --check` OK.
+- Sem Ruby/DB/Redis/serviços neste ambiente: specs Rails e suite frontend rodam
+  só no GitHub Actions (`scripts/connecta/g0_test_env.sh --spec`; affected/full
+  via `run_foss_spec.yml`). `node_modules` ausente — sem vitest/eslint locais,
+  sem installs.
+- Sem build, sem deploy, sem commit/push, sem mutação de produção ou roles.
+
+## Correção 02 — inbox list não prende mais no spinner quando o cache trava
+
+### Contexto
+`inboxes/get` (store `inboxes.js`, `isFetching` com `try/catch` que já limpa o
+flag em sucesso/erro) chama `InboxesAPI.get(true)` → `CacheEnabledApiClient.get`
+→ `getFromCache`, que aguardava `DataManager.initDb()` sem limite: um `openDB`
+bloqueado (ex. outra aba com versão antiga) nunca resolvia e nenhum request
+(`cache_keys` ou lista) era emitido — spinner infinito. Store não precisou de
+mudança (só `isFetching` já reseta nos dois caminhos); nenhum inbox/DB/registro
+foi criado, alterado ou excluído.
+
+### Mudanças
+- `app/javascript/dashboard/helper/CacheHelper/DataManager.js`:
+  `initDb` com timeout limitado (`DATA_MANAGER_INIT_TIMEOUT_MS = 5000`),
+  compartilha `initPromise` entre leituras concorrentes, mantém sucesso tardio
+  em `this.db` sem `unhandled rejection`, libera retry na próxima leitura;
+  bookkeeping de `localStorage` em `try/catch`; nada é apagado.
+- `app/javascript/dashboard/api/CacheEnabledApiClient.js`:
+  `getFromCache` extrai probe somente-leitura `loadFromCache` (open, key check,
+  linhas locais) sob `withCacheReadTimeout` (`CACHE_READ_TIMEOUT_MS = 8000`);
+  timeout/falha local → `refetchAndCommit()` (rede autenticada existente, mesma
+  URL/tenant); erro genuíno de rede/autorização continua rejeitando (sem dado
+  stale como sucesso); `cacheModelName` ausente continua lançando alto.
+  Genérico para inboxes/labels/teams/canned (isolamento por conta preservado).
+- `app/javascript/dashboard/api/specs/CacheEnabledApiClient.spec.js` (+4):
+  init travado → rede; 2 leituras concorrentes travadas → rede (2 requests);
+  leitura local rejeitada → rede com DB intacto; rede 403 com key movida →
+  rejeita (sem stale).
+- `app/javascript/dashboard/helper/specs/CacheHelper/DataManagerTimeout.spec.js`
+  (novo, `idb` mockado): open travado rejeita no timeout e permite retry;
+  sucesso tardio é guardado sem rejection; concorrentes compartilham 1 open.
+
+### Validação
+- `git diff --check` OK; sintaxe ESM dos 4 arquivos via
+  `node --input-type=module --check` OK.
+- `node_modules` ausente: vitest/eslint locais impossíveis sem install
+  (proibido); specs novas + afetadas (`CacheEnabledApiClient.spec.js`,
+  `DataManger.spec.js`, `inboxesCacheKey.spec.js`, `inboxes.spec.js`) pendentes
+  no GitHub Actions. Sem browser/login real: validação de UI segue pendente.
+- Sem build, serviços, deploy, commit/push; correção 01 intacta; nenhuma
+  mutação de produção, DB, inbox ou roles.
+
+## Fase atual
+Correção 01 (403 silencioso) e 02 (spinner/cache limitado) prontas no worktree
+isolado, sem commit/push/deploy; suíte JS e validação de UI pendentes no CI/browser.
+Correções antes de qualquer exclusão, conforme pedido do usuário.
+
+## EE isolado — workflow `publish_ee_github_docker.yml` adaptado (preparado, sem push/build/deploy)
+
+### Contexto
+Branch `fix/chatwoot-painel-20261109` (de 15fa2b33, correções 01 popup 403 e 02
+spinner/cache acima) precisava de workflow EE isolado próprio. O workflow
+isolado anterior (`ci/ee-build-15fa2b33`, commit c740091) construiu b59d a
+partir de 15fa com tags protegidas intactas, mas tinha branch e SOURCE_SHA
+fixos — foi usado só como referência, sem alterar aquele worktree.
+
+### Mudanças (só `.github/workflows/publish_ee_github_docker.yml`, sem commit)
+- `on:` só `workflow_dispatch` (gatilho `release` removido); concorrência
+  dedicada `ee-build-fix-chatwoot-painel-20261109`.
+- Guarda: só dispatch manual na branch exata `fix/chatwoot-painel-20261109`
+  (ref/event via `env:` mapeado, sem injeção inline).
+- Fonte imutável = `github.sha` do dispatch: checkout `ref: ${{ github.sha }}`
+  com `fetch-depth: 0`; valida HEAD == dispatch SHA e descendente da base
+  implantada 15fa via `git merge-base --is-ancestor`; `enterprise/` exigido.
+  Mover a branch entre push e dispatch não muda o build.
+- Tag única nova `ee-src-<SHA cheio>` derivada do dispatch SHA em cada job
+  (nada fixo); pré-voo recusa se a tag já existir (fail closed).
+- Build por plataforma com `push-by-digest` (sem tags), provenance no padrão
+  do builder (nunca `false`); verificação na imagem por digest: `CW_EDITION=ee`,
+  `/app/enterprise` presente, `/app/.git_sha` == SHA fonte.
+- Merge cria UMA tag (`-t $REPO:$EE_TAG`); `latest-ee`,
+  `fix-producao-20261106-ee` e tags CE nunca escritas; baseline/pós-checagem
+  por digest canônico de manifesto (`^Digest: sha256:…`, 1 único) fail closed
+  antes e depois da publicação.
+- Bug anterior evitado: nenhum `env:` de job usa contexto `env` (só passo a
+  passo / `$VAR` de shell); summary registra source SHA e workflow SHA
+  separados + digests + identidade de deploy por digest (tags são mutáveis).
+- Correções 01/02, specs e testes intactos; registrado só em main do repo
+  (`publish_ee_github_docker.yml`) sem tocar scanner/lint/test workflows.
+
+### Validação (sem serviço/rede, sem build/imagem, sem installs)
+- `python3 yaml.safe_load`: nome/jobs/gatilho OK; `git diff --check` OK.
+- Cheques estruturais: sem `release`, branch exata, base 15fa, tag dinâmica,
+  checkout por SHA + `fetch-depth: 0`, ancestralidade, push-by-digest, sem
+  `provenance:false`, `-t` único sem protegidas/CE, digest canônico x4+,
+  verificação EE/`enterprise`/`.git_sha`, summary com ambos SHAs — PASS.
+- Simulações: guarda aceita branch+dispatch corretos e recusa `main`;
+  derivação `ee-src-<sha>`; `merge-base --is-ancestor 15fa HEAD` OK;
+  `git status` confirma correções 01/02 preservadas.
+- Pendente no GitHub (requer dispatch autorizado): focused RSpec de
+  autorização com DB/Redis descartáveis
+  (`outbound_dispatches_authorization_spec.rb`); vitest frontend de cache e
+  connecta (`CacheEnabledApiClient.spec.js`, `DataManagerTimeout.spec.js`,
+  `ConnectaSettings.spec.js`, afetados `inboxes*`); build EE isolado com
+  verificação de digest e tags protegidas. CI geral segue com 74 lints de
+  backend e 23 advisories (1 crítico, 6 altos) conhecidos — sem ignorar
+  checks nem declarar cobertura verde; nova exceção/autorização antes do
+  rollout se o build mudar a imagem.
+
+### Estado
+Workflow PREPARADO no worktree, não commitado, sem push/dispatch/build/deploy
+e sem mutação de produção. Deploy só após correções validadas; exclusões só
+depois da produção, conforme pedido do usuário.
+
+## Correção de imports do spec de autorização (sem enfraquecer testes)
+
+### Contexto
+`spec/requests/connecta/outbound_dispatches_authorization_spec.rb` referenciava
+`../support/connecta/g0_target_guard` (= `spec/requests/support/...`,
+inexistente) e `support/g0_scope_schema` / `support/g0_scope_fixture` (=
+`spec/requests/connecta/support/...`, inexistente). Convenção provada pelos
+vizinhos: `spec/requests/connecta/route_inventory_spec.rb` usa
+`../../support/connecta/g0_target_guard`; specs sob `spec/connecta/` usam
+`../support/...` + `support/...` porque estão um nível acima. Fixtures reais em
+`spec/support/connecta/g0_target_guard.rb` e
+`spec/connecta/support/g0_scope_{schema,fixture}.rb`.
+
+### Mudanças (só o spec, sem tocar controller/cache/workflow)
+- Guarda: `../../support/connecta/g0_target_guard` (resolve para
+  `spec/support/connecta/g0_target_guard.rb`, mesmo `Connecta::G0TargetGuard.verify!`).
+- Fixtures: `../../connecta/support/g0_scope_schema` e
+  `../../connecta/support/g0_scope_fixture` (resolvem para
+  `spec/connecta/support/...`, mesmos `Connecta::G0ScopeSchema.ensure!`,
+  `Connecta::Scope::Installer.install!` e shared context
+  `with connecta g0 scope fixture` que fornece `account`, `whatsapp_inbox`,
+  `conv_a`, `agent_a`, `admin_nominal`, `json`).
+- Nenhum teste enfraquecido ou excluído: 5 exemplos intactos (agente 403 sem
+  `dispatches`; PATCH do agente 403 sem mutar estado nem `AccessAudit`;
+  nominal lista 200; nominal resolve 200 com `connector_message_id`; sem
+  token 401).
+
+### Validação (sem serviço, sem Ruby/DB/Redis)
+- Resolução de caminho no-shell: 3/3 `require_relative` resolvem para arquivos
+  existentes — PASS.
+- Shared context/fixtures: definição e uso 1:1, `Installer.install!` e model
+  `OutboundDispatch` presentes — PASS.
+- `git diff --check` limpo; Ruby indisponível neste ambiente — RSpec real
+  pendente no GitHub Actions (`scripts/connecta/g0_test_env.sh --spec`).
+- Sem build/install, sem commit/push/dispatch/deploy; trabalho anterior
+  (correções 01/02 + workflow EE) preservado sem alteração.

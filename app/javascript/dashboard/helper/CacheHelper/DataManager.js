@@ -1,17 +1,34 @@
 import { openDB } from 'idb';
 import { DATA_VERSION } from './version';
 
+// How long initDb waits for IndexedDB before giving up. An open can stay
+// pending indefinitely when another tab holds the database at an older
+// version, and awaiting it forever is what held list spinners. Callers fall
+// back to the authenticated network request on timeout; a late success is
+// still kept for the next read and nothing local is deleted.
+export const DATA_MANAGER_INIT_TIMEOUT_MS = 5000;
+
 export class DataManager {
   constructor(accountId) {
     this.modelsToSync = ['inbox', 'label', 'team', 'canned_response'];
     this.accountId = accountId;
     this.db = null;
+    this.initPromise = null;
   }
 
   async initDb() {
     if (this.db) return this.db;
-    const dbName = `cw-store-${this.accountId}`;
-    this.db = await openDB(`cw-store-${this.accountId}`, DATA_VERSION, {
+    // Concurrent reads share one open so they settle together.
+    if (this.initPromise) return this.initPromise;
+
+    let timeoutId;
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(new Error('IndexedDB init timed out'));
+      }, DATA_MANAGER_INIT_TIMEOUT_MS);
+    });
+
+    const openPromise = openDB(`cw-store-${this.accountId}`, DATA_VERSION, {
       upgrade(db) {
         // Existing databases already carry the stores added in earlier versions,
         // and createObjectStore throws on a name that is already taken.
@@ -26,16 +43,43 @@ export class DataManager {
         createStore('team', { keyPath: 'id' });
         createStore('canned_response', { keyPath: 'id' });
       },
+    }).then(db => {
+      this.db = db;
+
+      // Store the database name in LocalStorage
+      const dbName = `cw-store-${this.accountId}`;
+      try {
+        const dbNames = JSON.parse(
+          localStorage.getItem('cw-idb-names') || '[]'
+        );
+        if (!dbNames.includes(dbName)) {
+          dbNames.push(dbName);
+          localStorage.setItem('cw-idb-names', JSON.stringify(dbNames));
+        }
+      } catch {
+        // Storage unavailable (e.g. private mode): keep the open connection,
+        // the database simply is not listed for later cleanup.
+      }
+
+      return db;
     });
 
-    // Store the database name in LocalStorage
-    const dbNames = JSON.parse(localStorage.getItem('cw-idb-names') || '[]');
-    if (!dbNames.includes(dbName)) {
-      dbNames.push(dbName);
-      localStorage.setItem('cw-idb-names', JSON.stringify(dbNames));
-    }
+    // A late settlement after the timeout already fell back to the network
+    // must not surface as an unhandled rejection; a late success is still
+    // kept via this.db for the next read.
+    openPromise.then(
+      () => clearTimeout(timeoutId),
+      () => clearTimeout(timeoutId)
+    );
 
-    return this.db;
+    this.initPromise = Promise.race([openPromise, timeoutPromise]);
+
+    try {
+      return await this.initPromise;
+    } finally {
+      // Let the next read retry the open; a late success still assigns this.db.
+      this.initPromise = null;
+    }
   }
 
   validateModel(name) {

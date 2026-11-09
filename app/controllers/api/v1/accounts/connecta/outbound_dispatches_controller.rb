@@ -32,6 +32,12 @@ class Api::V1::Accounts::Connecta::OutboundDispatchesController < Api::V1::Accou
 
   def authorize_nominal_admin!
     raise Pundit::NotAuthorizedError unless Connecta::Scope::Projection.new(current_user).admin?
+  rescue Pundit::NotAuthorizedError
+    # 403 local (sem tocar o handler global, que segue 401): o frontend só
+    # suprime 403, então o agente vinculado não recebe popup enganoso.
+    # Autenticado sem admin_nominal cai aqui; não autenticado cai no
+    # authenticate_user! (401) antes deste filtro.
+    render json: { error: 'Admin nominal permission required' }, status: :forbidden
   end
 
   def serialize(row)

@@ -1,19 +1,155 @@
-name: Publish Chatwoot Enterprise docker images to GitHub
+name: Publish Chatwoot EE isolated build (fix/chatwoot-painel-20261109)
+
+# ISOLATED one-shot EE image build for branch fix/chatwoot-painel-20261109.
+# Manual dispatch ONLY, ONLY from branch fix/chatwoot-painel-20261109. This
+# branch is never merged to main. The immutable source is the dispatched run's
+# github.sha: every job validates the checkout equals that SHA and that it
+# descends from the deployed base
+# 15fa2b33d6618d4dfcbd9357d36f6da62ecb3944.
+# Publishes ONLY one tag ee-src-<full-sha> derived from the dispatch SHA.
+# latest-ee, fix-producao-20261106-ee and any CE tags are never written by this
+# workflow (the merge step names a single -t, and pre/post checks fail the run
+# if a protected tag drifts). GHCR tags are mutable: the deployment identity is
+# the final manifest digest recorded in the Action summary, not the tag string.
+# Source SHA (app code at dispatch) vs workflow SHA (the same dispatch commit)
+# are recorded separately in the summary; checking out the exact dispatch SHA
+# means the branch moving between push and dispatch cannot change the build.
 
 permissions:
   contents: read
   packages: write
 
 on:
-  release:
-    types: [released]
   workflow_dispatch:
+
+concurrency:
+  group: ee-build-fix-chatwoot-painel-20261109
+  cancel-in-progress: false
 
 env:
   GITHUB_REPO: ghcr.io/${{ github.repository }}
+  EXPECTED_BRANCH: fix/chatwoot-painel-20261109
+  PINNED_BASE: 15fa2b33d6618d4dfcbd9357d36f6da62ecb3944
 
 jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Allow only manual dispatch on the dedicated branch
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          EVENT_NAME: ${{ github.event_name }}
+          EXPECTED: ${{ env.EXPECTED_BRANCH }}
+        run: |
+          if [ "$REF_NAME" != "$EXPECTED" ]; then
+            echo "Refusing: this workflow runs only on '$EXPECTED' (got '$REF_NAME')." >&2
+            exit 1
+          fi
+          if [ "$EVENT_NAME" != "workflow_dispatch" ]; then
+            echo "Refusing: manual dispatch only (got '$EVENT_NAME')." >&2
+            exit 1
+          fi
+          echo "Guard OK: manual dispatch on '$REF_NAME'."
+
+  preflight:
+    runs-on: ubuntu-latest
+    needs: guard
+    steps:
+      - name: Derive immutable source tag from the dispatch SHA
+        env:
+          DISPATCH_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if ! printf '%s' "$DISPATCH_SHA" | grep -qE '^[0-9a-f]{40,64}$'; then
+            echo "Refusing: dispatch SHA has unexpected shape." >&2
+            exit 1
+          fi
+          echo "EE_TAG=ee-src-${DISPATCH_SHA}" >> "$GITHUB_ENV"
+          echo "SOURCE_SHA=${DISPATCH_SHA}" >> "$GITHUB_ENV"
+          echo "Source tag: ee-src-${DISPATCH_SHA}"
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Refuse if the isolated tag already exists (fail closed)
+        run: |
+          REPO="ghcr.io/${{ github.repository }}"
+          set +e
+          OUT="$(docker buildx imagetools inspect "$REPO:$EE_TAG" 2>&1)"
+          RC=$?
+          set -e
+          if [ "$RC" -eq 0 ]; then
+            echo "Refusing: $REPO:$EE_TAG already exists. Tags are mutable, so an existing tag must never be overwritten." >&2
+            exit 1
+          fi
+          # A missing tag is only trustworthy when the error actually says so;
+          # auth/network failures must never be mistaken for "tag absent".
+          if printf '%s' "$OUT" | grep -qiE 'manifest unknown|MANIFEST_UNKNOWN|not found|not exist|no such'; then
+            echo "Isolated tag absent — safe to proceed."
+          else
+            printf '%s\n' "$OUT" >&2
+            echo "Refusing: could not prove the isolated tag is absent (registry/auth/network?)." >&2
+            exit 1
+          fi
+
+      - name: Record protected-tag baseline (latest-ee, fix-producao-20261106-ee)
+        run: |
+          set -euo pipefail
+          REPO="ghcr.io/${{ github.repository }}"
+          : > protected.txt
+          for T in latest-ee fix-producao-20261106-ee; do
+            if ! OUT="$(docker buildx imagetools inspect "$REPO:$T" 2>&1)"; then
+              printf '%s\n' "$OUT" >&2
+              echo "Refusing: could not inspect protected tag $T (registry/auth/network/not-found?). Failing closed." >&2
+              exit 1
+            fi
+            DIGEST="$(printf '%s\n' "$OUT" | grep -i '^Digest:' | grep -oE 'sha256:[0-9a-f]{64}' | head -n 1 || true)"
+            COUNT="$(printf '%s\n' "$OUT" | grep -ci '^Digest:' || true)"
+            if [ "$COUNT" != "1" ] || [ -z "$DIGEST" ]; then
+              echo "Refusing: could not extract a single canonical manifest digest for $T (ambiguous output?). Failing closed." >&2
+              printf '%s\n' "$OUT" >&2
+              exit 1
+            fi
+            echo "$T $DIGEST" >> protected.txt
+          done
+          # Strict baseline shape: exactly the two expected protected tags,
+          # once each, each with a full canonical digest; nothing else.
+          # Never hash human-readable inspect output: only the Digest: value.
+          if [ "$(wc -l < protected.txt | tr -d ' ')" != "2" ]; then
+            echo "Refusing: baseline must hold exactly 2 entries. Failing closed." >&2
+            cat protected.txt >&2
+            exit 1
+          fi
+          for T in latest-ee fix-producao-20261106-ee; do
+            if [ "$(grep -cE "^${T} sha256:[0-9a-f]{64}$" protected.txt || true)" != "1" ]; then
+              echo "Refusing: baseline entry for $T missing, duplicated or malformed. Failing closed." >&2
+              cat protected.txt >&2
+              exit 1
+            fi
+          done
+          if grep -qvE '^(latest-ee|fix-producao-20261106-ee) sha256:[0-9a-f]{64}$' protected.txt; then
+            echo "Refusing: baseline holds an unexpected entry. Failing closed." >&2
+            cat protected.txt >&2
+            exit 1
+          fi
+          cat protected.txt
+
+      - name: Upload protected-tag baseline
+        uses: actions/upload-artifact@v4
+        with:
+          name: protected-tags
+          path: protected.txt
+          retention-days: 1
+
   build:
+    needs: preflight
     strategy:
       fail-fast: false
       matrix:
@@ -23,13 +159,41 @@ jobs:
           - platform: linux/arm64
             runner: ubuntu-22.04-arm
     runs-on: ${{ matrix.runner }}
-    env:
-      GIT_REF: ${{ github.event.release.tag_name || github.ref_name }}
     steps:
-      - name: Checkout
+      - name: Checkout exact dispatch commit (immutable source)
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name || github.ref }}
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Verify dispatch source SHA, ancestry and enterprise overlay
+        env:
+          DISPATCH_SHA: ${{ github.sha }}
+          WORKFLOW_SHA: ${{ github.sha }}
+          BASE_SHA: ${{ env.PINNED_BASE }}
+        run: |
+          set -euo pipefail
+          if ! printf '%s' "$DISPATCH_SHA" | grep -qE '^[0-9a-f]{40,64}$'; then
+            echo "Refusing: dispatch SHA has unexpected shape." >&2
+            exit 1
+          fi
+          HEAD_SHA="$(git rev-parse HEAD)"
+          if [ "$HEAD_SHA" != "$DISPATCH_SHA" ]; then
+            echo "Refusing: checked out $HEAD_SHA, dispatch source is $DISPATCH_SHA (branch moved?)." >&2
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$BASE_SHA" "$HEAD_SHA"; then
+            echo "Refusing: $HEAD_SHA is not a descendant of deployed base $BASE_SHA." >&2
+            exit 1
+          fi
+          if [ ! -d enterprise ]; then
+            echo "Refusing: enterprise/ overlay missing from the dispatch source." >&2
+            exit 1
+          fi
+          echo "EE_TAG=ee-src-${HEAD_SHA}" >> "$GITHUB_ENV"
+          echo "SOURCE_SHA=${HEAD_SHA}" >> "$GITHUB_ENV"
+          echo "WORKFLOW_SHA=${WORKFLOW_SHA}" >> "$GITHUB_ENV"
+          echo "Source OK: $HEAD_SHA descends from $BASE_SHA with enterprise/ overlay."
 
       - name: Prepare
         run: |
@@ -42,18 +206,13 @@ jobs:
 
       - name: Update version in app.yml
         run: |
-          if [[ "$GIT_REF" =~ ^v(.+)$ ]]; then
+          if [[ "$EE_TAG" =~ ^v(.+)$ ]]; then
             VERSION="${BASH_REMATCH[1]}"
             echo "Updating version to: $VERSION"
             sed -i "s/version: '.*'/version: '$VERSION'/" config/app.yml
           else
             echo "No version tag found, keeping existing version"
           fi
-
-      - name: Set Docker Tags
-        run: |
-          SANITIZED_REF=$(echo "$GIT_REF" | sed 's/\//-/g')
-          echo "SANITIZED_REF=${SANITIZED_REF}" >> $GITHUB_ENV
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -62,24 +221,41 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Login to GitHub Container Registry
-        if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push to GitHub Container Registry
+      - name: Build and push by digest only (no tags yet)
         id: build-ghcr
         uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/Dockerfile
           platforms: ${{ matrix.platform }}
-          push: ${{ github.event_name == 'release' || github.event_name == 'workflow_dispatch' }}
-          tags: |
-            ${{ env.GITHUB_REPO }}:${{ env.SANITIZED_REF }}-ee
-            ${{ env.GITHUB_REPO }}:latest-ee
+          # NOTE: provenance/attestations stay at the builder default (enabled).
+          # Never set provenance to false to "simplify" verification.
+          outputs: type=image,name=${{ env.GITHUB_REPO }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: Verify EE image content by digest (before any tag exists)
+        run: |
+          set -euo pipefail
+          REF="${{ env.GITHUB_REPO }}@${{ steps.build-ghcr.outputs.digest }}"
+          docker pull "$REF"
+          CW="$(docker run --rm --entrypoint sh "$REF" -c 'printenv CW_EDITION')"
+          if [ "$CW" != "ee" ]; then
+            echo "Refusing: CW_EDITION='$CW', expected 'ee'." >&2
+            exit 1
+          fi
+          docker run --rm --entrypoint sh "$REF" -c 'test -d /app/enterprise' \
+            || { echo "Refusing: /app/enterprise missing from image." >&2; exit 1; }
+          SHA="$(docker run --rm --entrypoint sh "$REF" -c 'cat /app/.git_sha' | tr -d '[:space:]')"
+          if [ "$SHA" != "$SOURCE_SHA" ]; then
+            echo "Refusing: image /app/.git_sha='$SHA', expected '$SOURCE_SHA'." >&2
+            exit 1
+          fi
+          echo "Image content OK: CW_EDITION=ee, /app/enterprise present, source $SOURCE_SHA."
 
       - name: Export digest
         run: |
@@ -95,17 +271,49 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+      - name: Record platform result in summary
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          {
+            echo "### build $PLATFORM (native runner)"
+            echo "- source SHA (app code at dispatch): $SOURCE_SHA"
+            echo "- workflow SHA (dispatch commit): $WORKFLOW_SHA"
+            echo "- source pinned to dispatch SHA; branch moves cannot change the build"
+            echo "- platform digest: ${{ steps.build-ghcr.outputs.digest }}"
+            echo "- verified in-image by digest: CW_EDITION=ee, /app/enterprise present, /app/.git_sha == source SHA"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   merge:
     runs-on: ubuntu-latest
     needs:
       - build
+      - preflight
     steps:
+      - name: Derive immutable source tag from the dispatch SHA
+        env:
+          DISPATCH_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if ! printf '%s' "$DISPATCH_SHA" | grep -qE '^[0-9a-f]{40,64}$'; then
+            echo "Refusing: dispatch SHA has unexpected shape." >&2
+            exit 1
+          fi
+          echo "EE_TAG=ee-src-${DISPATCH_SHA}" >> "$GITHUB_ENV"
+          echo "SOURCE_SHA=${DISPATCH_SHA}" >> "$GITHUB_ENV"
+
       - name: Download digests
         uses: actions/download-artifact@v4
         with:
           path: ${{ runner.temp }}/digests
           pattern: digests-*
           merge-multiple: true
+
+      - name: Download protected-tag baseline
+        uses: actions/download-artifact@v4
+        with:
+          name: protected-tags
+          path: ${{ runner.temp }}/protected
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
@@ -117,22 +325,126 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Create manifest list and push
-        working-directory: ${{ runner.temp }}/digests
-        env:
-          GIT_REF: ${{ github.event.release.tag_name || github.ref_name }}
+      - name: Abort if a protected tag drifted before publication
         run: |
-          SANITIZED_REF=$(echo "$GIT_REF" | sed 's/\//-/g')
-          docker buildx imagetools create \
-            -t ghcr.io/${{ github.repository }}:${SANITIZED_REF}-ee \
-            -t ghcr.io/${{ github.repository }}:latest-ee \
-            $(printf 'ghcr.io/${{ github.repository }}@sha256:%s ' *)
-
-      - name: Inspect image
-        env:
-          GIT_REF: ${{ github.event.release.tag_name || github.ref_name }}
-        run: |
-          SANITIZED_REF=$(echo "$GIT_REF" | sed 's/\//-/g')
+          set -euo pipefail
           REPO="ghcr.io/${{ github.repository }}"
-          docker buildx imagetools inspect ${REPO}:${SANITIZED_REF}-ee
-          docker buildx imagetools inspect ${REPO}:latest-ee
+          BASE="${{ runner.temp }}/protected/protected.txt"
+          # Fail closed on malformed/missing/duplicated baseline entries.
+          if [ "$(wc -l < "$BASE" | tr -d ' ')" != "2" ]; then
+            echo "Refusing: baseline must hold exactly 2 entries. Failing closed." >&2
+            cat "$BASE" >&2
+            exit 1
+          fi
+          for T in latest-ee fix-producao-20261106-ee; do
+            if [ "$(grep -cE "^${T} sha256:[0-9a-f]{64}$" "$BASE" || true)" != "1" ]; then
+              echo "Refusing: baseline entry for $T missing, duplicated or malformed. Failing closed." >&2
+              cat "$BASE" >&2
+              exit 1
+            fi
+          done
+          if grep -qvE '^(latest-ee|fix-producao-20261106-ee) sha256:[0-9a-f]{64}$' "$BASE"; then
+            echo "Refusing: baseline holds an unexpected entry. Failing closed." >&2
+            cat "$BASE" >&2
+            exit 1
+          fi
+          while IFS=' ' read -r TAG OLD; do
+            if ! OUT="$(docker buildx imagetools inspect "$REPO:$TAG" 2>&1)"; then
+              printf '%s\n' "$OUT" >&2
+              echo "Refusing: could not re-inspect protected tag $TAG (registry/auth/network/not-found?). Failing closed." >&2
+              exit 1
+            fi
+            NEW="$(printf '%s\n' "$OUT" | grep -i '^Digest:' | grep -oE 'sha256:[0-9a-f]{64}' | head -n 1 || true)"
+            COUNT="$(printf '%s\n' "$OUT" | grep -ci '^Digest:' || true)"
+            if [ "$COUNT" != "1" ] || [ -z "$NEW" ]; then
+              echo "Refusing: could not extract a single canonical manifest digest for $TAG. Failing closed." >&2
+              printf '%s\n' "$OUT" >&2
+              exit 1
+            fi
+            if [ "$NEW" != "$OLD" ]; then
+              echo "Refusing: protected tag $TAG changed since preflight ($OLD -> $NEW)." >&2
+              exit 1
+            fi
+          done < "$BASE"
+          echo "Protected tags unchanged since preflight (canonical digests match)."
+
+      - name: Create the single isolated tag from both digests
+        id: create
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          REPO="ghcr.io/${{ github.repository }}"
+          # The ONLY tag this workflow ever creates. latest-ee,
+          # fix-producao-20261106-ee and any CE tags are deliberately absent.
+          docker buildx imagetools create \
+            -t "$REPO:$EE_TAG" \
+            $(printf "$REPO@sha256:%s " *)
+          INSPECT="$(docker buildx imagetools inspect "$REPO:$EE_TAG")"
+          printf '%s\n' "$INSPECT"
+          INDEX_DIGEST="$(printf '%s' "$INSPECT" | grep -i '^Digest:' | grep -oE 'sha256:[0-9a-f]{64}' | head -1)"
+          if [ -z "$INDEX_DIGEST" ]; then
+            echo "Refusing: could not determine the final index digest." >&2
+            exit 1
+          fi
+          echo "index-digest=$INDEX_DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Confirm protected tags still untouched after publication
+        run: |
+          set -euo pipefail
+          REPO="ghcr.io/${{ github.repository }}"
+          BASE="${{ runner.temp }}/protected/protected.txt"
+          # Fail closed on malformed/missing/duplicated baseline entries.
+          if [ "$(wc -l < "$BASE" | tr -d ' ')" != "2" ]; then
+            echo "ALERT: baseline must hold exactly 2 entries. Failing closed." >&2
+            cat "$BASE" >&2
+            exit 1
+          fi
+          for T in latest-ee fix-producao-20261106-ee; do
+            if [ "$(grep -cE "^${T} sha256:[0-9a-f]{64}$" "$BASE" || true)" != "1" ]; then
+              echo "ALERT: baseline entry for $T missing, duplicated or malformed. Failing closed." >&2
+              cat "$BASE" >&2
+              exit 1
+            fi
+          done
+          if grep -qvE '^(latest-ee|fix-producao-20261106-ee) sha256:[0-9a-f]{64}$' "$BASE"; then
+            echo "ALERT: baseline holds an unexpected entry. Failing closed." >&2
+            cat "$BASE" >&2
+            exit 1
+          fi
+          while IFS=' ' read -r TAG OLD; do
+            if ! OUT="$(docker buildx imagetools inspect "$REPO:$TAG" 2>&1)"; then
+              printf '%s\n' "$OUT" >&2
+              echo "ALERT: could not re-inspect protected tag $TAG after publication. Failing closed." >&2
+              exit 1
+            fi
+            NEW="$(printf '%s\n' "$OUT" | grep -i '^Digest:' | grep -oE 'sha256:[0-9a-f]{64}' | head -n 1 || true)"
+            COUNT="$(printf '%s\n' "$OUT" | grep -ci '^Digest:' || true)"
+            if [ "$COUNT" != "1" ] || [ -z "$NEW" ]; then
+              echo "ALERT: could not extract a single canonical manifest digest for $TAG. Failing closed." >&2
+              printf '%s\n' "$OUT" >&2
+              exit 1
+            fi
+            if [ "$NEW" != "$OLD" ]; then
+              echo "ALERT: protected tag $TAG changed during publication ($OLD -> $NEW)." >&2
+              exit 1
+            fi
+          done < "$BASE"
+          echo "Protected tags untouched by publication (canonical digests match)."
+
+      - name: Record deployment identity in summary
+        env:
+          DISPATCH_SHA: ${{ github.sha }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          {
+            echo "## EE isolated build prepared"
+            echo "- source SHA (app code at dispatch): $SOURCE_SHA"
+            echo "- workflow SHA (branch $BRANCH dispatch commit): $DISPATCH_SHA"
+            echo "- source pinned to dispatch SHA; branch moves cannot change the build"
+            echo "- deployed base ancestor: 15fa2b33d6618d4dfcbd9357d36f6da62ecb3944"
+            echo "- image reference: ghcr.io/${{ github.repository }}:$EE_TAG"
+            echo "- final index digest: ${{ steps.create.outputs.index-digest }}"
+            echo "- deployment identity (digest, tags are mutable): ghcr.io/${{ github.repository }}@${{ steps.create.outputs.index-digest }}"
+            echo "- platform digests merged: $(ls ${{ runner.temp }}/digests | sort | tr '\n' ' ')"
+            echo "- protected tags verified unchanged: latest-ee, fix-producao-20261106-ee"
+            echo "- provenance: builder default (enabled, not disabled)"
+          } >> "$GITHUB_STEP_SUMMARY"

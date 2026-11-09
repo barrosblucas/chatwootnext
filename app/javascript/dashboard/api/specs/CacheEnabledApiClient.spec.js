@@ -3,7 +3,9 @@
 /* eslint-disable max-classes-per-file */
 import axios from 'axios';
 import { deleteDB } from 'idb';
-import CacheEnabledApiClient from '../CacheEnabledApiClient';
+import CacheEnabledApiClient, {
+  CACHE_READ_TIMEOUT_MS,
+} from '../CacheEnabledApiClient';
 
 global.axios = axios;
 vi.mock('axios');
@@ -219,5 +221,111 @@ describe('CacheEnabledApiClient', () => {
     const response = await client.get(true);
 
     expect(response.data.payload).toEqual(inboxes);
+  });
+
+  it('falls back to the network when IndexedDB init hangs instead of holding the list', async () => {
+    vi.useFakeTimers();
+    try {
+      stubEndpoints({
+        cacheKeys: { inbox: 'key-1' },
+        payload: { payload: inboxes },
+      });
+      const client = buildClient(WrappedClient);
+      const initDb = vi.spyOn(client.dataManager, 'initDb');
+      // First open (the cache probe) hangs like a blocked version upgrade;
+      // the commit inside the fallback still finds a working database.
+      initDb.mockImplementationOnce(() => new Promise(() => {}));
+      initDb.mockImplementation(() => Promise.resolve());
+
+      const pending = client.get(true);
+      await vi.advanceTimersByTimeAsync(CACHE_READ_TIMEOUT_MS);
+      const response = await pending;
+
+      expect(response.data.payload).toEqual(inboxes);
+      expect(listRequests()).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('serves concurrent reads from the network while the cache is blocked', async () => {
+    vi.useFakeTimers();
+    try {
+      stubEndpoints({
+        cacheKeys: { inbox: 'key-1' },
+        payload: { payload: inboxes },
+      });
+      const client = buildClient(WrappedClient);
+      let initCalls = 0;
+      vi.spyOn(client.dataManager, 'initDb').mockImplementation(() => {
+        initCalls += 1;
+        // Both probes hang; the fallback commits resolve so nothing deadlocks.
+        return initCalls <= 2 ? new Promise(() => {}) : Promise.resolve();
+      });
+
+      const first = client.get(true);
+      const second = client.get(true);
+      await vi.advanceTimersByTimeAsync(CACHE_READ_TIMEOUT_MS);
+
+      await expect(first).resolves.toMatchObject({
+        data: { payload: inboxes },
+      });
+      await expect(second).resolves.toMatchObject({
+        data: { payload: inboxes },
+      });
+      expect(listRequests()).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('falls back to the network when the local read fails, without erasing cached state', async () => {
+    stubEndpoints({
+      cacheKeys: { inbox: 'key-1' },
+      payload: { payload: inboxes },
+    });
+    const client = buildClient(WrappedClient);
+    await client.get(true);
+    expect(await client.dataManager.get({ modelName: 'inbox' })).toEqual(
+      inboxes
+    );
+
+    const renamed = [{ id: 1, name: 'inbox-1-renamed' }];
+    axios.get.mockClear();
+    stubEndpoints({
+      cacheKeys: { inbox: 'key-1' },
+      payload: { payload: renamed },
+    });
+    vi.spyOn(client.dataManager, 'get').mockRejectedValueOnce(
+      new Error('IDB read failed')
+    );
+
+    const response = await client.get(true);
+
+    expect(response.data.payload).toEqual(renamed);
+    // The database itself was never deleted: the fallback commit refreshed it.
+    expect(await client.dataManager.get({ modelName: 'inbox' })).toEqual(
+      renamed
+    );
+  });
+
+  it('rejects instead of serving stale data when the network fails', async () => {
+    stubEndpoints({
+      cacheKeys: { inbox: 'key-1' },
+      payload: { payload: inboxes },
+    });
+    const client = buildClient(WrappedClient);
+    await client.get(true);
+
+    axios.get.mockClear();
+    axios.get.mockImplementation(url =>
+      url.includes('cache_keys')
+        ? Promise.resolve({ data: { cache_keys: { inbox: 'key-2' } } })
+        : Promise.reject({ response: { status: 403 } })
+    );
+
+    await expect(client.get(true)).rejects.toMatchObject({
+      response: { status: 403 },
+    });
   });
 });
