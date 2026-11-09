@@ -20,9 +20,9 @@ RSpec.describe Connecta::CommonProductTables do # rubocop:disable RSpec/SpecFile
   end
 
   around do |example|
-    saved_flag = ENV[described_class::FLAG]
-    saved_runner = ENV[described_class::F5_ENV_KEY]
-    saved_tables = Connecta::Runtime::G0Adapter::TABLES.keys.to_h { |model| [model, model.table_name] }
+    saved_flag = ENV.fetch(described_class::FLAG, nil)
+    saved_runner = ENV.fetch(described_class::F5_ENV_KEY, nil)
+    saved_tables = Connecta::Runtime::G0Adapter::TABLES.keys.index_with(&:table_name)
     example.run
     if saved_flag.nil?
       ENV.delete(described_class::FLAG)

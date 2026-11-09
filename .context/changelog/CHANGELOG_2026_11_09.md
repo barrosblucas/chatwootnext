@@ -212,3 +212,41 @@ Run full 42599061785: 7 shards comuns falharam (~1798 erros) por tabela ausente 
 ### Validacao
 - `git diff --check`: limpo; YAML do workflow via `yaml.safe_load`: OK; cheques estruturais (sem `prepend`/install de producao no helper, sem `G0TargetGuard.verify!` no spec comum, triggers intactos): PASS.
 - Sem Ruby/DB/Redis/servicos, sem builds/installs, sem commit/push: RSpec real (incl. novo spec + suite comum/F5) pendente no GitHub Actions. Arquivos do front paralelo (`CacheEnabledApiClient.js` + spec) intocados.
+
+## Fix test-only colisao de fixture no spec F5 de outbound_dispatches (sem tocar producao; RSpec real pendente no Actions)
+
+### Contexto
+Run full 42619921521 shard7 F5: os 5 exemplos de `spec/requests/connecta/outbound_dispatches_authorization_spec.rb` falhavam com `PG::UniqueViolation` no `dispatch.create!` explicito. Causa: neste shard o `transfer_activation` instala o `MessageHook` (`Message.prepend`) e o `runtime_acl_sync` retargeta `OutboundDispatchRecord` via `G0Adapter` para a mesma tabela produto `connecta_outbound_dispatches` (unique em `message_id`); o hook ja insere a linha queued de `outgoing_message` antes do fixture. Composicao anterior (shard6, sem hook) passava. Sem regressao de producao: controller/autorizacao intactos.
+
+### Mudancas (so o spec alvo, sem codigo de producao/autorizacao)
+- `spec/requests/connecta/outbound_dispatches_authorization_spec.rb` (fixture `uncertain_dispatch`): `create!` direto trocado por `find_or_initialize_by(message_id:)` + atribuicao (`conversation`, `state uncertain`, `attempted_at`) + `save!`. Sem hook cria a linha uncertain; com hook reaproveita a linha queued e a promove a uncertain. 5 assercoes reais de endpoint intactas (agente 403 sem `dispatches`; PATCH do agente 403 sem mutar estado nem `AccessAudit`; nominal lista 200; nominal resolve 200 com `connector_message_id`; sem token 401); sem stub de controller/autorizacao, sem enqueue stubado.
+
+### Validacao
+- `git diff --check`: limpo; cheques estruturais no-shell: `find_or_initialize_by` presente, `create!` duplicado removido, 5 exemplos e todas as assercoes de status/auditoria intactos, sem stubs, sem arquivos de producao tocados — PASS.
+- Ruby indisponivel neste ambiente (`ruby: command not found`); sem DB/Redis/servicos, sem builds/installs, sem commit/push: RSpec real pendente no GitHub Actions. Arquivos dos fronts paralelos (`connecta_transfers_controller_spec.rb`, `whatsapp_spec.rb`, `connecta_common_product_tables_spec.rb`, `common_product_tables.rb`) preservados sem alteracao.
+
+## Fix test-only setup latente: helper de rota + fixtures (sem tocar producao; RSpec real pendente no Actions)
+
+### Contexto
+Run full 42619921521: shard1 com 2 NoMethodError no helper inexistente de rota GET e 8 PG NotNullViolation porque `find_or_create_by!` salva antes de atribuir `value`; shard6 com falso-positivo no spec Whatsapp (expectativa negativa armada antes da criacao lazy do `channel`, cujo account-dispatched era lido como evento sob teste). Mapeamento test-only anterior apenas revelou esses testes; nenhuma producao tocada.
+
+### Mudancas (so os 2 specs proprios, sem producao/autorizacao)
+- `spec/controllers/api/v1/accounts/conversations/connecta_transfers_controller_spec.rb`: 6 chamadas GET trocadas para o helper Rails correto de singular resource (`destinations_api_v1_account_conversation_connecta_transfer_url`), mesmos argumentos; 3 `find_or_create_by!` trocados por `find_or_initialize_by(...).update!(value: ...)`, padrao ja usado no repo. Todas as assercoes de autorizacao/secret-leak intactas.
+- `spec/models/channel/whatsapp_spec.rb` (exemplo ~677): `channel` realizado antes de armar `expect(dispatcher).not_to receive(:dispatch)`; operacao e assercoes inalteradas.
+
+### Validacao
+- `git diff --check`: limpo; Ruby indisponivel neste ambiente; sem DB/Redis/servicos, sem builds/installs, sem commit/push: RSpec real pendente no GitHub Actions. Arquivos dos fronts paralelos (`outbound_dispatches_authorization_spec.rb`, mapper/test-support) preservados sem alteracao.
+
+## Micro-fix RuboCop test-only: 4 ofensas novas do mapper comum (sem tocar producao; RSpec/RuboCop reais pendentes no Actions)
+
+### Contexto
+Run 42619921521 em a45a518: RuboCop 78 vs baseline 74 — 4 ofensas novas so no mapper test-only comum: spec linhas 23/24 Style/FetchEnvVar, linha 25 Rails/IndexWith, helper linha 15 Style/ClassAndModuleChildren. Scan segue 23 advisories ja aceitos.
+
+### Mudancas (so os 2 arquivos proprios, sem enfraquecer testes)
+- `spec/lib/connecta_common_product_tables_spec.rb`: 2x `ENV[key]` -> `ENV.fetch(key, nil)` (semantica unset preservada); `keys.to_h { |model| [model, model.table_name] }` -> `keys.index_with(&:table_name)` (equivalente). Todas as assercoes intactas, sem disables.
+- `spec/support/connecta/common_product_tables.rb`: `module Connecta` + `module CommonProductTables` -> compacto `module Connecta::CommonProductTables` com indentacao/end ajustados. Flag explicita CI-only, isolamento F5, fail-closed de tabela ausente e comportamento de producao preservados.
+
+### Validacao
+- `git status --short` capturado antes/depois (arquivos de fronts paralelos intocados).
+- `git diff --check`: limpo.
+- `ruby -c` indisponivel neste ambiente (`ruby: command not found`); sem builds/installs/servicos, sem commit/push: RuboCop/RSpec reais pendentes no GitHub Actions.

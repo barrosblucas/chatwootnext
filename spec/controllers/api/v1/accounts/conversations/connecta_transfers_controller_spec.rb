@@ -8,16 +8,16 @@ RSpec.describe 'Connecta Transfer API', type: :request do
   let(:transfer_secret) { 'connecta-transfer-secret-value' }
 
   def enable_connecta_transfer!(enabled: true)
-    InstallationConfig.find_or_create_by!(name: 'CONNECTA_TRANSFER_ENABLED').update!(value: enabled)
-    InstallationConfig.find_or_create_by!(name: 'CONNECTA_GATEWAY_URL').update!(value: gateway_url)
-    InstallationConfig.find_or_create_by!(name: 'CONNECTA_TRANSFER_SECRET').update!(value: transfer_secret)
+    InstallationConfig.find_or_initialize_by(name: 'CONNECTA_TRANSFER_ENABLED').update!(value: enabled)
+    InstallationConfig.find_or_initialize_by(name: 'CONNECTA_GATEWAY_URL').update!(value: gateway_url)
+    InstallationConfig.find_or_initialize_by(name: 'CONNECTA_TRANSFER_SECRET').update!(value: transfer_secret)
     GlobalConfig.clear_cache
   end
 
   describe 'GET /api/v1/accounts/:account_id/conversations/:conversation_id/connecta_transfer/destinations' do
     context 'when it is an unauthenticated user' do
       it 'returns unauthorized' do
-        get api_v1_account_conversation_connecta_transfer_destinations_url(
+        get destinations_api_v1_account_conversation_connecta_transfer_url(
           account_id: account.id,
           conversation_id: conversation.display_id
         )
@@ -35,7 +35,7 @@ RSpec.describe 'Connecta Transfer API', type: :request do
       end
 
       it 'returns unauthorized' do
-        get api_v1_account_conversation_connecta_transfer_destinations_url(
+        get destinations_api_v1_account_conversation_connecta_transfer_url(
           account_id: account.id,
           conversation_id: conversation.display_id
         ),
@@ -53,7 +53,7 @@ RSpec.describe 'Connecta Transfer API', type: :request do
       end
 
       it 'returns not found' do
-        get api_v1_account_conversation_connecta_transfer_destinations_url(
+        get destinations_api_v1_account_conversation_connecta_transfer_url(
           account_id: account.id,
           conversation_id: 99_999
         ),
@@ -71,7 +71,7 @@ RSpec.describe 'Connecta Transfer API', type: :request do
       end
 
       it 'returns forbidden' do
-        get api_v1_account_conversation_connecta_transfer_destinations_url(
+        get destinations_api_v1_account_conversation_connecta_transfer_url(
           account_id: account.id,
           conversation_id: conversation.display_id
         ),
@@ -113,7 +113,7 @@ RSpec.describe 'Connecta Transfer API', type: :request do
             headers: { 'Authorization' => "Bearer #{transfer_secret}" }
           ).to_return(status: 200, body: destinations_payload.to_json)
 
-        get api_v1_account_conversation_connecta_transfer_destinations_url(
+        get destinations_api_v1_account_conversation_connecta_transfer_url(
           account_id: account.id,
           conversation_id: conversation.display_id
         ),
@@ -134,7 +134,7 @@ RSpec.describe 'Connecta Transfer API', type: :request do
             }
           ).to_timeout
 
-        get api_v1_account_conversation_connecta_transfer_destinations_url(
+        get destinations_api_v1_account_conversation_connecta_transfer_url(
           account_id: account.id,
           conversation_id: conversation.display_id
         ),

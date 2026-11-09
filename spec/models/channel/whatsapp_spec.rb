@@ -675,6 +675,7 @@ RSpec.describe Channel::Whatsapp do
     end
 
     it 'bumps the inbox cache key without dispatching a cache update event' do
+      channel # realize the record before arming the dispatch guard
       allow(Redis::Alfred).to receive(:setex)
       expect(Rails.configuration.dispatcher).not_to receive(:dispatch)
 
