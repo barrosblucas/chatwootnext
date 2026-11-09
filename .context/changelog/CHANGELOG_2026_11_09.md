@@ -182,3 +182,33 @@ vizinhos: `spec/requests/connecta/route_inventory_spec.rb` usa
   pendente no GitHub Actions (`scripts/connecta/g0_test_env.sh --spec`).
 - Sem build/install, sem commit/push/dispatch/deploy; trabalho anterior
   (correções 01/02 + workflow EE) preservado sem alteração.
+
+## Micro-fix frontend lint (2 anotacoes CI, sem mudar runtime)
+
+### Contexto
+Run 42599061785 `lint-frontend` falhou em 2 anotacoes novas; `frontend-tests` passou. Baseline 15fa estava verde.
+
+### Mudancas (so arquivos proprios, sem enfraquecer testes)
+- `app/javascript/dashboard/api/CacheEnabledApiClient.js` (13-14): constante em uma linha `export const CACHE_READ_TIMEOUT_MS = DATA_MANAGER_INIT_TIMEOUT_MS + 3000;` (Prettier); LF preservado, sem mudanca de comportamento.
+- `app/javascript/dashboard/api/specs/CacheEnabledApiClient.spec.js` (324): `Promise.reject({ response: { status: 403 } })` trocado por `Error` com mesma propriedade `response.status 403` via `Object.assign`; assercao `rejects.toMatchObject({ response: { status: 403 } })` intacta, semantica de falha de rede 403 preservada.
+
+### Validacao (sem servico, sem installs/builds)
+- `git status --short` antes limpo; depois so os 2 arquivos proprios modificados.
+- `node --check` nos 2 arquivos: OK.
+- `git diff --check`: limpo.
+- `node_modules` ausente: eslint/vitest locais impossiveis (sem installs); suite real pendente no GitHub Actions.
+- Sem commit/push/deploy; arquivos do outro front (CI/test-support) intocados.
+
+## Correcao test-only do DB comum (sem tocar producao; specs de servico pendentes no Actions)
+
+### Contexto
+Run full 42599061785: 7 shards comuns falharam (~1798 erros) por tabela ausente `connecta_g0_scoped_inboxes`. Causa: DB comum tem so tabelas produto `connecta_*` (schema:load); com feature desligada no CI comum, `G0Adapter.install!` nunca roda e os modelos G0 mantem `table_name connecta_g0_*`. O `ActionCableListener#message_created` chama `Projection.marked?` incondicionalmente, e qualquer spec transacional que cria Message quebra no lookup. F5 usa DB isolado proprio e segue verde. Producao (rails/sidekiq) segue nas tabelas produto com enforcement; `Projection.marked?` sem fail-open preservado (erro propaga).
+
+### Mudancas (so CI/test-support, sem producao/autorizacao)
+- `spec/support/connecta/common_product_tables.rb` (novo, TEST-ONLY): com `CONNECTA_COMMON_PRODUCT_TABLES=1`, so em `Rails.env.test?` e fora do alvo F5, retargeta os modelos G0 via `G0Adapter::TABLES` as tabelas produto existentes; sem prepend/hooks, sem flip de flag, sem mudar autorizacao. Tabela produto ausente levanta alto (sem mock/skip). Inativo no F5/producao.
+- `spec/lib/connecta_common_product_tables_spec.rb` (novo, runner comum): comum mapeia para produto sem hooks; F5 intacto mesmo com flag; tabela ausente falha visivel; `Projection.marked?` propaga erro e fonte sem `rescue false`. Sanitizer de midia e permissoes existentes preservados; sem skip nem reducao de shard.
+- `.github/workflows/run_foss_spec.yml`: so adiciona `CONNECTA_COMMON_PRODUCT_TABLES: '1'` ao env de `Run common backend specs`. Triggers, gates, lint, security-scan, selecao RSpec, runner F5 e producao intocados; baseline 74 RuboCop/23 advisories sem supressao.
+
+### Validacao
+- `git diff --check`: limpo; YAML do workflow via `yaml.safe_load`: OK; cheques estruturais (sem `prepend`/install de producao no helper, sem `G0TargetGuard.verify!` no spec comum, triggers intactos): PASS.
+- Sem Ruby/DB/Redis/servicos, sem builds/installs, sem commit/push: RSpec real (incl. novo spec + suite comum/F5) pendente no GitHub Actions. Arquivos do front paralelo (`CacheEnabledApiClient.js` + spec) intocados.

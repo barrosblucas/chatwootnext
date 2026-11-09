@@ -286,6 +286,7 @@ jobs:
       - name: Run common backend specs
         env:
           NODE_OPTIONS: --openssl-legacy-provider
+          CONNECTA_COMMON_PRODUCT_TABLES: '1'
         run: |
           mapfile -t TESTS < tmp/ci-common-specs
           if [ "${#TESTS[@]}" -gt 0 ]; then

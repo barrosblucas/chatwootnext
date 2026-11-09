@@ -321,7 +321,11 @@ describe('CacheEnabledApiClient', () => {
     axios.get.mockImplementation(url =>
       url.includes('cache_keys')
         ? Promise.resolve({ data: { cache_keys: { inbox: 'key-2' } } })
-        : Promise.reject({ response: { status: 403 } })
+        : Promise.reject(
+            Object.assign(new Error('Request failed with status code 403'), {
+              response: { status: 403 },
+            })
+          )
     );
 
     await expect(client.get(true)).rejects.toMatchObject({

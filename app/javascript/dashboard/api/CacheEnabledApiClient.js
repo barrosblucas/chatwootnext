@@ -10,8 +10,7 @@ import ApiClient from './ApiClient';
 // Longer than the IndexedDB open timeout so a slow-but-working open still
 // resolves first; the race below only aborts reads that would hang the
 // spinner indefinitely. Late cache settlements are read-only and ignored.
-export const CACHE_READ_TIMEOUT_MS =
-  DATA_MANAGER_INIT_TIMEOUT_MS + 3000;
+export const CACHE_READ_TIMEOUT_MS = DATA_MANAGER_INIT_TIMEOUT_MS + 3000;
 
 // Races a read-only cache probe against a timeout. The probe never writes,
 // so abandoning it cannot corrupt local state; its late settlement is
