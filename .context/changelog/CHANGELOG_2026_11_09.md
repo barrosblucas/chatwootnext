@@ -250,3 +250,26 @@ Run 42619921521 em a45a518: RuboCop 78 vs baseline 74 — 4 ofensas novas so no 
 - `git status --short` capturado antes/depois (arquivos de fronts paralelos intocados).
 - `git diff --check`: limpo.
 - `ruby -c` indisponivel neste ambiente (`ruby: command not found`); sem builds/installs/servicos, sem commit/push: RuboCop/RSpec reais pendentes no GitHub Actions.
+
+## Micro-passo: commit fba7bf42 + full Actions + EE isolado (sem deploy; 1 falha funcional restante)
+
+### Contexto
+Commit `fba7bf42` (`test(connecta): fix F5 duplicate dispatch fixture, transfer route/config setup, whatsapp lazy channel, rubocop test-only offenses`) empurrou os 6 arquivos autorizados do branch isolado `fix/chatwoot-painel-20261109` (sem tocar main; repo original intacto em `15fa2b33` com trabalho Baileys preservado). Disparos autorizados: full `run_foss_spec.yml` (`full=true`) e `publish_ee_github_docker.yml` no SHA `fba7bf42`.
+
+### Resultados
+- Full FOSS run https://github.com/barrosblucas/chatwootnext/actions/runs/42628041828 (head `fba7bf42`): plan success; lint-frontend success; frontend-tests success (487 files, 4964 passed, 23 skipped); backend shards 0/2/3/4/5/6/7 success — shard7 F5 com 5 auth asserts do `outbound_dispatches_authorization_spec` verdes (duplicate-message resolvido), shard6 whatsapp lazy verde.
+- backend-tests (1): 1 falha restante — `connecta_transfers_controller_spec.rb:267` "maps gateway conflict to 409": esperava `duplicate transfer`, obteve `Connecta gateway returned an error` (status 409 passou; corpo do stub 409 sem Content-Type, HTTParty nao parseia -> produto inalterado, stub latente desmascarado pelo fix NotNull). As 10 falhas anteriores do shard1 (2 rota + 8 NotNull) resolvidas; sem skip/enfraquecimento.
+- lint-backend failure = baseline aceito: 74 offenses (era 78; 0 nos 5 arquivos tocados). security-scan failure = baseline aceito: bundle-audit 23 advisories (1 critical/6 high), Brakeman 41 warnings.
+- EE run https://github.com/barrosblucas/chatwootnext/actions/runs/42628045237 (head `fba7bf42`): success (guard, preflight, amd64, arm64, merge). Tag isolada `ee-src-fba7bf429fa63c99261c51475a3a92738c4c99a3`; index `sha256:0ba0c593ab5347ebc9308e68d40745df5356a8c54b42f7e9e4b29b524a65986d`; amd64 `sha256:fdc0605a49a33b51e95290cc235f466b27b5e7ef0d23fd1f897f2ddfc8f034c0`; arm64 `sha256:5da2136a9e493119cbcbfeaf6715614042ae6d37c333a86f6180e8c4bdf92a39`; source `fba7bf42` descende de `15fa2b33` com enterprise/; in-image CW_EDITION=ee, /app/enterprise presente, /app/.git_sha == source (ambas archs); protected tags latest-ee + fix-producao-20261106-ee inalteradas pre/post. Nenhum deploy, remocao ou mudanca de dados.
+- Follow-up necessario (fora deste passo): 1-liner no stub 409 (Content-Type json) + novo commit/dispatch; sem esse verde, sem deploy.
+
+## Micro-fix gateway 409 fixture Content-Type (test-only; sem tocar producao)
+
+### Contexto
+Run full 42628041828 em `fba7bf42`: shard1 com 1 falha em `connecta_transfers_controller_spec.rb:267` "maps gateway conflict to 409" — status 409 passou, mas corpo esperado `duplicate transfer` caiu em fallback generico. Causa: stub WebMock 409 sem `Content-Type`, HTTParty devolve String sem parse; gateway Express real usa `res.status(...).json(...)` que envia `application/json; charset=utf-8`. Produto inalterado vs 15fa.
+
+### Mudancas (so o stub, sem enfraquecer testes)
+- `spec/controllers/api/v1/accounts/conversations/connecta_transfers_controller_spec.rb` (~269): `to_return` do stub 409 ganha `headers: { 'Content-Type' => 'application/json; charset=utf-8' }`. Payload `duplicate transfer`, status 409 e assercoes exatas intactos; sem mudanca de controller/gateway.
+
+### Validacao
+- `git diff --check`: limpo; Ruby indisponivel neste ambiente; sem builds/installs/servicos: RSpec real pendente no GitHub Actions (full + regressao do spec alvo). Nota CI anterior preservada.

@@ -266,7 +266,8 @@ RSpec.describe 'Connecta Transfer API', type: :request do
 
       it 'maps gateway conflict to 409' do
         stub_request(:post, "#{gateway_url}/chatwoot/transfer")
-          .to_return(status: 409, body: { error: 'duplicate transfer' }.to_json)
+          .to_return(status: 409, body: { error: 'duplicate transfer' }.to_json,
+                     headers: { 'Content-Type' => 'application/json; charset=utf-8' })
 
         post api_v1_account_conversation_connecta_transfer_url(
           account_id: account.id,
