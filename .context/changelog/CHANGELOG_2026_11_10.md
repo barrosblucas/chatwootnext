@@ -69,3 +69,42 @@
 - `AGENTS.md` (raiz): nova seção "Base de trabalho (obrigatório)" — fetch + `ls-remote` == `rev-parse origin/main` antes de criar branch/worktree; base sempre o SHA da main remota; `merge-base --is-ancestor` do SHA em produção e da main remota antes de push/merge/deploy; nunca reutilizar worktree antiga sem refazer os passos.
 - `.context/gotchas.md`: gotcha do incidente 2026-11-10 (branch de `0e4bcf18` local em vez de `6c32c0e2` remota).
 - Verificação própria (passos 1–3 da regra): main remota `6c32c0e27d4265b36e776d7d24b1982f809af08a` == `origin/main` local (fetch ok); produção (`docker exec chatwootnext-rails-1 cat /app/.git_sha`) `6c32c0e27d4265b36e776d7d24b1982f809af08a` é ancestral de `HEAD` (`afdc9e89`); main remota é ancestral de `HEAD`. Branch `fix/transfer-contador-20261110`.
+
+## Fase 2 · CSAT com protocolo + senha gerenciada (branch feat/fase2-csat)
+
+- Base: main remota `57d4cf6365e90d8902971938e39db48f13c6ab5c` (fetch ok, ls-remote == origin/main); produção `5752fd8dd9477761af9b8b3c8d0671872970977e` ancestral de HEAD; worktree `/home/thanos/wt-chatwoot-fase2` criada desse SHA.
+
+## Added
+- `Connecta::Scope::CsatPolicy` (app/services/connecta/scope/csat_policy.rb): leitura única da projeção para o CSAT — inbox marcada, escopo com protocolo, `final_protocol_resolution?` (protocolo presente e estado != `transferred_out`; tolera a corrida com o hook de resolução, que roda depois do dispatcher do CSAT), `survey_message` (config `{{protocolo}}`/`{{protocol}}` ou padrão pt-BR), `feedback_disabled?`.
+- `Connecta::Runtime::CsatPushJob` (app/jobs/connecta/runtime/csat_push_job.rb): `POST /attendance/v1/csat` via PlatformClient (HMAC fork→plataforma), retry 24x; payload `{account_id, conversation_id: display_id, case_protocol, rating, responded_at, csat_response_id}` — sem contato, sem comentário.
+- `Connecta::Runtime::PasswordGuard` (app/services/connecta/runtime/password_guard.rb): `managed?` = AccountUser em CONNECTA_ACCOUNT_ID é `agent` e sem privilégio (não SuperAdmin, sem `administrator` em nenhuma conta).
+- `spec/services/connecta_csat_fase2_spec.rb`: elegibilidade (final vs origem de transferência vs sem protocolo vs triagem), texto com protocolo, comentário descartado, payload do push (chaves exatas, sem PII), PasswordGuard (5 casos) e bloqueios de senha (forgot uniforme, reset 422, profile 422, admin liberado).
+
+## Changed
+- `CsatSurveyService`: inbox marcada só pesquisa a resolução final do protocolo; `build_csat_message` usa o texto do protocolo.
+- `MessageTemplates::Template::CsatSurvey#message_content`: texto do protocolo (link anexado na renderização).
+- `MessageContentPresenter`: conversa escopada com protocolo renderiza `✅ ... protocolo *{protocolo}* ... de 1 a 5: {link}`; demais casos byte-idênticos.
+- `CsatSurveys::ResponseBuilder`: com `disable_feedback` descarta o comentário; resposta de conversa escopada com protocolo enfileira o push ao WP.
+- `Public::Api::V1::CsatSurveyController#update`: descarta `feedback_message` quando `disable_feedback`; `show` expõe `disable_feedback`.
+- `DeviseOverrides::PasswordsController#create`: gerenciado recebe o 200 uniforme sem disparar reset; `#update`: 422 com mensagem Facilita ao gerenciado.
+- `Api::V1::ProfilesController#update`: troca de senha do gerenciado → 422 `{error: password_managed_by_facilita, message}`; demais fluxos intactos; HMAC `set_password` intocado.
+- `survey/views/Response.vue`: `disable_feedback` esconde o formulário de comentário e envia só a nota; escala 1–5 inalterada (+3 testes em `Response.spec.js`).
+- Frontend de senha: sem mudança — `ChangePassword.vue` e o fluxo "esqueci a senha" já exibem `message` do backend via `parseAPIErrorResponse`/`showAlertMessage`.
+
+## Deploy (documentação — NÃO aplicar; outro Coder/operador no deploy)
+- Habilitar CSAT na inbox 9 (rails runner, uma vez):
+```ruby
+inbox = Inbox.find(9)
+inbox.update!(
+  csat_survey_enabled: true,
+  csat_config: inbox.csat_config.merge(
+    'display_type' => 'star',
+    'message' => '✅ Seu atendimento do protocolo {{protocolo}} foi finalizado.\nAvalie o atendimento de 1 a 5:',
+    'disable_feedback' => true
+  )
+)
+```
+
+## Tests
+- Ruby indisponível neste ambiente; sintaxe validada via `ruby -c` no container rails (11 arquivos, OK); linhas ≤150; `node --check` no script do Response.vue OK.
+- Validação real via `run_foss_spec.yml` no branch (ver CI abaixo).

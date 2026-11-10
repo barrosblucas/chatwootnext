@@ -6,7 +6,9 @@ class DeviseOverrides::PasswordsController < Devise::PasswordsController
 
   def create
     @user = User.from_email(params[:email])
-    @user&.send_reset_password_instructions
+    # Conta gerenciada pelo Facilita Saúde: responde como se tivesse enviado
+    # (sem enumeração), mas não dispara a instrução de reset.
+    @user&.send_reset_password_instructions unless Connecta::Runtime::PasswordGuard.managed?(@user)
     build_response(I18n.t('messages.reset_password'), 200)
   end
 
@@ -15,7 +17,12 @@ class DeviseOverrides::PasswordsController < Devise::PasswordsController
     original_token = params[:reset_password_token]
     reset_password_token = Devise.token_generator.digest(self, :reset_password_token, original_token)
     @recoverable = User.find_by(reset_password_token: reset_password_token)
-    if @recoverable && reset_password_and_confirmation(@recoverable)
+    if @recoverable && Connecta::Runtime::PasswordGuard.managed?(@recoverable)
+      render json: {
+        message: Connecta::Runtime::PasswordGuard::MANAGED_MESSAGE,
+        redirect_url: '/'
+      }, status: :unprocessable_entity
+    elsif @recoverable && reset_password_and_confirmation(@recoverable)
       send_auth_headers(@recoverable)
       render partial: 'devise/auth', formats: [:json], locals: { resource: @recoverable }
     else

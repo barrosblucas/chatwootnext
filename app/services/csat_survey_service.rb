@@ -27,7 +27,17 @@ class CsatSurveyService
   end
 
   def eligible_for_csat?
+    # Inboxes sob enforcement Connecta só pesquisam a resolução FINAL do
+    # protocolo (com protocolo, sem origem de transferência, sem triagem).
+    # As demais inboxes mantêm o comportamento nativo.
+    return connecta_eligible_for_csat? if Connecta::Scope::CsatPolicy.scoped_inbox?(inbox.id)
+
     conversation_allows_csat? && csat_enabled? && !csat_already_sent?
+  end
+
+  def connecta_eligible_for_csat?
+    conversation_allows_csat? && csat_enabled? && !csat_already_sent? &&
+      Connecta::Scope::CsatPolicy.final_protocol_resolution?(conversation)
   end
 
   def conversation_allows_csat?
@@ -163,7 +173,7 @@ class CsatSurveyService
   end
 
   def build_csat_message
-    content = inbox.csat_config&.dig('message') || 'Please rate this conversation'
+    content = connecta_survey_content
     body_variables = inbox.csat_config&.dig('template', 'body_variables')
     body_variables&.each { |key, value| content = content.gsub("{{#{key}}}", liquid_resolver.resolve(value)) }
 
@@ -174,6 +184,17 @@ class CsatSurveyService
       content: content,
       content_type: :input_csat
     )
+  end
+
+  # Conversa escopada com protocolo usa o texto do protocolo (config com
+  # `{{protocolo}}` ou padrão pt-BR); demais casos mantêm o nativo.
+  def connecta_survey_content
+    if Connecta::Scope::CsatPolicy.scoped_inbox?(inbox.id) &&
+       Connecta::Scope::CsatPolicy.protocol_for(conversation).present?
+      return Connecta::Scope::CsatPolicy.survey_message(conversation)
+    end
+
+    inbox.csat_config&.dig('message') || 'Please rate this conversation'
   end
 
   def csat_config

@@ -22,7 +22,7 @@ describe('Response', () => {
     );
   };
 
-  const surveyPayload = (csatSurveyResponse = null) => ({
+  const surveyPayload = (csatSurveyResponse = null, extras = {}) => ({
     data: {
       id: 1,
       csat_survey_response: csatSurveyResponse,
@@ -31,6 +31,7 @@ describe('Response', () => {
       inbox_avatar_url: '',
       inbox_name: 'Support',
       locale: 'en',
+      ...extras,
     },
   });
 
@@ -288,6 +289,50 @@ describe('Response', () => {
       expect(wrapper.vm.selectedRatingDetails.translationKey).toBe(
         'CSAT.RATINGS.GOOD'
       );
+    });
+  });
+
+  // Connecta Fase 2: inbox com disable_feedback pesquisa só a nota 1–5.
+  describe('disable_feedback', () => {
+    it('hides the feedback form once the rating is stored', async () => {
+      getSurveyDetails.mockResolvedValue(
+        surveyPayload({ rating: 4 }, { disable_feedback: true })
+      );
+      setUrl('');
+      const wrapper = buildWrapper();
+      await flushPromises();
+
+      expect(wrapper.vm.disableFeedback).toBe(true);
+      expect(wrapper.vm.isRatingSubmitted).toBe(true);
+      expect(wrapper.vm.enableFeedbackForm).toBe(false);
+    });
+
+    it('sends no comment when the rating is clicked on the page itself', async () => {
+      getSurveyDetails.mockResolvedValue(
+        surveyPayload(null, { disable_feedback: true })
+      );
+      setUrl('');
+      const wrapper = buildWrapper();
+      await flushPromises();
+
+      await wrapper.vm.selectRating(5);
+      await flushPromises();
+
+      expect(updateSurvey).toHaveBeenCalledTimes(1);
+      expect(updateSurvey.mock.calls[0][0].data.message.submitted_values.csat_survey_response).toEqual({
+        rating: 5,
+        feedback_message: null,
+      });
+    });
+
+    it('keeps the form when the flag is absent', async () => {
+      getSurveyDetails.mockResolvedValue(surveyPayload({ rating: 4 }));
+      setUrl('');
+      const wrapper = buildWrapper();
+      await flushPromises();
+
+      expect(wrapper.vm.disableFeedback).toBe(false);
+      expect(wrapper.vm.enableFeedbackForm).toBe(true);
     });
   });
 });

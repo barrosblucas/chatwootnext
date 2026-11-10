@@ -7,3 +7,4 @@ json.inbox_name resource.inbox.name
 json.locale resource.account.locale
 json.conversation_id resource.conversation_id
 json.created_at resource.created_at
+json.disable_feedback resource.inbox.csat_config.try(:[], 'disable_feedback') || false

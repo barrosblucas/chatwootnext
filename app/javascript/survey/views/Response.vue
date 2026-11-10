@@ -37,6 +37,7 @@ export default {
       hasSubmittedFeedback: false,
       isUpdating: false,
       isPendingConfirmation: false,
+      disableFeedback: false,
       logo: '',
       inboxName: '',
       displayType: CSAT_DISPLAY_TYPES.EMOJI,
@@ -108,7 +109,12 @@ export default {
       return this.isRatingSubmitted || this.errorMessage;
     },
     enableFeedbackForm() {
-      return !this.isFeedbackSubmitted && this.isRatingSubmitted;
+      // Com disable_feedback a pesquisa é só nota 1–5: sem formulário.
+      return (
+        !this.disableFeedback &&
+        !this.isFeedbackSubmitted &&
+        this.isRatingSubmitted
+      );
     },
     shouldShowErrorMessage() {
       return !!this.errorMessage;
@@ -181,6 +187,8 @@ export default {
         this.selectedRating = this.surveyDetails?.rating;
         this.feedbackMessage = this.surveyDetails?.feedback_message || '';
         this.displayType = result.data.display_type || CSAT_DISPLAY_TYPES.EMOJI;
+        // Inbox com disable_feedback: pesquisa sem comentário.
+        this.disableFeedback = Boolean(result.data.disable_feedback);
         this.messageContent =
           result.data.content ||
           this.$t('SURVEY.DESCRIPTION', { inboxName: this.inboxName });
@@ -202,7 +210,10 @@ export default {
             submitted_values: {
               csat_survey_response: {
                 rating: this.selectedRating,
-                feedback_message: this.feedbackMessage,
+                // Sem comentário quando desabilitado: o backend ignora de todo jeito.
+                feedback_message: this.disableFeedback
+                  ? null
+                  : this.feedbackMessage,
               },
             },
           },

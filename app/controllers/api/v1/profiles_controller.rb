@@ -5,6 +5,14 @@ class Api::V1::ProfilesController < Api::BaseController
 
   def update
     if password_params[:password].present?
+      # Senha gerenciada pelo Facilita Saúde: troca só por lá.
+      if Connecta::Runtime::PasswordGuard.managed?(@user)
+        render json: {
+          error: 'password_managed_by_facilita',
+          message: Connecta::Runtime::PasswordGuard::MANAGED_MESSAGE
+        }, status: :unprocessable_entity and return
+      end
+
       render_could_not_create_error('Invalid current password') and return unless @user.valid_password?(password_params[:current_password])
 
       @user.update!(password_params.except(:current_password))

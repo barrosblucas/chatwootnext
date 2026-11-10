@@ -12,6 +12,13 @@ class MessageTemplates::Template::CsatSurvey
   delegate :contact, :account, :inbox, to: :conversation
 
   def message_content
+    # Conversa escopada com protocolo: texto do protocolo (config com
+    # `{{protocolo}}` ou padrão pt-BR). O link público é anexado na renderização.
+    if Connecta::Scope::CsatPolicy.scoped_inbox?(conversation.inbox_id) &&
+       Connecta::Scope::CsatPolicy.protocol_for(conversation).present?
+      return Connecta::Scope::CsatPolicy.survey_message(conversation)
+    end
+
     return csat_config['message'] if csat_config['message'].present?
 
     # The fallback is translated here and stored in `content`, so whatever locale is current
