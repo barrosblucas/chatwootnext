@@ -34,3 +34,7 @@
 ## Validacao
 - Local: `pnpm vitest run` nos 3 specs de front tocados — 53 passed; eslint direto nos 5 arquivos tocados — 0 errors (2 warnings pré-existentes).
 - Ruby indisponível neste ambiente (`ruby: command not found`); RSpec real via `run_foss_spec.yml` no branch (ver CI abaixo).
+
+## CI (run_foss_spec.yml no branch fix/transfer-contador-20261110)
+- Run 42837578237 (head `2ce62fc7`): plan success; lint-frontend success; frontend-tests success; backend-tests (0) success (spec novo, 3 exemplos); lint-backend failure = baseline 74 (0 novos; 3 Metrics em `adopt_callback_scope!` pré-existentes); security-scan failure = baseline (Brakeman 41, nenhum nos arquivos tocados; bundle-audit só advisories de deps).
+- Runs anteriores no mesmo branch: 42834228477 (3 exemplos do spec novo falhavam — namespace `Connecta::UserGrant` vs `Scope::` + `have_enqueued_job` no `ActionCableBroadcastJob`) e 42835491084 (2 falhavam — mesmos ajustes); ambos superados em `2ce62fc7`. Iterações de fix: 2 (dentro do limite).
