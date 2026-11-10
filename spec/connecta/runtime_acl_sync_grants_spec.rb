@@ -101,6 +101,39 @@ RSpec.describe 'Connecta runtime · ACL grant tombstone + snapshot' do # rubocop
     expect(Connecta::UserGrant.where(user_id: user_id).count).to eq(0)
   end
 
+  it 'ignora upsert legado (sem grant_id) de trinca lapidada (não recria)' do
+    sync([grant_upsert('grant_id' => grant_id)])
+    sync([grant_revoke('org_unit_id' => org.id, 'permission' => 'atender', 'grant_id' => grant_id)])
+
+    result = sync([grant_upsert])
+
+    expect(result[:status]).to eq(:applied)
+    expect(Connecta::UserGrant.where(user_id: user_id).count).to eq(0)
+  end
+
+  it 're-concessão com grant_id novo para a mesma trinca restaura e limpa a lápide' do
+    fresh_id = SecureRandom.uuid
+    sync([grant_upsert('grant_id' => grant_id)])
+    sync([grant_revoke('org_unit_id' => org.id, 'permission' => 'atender', 'grant_id' => grant_id)])
+    expect(Connecta::UserGrant.where(user_id: user_id).count).to eq(0)
+
+    result = sync([grant_upsert('grant_id' => fresh_id)])
+
+    expect(result[:status]).to eq(:applied)
+    expect(Connecta::UserGrant.find_by!(user_id: user_id).grant_id).to eq(fresh_id)
+    expect(Connecta::RevokedGrant.where(user_id: user_id).count).to eq(0)
+  end
+
+  it 'revogação só com grant_id (sem trinca) não lapida a trinca: legado ainda recria' do
+    sync([grant_upsert])
+    sync([grant_revoke('grant_id' => grant_id)])
+
+    result = sync([grant_upsert])
+
+    expect(result[:status]).to eq(:applied)
+    expect(Connecta::UserGrant.where(user_id: user_id).count).to eq(1)
+  end
+
   it 'link.upsert com active_grant_ids remove grants obsoletos e legados, mantém os listados' do
     other_org = Connecta::OrgUnit.create!(name: 'Outro', path: "/outro-#{SecureRandom.hex(3)}/")
     kept_id = SecureRandom.uuid

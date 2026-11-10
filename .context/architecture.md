@@ -15,7 +15,7 @@ Chatwoot (fork `fazer-ai/chatwoot`) em Rails 7.1 com frontend Vue 3 em `app/java
 | Jobs | `config/sidekiq.yml`, `app/jobs/` | Processamento assíncrono | Redis, PostgreSQL |
 | Banco | `db/` | Migrações (`db/migrate/`) e `db/schema.rb` | PostgreSQL |
 | Transferência Connecta | `app/services/connecta/transfer_service.rb` | Transferência atual, mediada (não é a transação local do plano Baileys) | conversas |
-| Vínculo Connecta (usuários) | `app/controllers/connecta/v1/users_controller.rb` + `app/services/connecta/provisioning/agent_provisioner.rb` | Fase 1: WP provisiona/troca senha/desativa agente via HMAC (sempre `agent`, nunca `administrator`); reativar = provisionar de novo; detalhe em `.context/changelog/CHANGELOG_2026_11_09.md` | plataforma WP |
+| Vínculo Connecta (usuários) | `app/controllers/connecta/v1/users_controller.rb` + `app/services/connecta/provisioning/agent_provisioner.rb` | Fase 1: WP provisiona/troca senha/desativa agente via HMAC (sempre `agent`, nunca `administrator`); privilegiado existente (SuperAdmin ou admin em qualquer conta) = 409 `not_agent` nos 3 endpoints sem nada mudar; `set_password` com senha rejeitada pelo Devise = 422 `invalid_password`; reativar = provisionar de novo; detalhe em `.context/changelog/CHANGELOG_2026_11_10.md` | plataforma WP |
 
 ## Fronteiras
 - Rotas da API de conta ficam em `config/routes.rb` sob `api/v1/accounts/*` e `api/v2/accounts/*`; controllers em `app/controllers/` e, para Enterprise, em `enterprise/app/controllers/`.
@@ -45,6 +45,7 @@ Chatwoot (fork `fazer-ai/chatwoot`) em Rails 7.1 com frontend Vue 3 em `app/java
 
 ## ACL do vínculo — robustez fork-side (2026-11-09, código; CI pendente)
 - Lápide de grant (B3): `connecta_user_grants.grant_id` (uuid do `staff_grant` do WP, anulável) + `connecta_revoked_grants(grant_id PK, revoked_at)`; `grant.revoke` com `grant_id` apaga a linha e grava a lápide, `grant.upsert` com `grant_id` lapidado é no-op; sem `grant_id`, comportamento legado (compatível com WP `c47dd1c`).
+- Lápide de trinca (2026-11-10, código; CI pendente): `connecta_revoked_grants` também guarda a trinca (`user_id`, `org_unit_id`, `permission`); `grant.revoke` com `grant_id` + trinca completa lapida a trinca; `grant.upsert` legado (sem `grant_id`) de trinca lapidada é ignorado; `grant.upsert` com `grant_id` novo aplica e limpa só a trinca (lápides por `grant_id` antigo seguem valendo); revoke só com `grant_id` (sem trinca) não lapida trinca. Detalhe em `.context/changelog/CHANGELOG_2026_11_10.md`.
 - Foto no re-vínculo (Q7.5): `link.upsert` com `active_grant_ids` apaga grants do usuário fora da lista ou legados (sem `grant_id`); sem a lista, nada muda; evento com epoch velho não aplica a foto.
 - Graça de heartbeat (B5): `CONNECTA_ACL_STALE_GRACE_SEC` (padrão 900 s; `0` desliga) — entre TTL e TTL+graça, `Projection#usable?` mantém a leitura com os últimos grants (`Gate` + lista usam a mesma decisão; já-revogado continua negado; modo degradado gera `Rails.logger.warn`); depois, fail-closed. `TransferPolicy`/`can_transfer?` seguem fail-closed no TTL.
 - Cursor de protocolo (B15): a página que enche exatamente na cauda de um lote cheio mantém cursor no último item visível; só lote curto totalmente consumido prova exaustão.

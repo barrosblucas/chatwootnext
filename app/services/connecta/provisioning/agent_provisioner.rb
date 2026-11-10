@@ -34,13 +34,17 @@ class Connecta::Provisioning::AgentProvisioner
 
   # Provisiona (ou reativa) um agente: encontra ou cria o User, garante o
   # AccountUser como agent (sem nunca alterar o papel de um vínculo existente)
-  # e garante InboxMember nas caixas sob enforcement do Connecta.
+  # e garante InboxMember nas caixas sob enforcement do Connecta. Usuário
+  # existente privilegiado (SuperAdmin ou administrator em qualquer conta) é
+  # recusado (NotAgent) sem criar nem alterar nada.
   # Retorna hash com ids/flags para o contrato de fio v1.
   def provision!(email:, name:, password:)
     normalized_email = normalize_email!(email)
     validate_name!(name)
 
     user, user_created = find_or_create_user!(normalized_email, name, password)
+    raise NotAgent, 'user is privileged' if privileged?(user)
+
     check_saml_multi_account!(user)
     membership, membership_created = ensure_agent_membership!(user)
     inbox_ids_added = ensure_scoped_inbox_memberships!(user)
@@ -54,18 +58,20 @@ class Connecta::Provisioning::AgentProvisioner
     }
   end
 
-  # Troca a senha de um agente do vínculo. Alvos administrator são recusados
-  # (NotAgent) e a sessão/token anterior é invalidada.
+  # Troca a senha de um agente do vínculo. Alvos privilegiados (SuperAdmin ou
+  # administrator em qualquer conta — senha e tokens são globais no User) são
+  # recusados (NotAgent) sem alterar nada; a sessão/token anterior é invalidada.
   def set_password!(user_id:, password:)
     membership = AccountUser.find_by(account_id: @account.id, user_id: user_id)
     raise ActiveRecord::RecordNotFound, 'membership not found' if membership.nil?
-    raise NotAgent, 'user is administrator' if membership.administrator?
+
+    user = membership.user
+    raise NotAgent, 'user is privileged' if privileged?(user)
 
     unless password.is_a?(String) && password.length.between?(MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH)
       raise InvalidPassword, "password must be #{MIN_PASSWORD_LENGTH}..#{MAX_PASSWORD_LENGTH} characters"
     end
 
-    user = membership.user
     user.password = password
     user.password_confirmation = password
     user.skip_confirmation! unless user.confirmed?
@@ -73,7 +79,7 @@ class Connecta::Provisioning::AgentProvisioner
     begin
       user.save!
     rescue ActiveRecord::RecordInvalid => e
-      raise ProvisionRejected, e.record.errors.full_messages.to_sentence
+      raise InvalidPassword, e.record.errors.full_messages.to_sentence
     end
 
     true
@@ -87,9 +93,10 @@ class Connecta::Provisioning::AgentProvisioner
   def deactivate!(user_id:)
     membership = AccountUser.find_by(account_id: @account.id, user_id: user_id)
     return false if membership.nil?
-    raise NotAgent, 'user is administrator' if membership.administrator?
 
     user = membership.user
+    raise NotAgent, 'user is privileged' if privileged?(user)
+
     user.inbox_members.where(inbox_id: @account.inboxes.select(:id)).destroy_all
     user.notification_settings.where(account_id: @account.id).destroy_all
     membership.destroy!
@@ -99,6 +106,15 @@ class Connecta::Provisioning::AgentProvisioner
   end
 
   private
+
+  # Privilegiado = SuperAdmin (type STI) ou administrator em QUALQUER conta.
+  # Senha e tokens são globais no User, então o vínculo nunca toca esses
+  # alvos. Usuário recém-criado nunca é privilegiado.
+  def privileged?(user)
+    return true if user.type == 'SuperAdmin'
+
+    user.account_users.exists?(role: :administrator)
+  end
 
   def normalize_email!(email)
     normalized = email.to_s.strip.downcase

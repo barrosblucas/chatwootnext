@@ -72,6 +72,9 @@ class Connecta::Runtime::AclSyncService
     grant_id = data['grant_id'].to_s.presence
     # Lápide B3: grant revogado não ressuscita por replay/atraso do WP.
     return if grant_id && Connecta::RevokedGrant.exists?(grant_id: grant_id)
+    # Trinca lapidada: upsert legado (sem grant_id) é replay e é ignorado;
+    # upsert com grant_id novo é re-concessão legítima (limpa a lápide).
+    return if legacy_tombstoned_grant?(user_id, unit_id, permission, grant_id)
 
     # Busca pela trinca (não pelo grant_id): adota a linha legada da era
     # pré-grant_id em vez de duplicá-la e violar a unicidade da trinca.
@@ -98,19 +101,53 @@ class Connecta::Runtime::AclSyncService
 
   # Revogação com grant_id: apaga a linha do grant, a linha legada da mesma
   # trinca (criada antes do WP enviar grant_id) quando a trinca vem completa,
-  # e grava a lápide para que um upsert tardio seja ignorado.
+  # e grava a lápide do grant_id mais a lápide da trinca (para que um upsert
+  # legado tardio, sem grant_id, seja ignorado).
   def revoke_grant_by_id!(user_id, data, grant_id)
+    triple = triple_present?(data)
     scope = Connecta::UserGrant.where(user_id: user_id)
-    if data['org_unit_id'].present? && data['permission'].present?
+    if triple
       scope = scope.where(org_unit_id: data['org_unit_id'], permission: data['permission'])
       scope = scope.where('grant_id = ? OR grant_id IS NULL', grant_id)
     else
       scope = scope.where(grant_id: grant_id)
     end
     scope.destroy_all
-    Connecta::RevokedGrant.find_or_create_by!(grant_id: grant_id) do |tombstone|
-      tombstone.revoked_at = Time.current
+    tombstone = Connecta::RevokedGrant.find_or_initialize_by(grant_id: grant_id)
+    tombstone.revoked_at ||= Time.current
+    if triple
+      tombstone.user_id = user_id
+      tombstone.org_unit_id = data['org_unit_id']
+      tombstone.permission = data['permission']
     end
+    tombstone.save!
+  end
+
+  def triple_present?(data)
+    data['org_unit_id'].present? && data['permission'].present?
+  end
+
+  def triple_tombstoned?(user_id, unit_id, permission)
+    Connecta::RevokedGrant.where(user_id: user_id, org_unit_id: unit_id, permission: permission).exists?
+  end
+
+  # Decide o veto da trinca lapidada: com grant_id novo, limpa a lápide da
+  # trinca (re-concessão legítima) e libera; sem grant_id, veta (replay legado).
+  def legacy_tombstoned_grant?(user_id, unit_id, permission, grant_id)
+    if grant_id
+      clear_triple_tombstone!(user_id, unit_id, permission)
+      return false
+    end
+
+    triple_tombstoned?(user_id, unit_id, permission)
+  end
+
+  def clear_triple_tombstone!(user_id, unit_id, permission)
+    # Limpa só a trinca (mantém as lápides por grant_id: um upsert tardio com
+    # um grant_id antigo ainda é ignorado pela checagem B3).
+    scope = Connecta::RevokedGrant.where(user_id: user_id, org_unit_id: unit_id, permission: permission)
+    scope.update_all(user_id: nil, org_unit_id: nil, permission: nil, # rubocop:disable Rails/SkipsModelValidations
+                     updated_at: Time.current)
   end
 
   def verify_link!(data)

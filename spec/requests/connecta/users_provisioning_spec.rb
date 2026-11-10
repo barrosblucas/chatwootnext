@@ -77,15 +77,37 @@ RSpec.describe 'Connecta v1 users provisioning', type: :request do
       expect(existing.valid_password?('OriginalPass123!')).to be(true)
     end
 
-    it 'keeps the administrator role of an existing membership' do
+    it 'refuses to provision an existing administrator with 409 not_agent (nothing changed)' do
       admin = create(:user, :administrator, account: account)
 
       post_signed(path, { account_id: account.id, email: admin.email, name: admin.name })
-      expect(response).to have_http_status(:ok)
-      body = response.parsed_body
-      expect(body['membership_created']).to be(false)
-      expect(body['role']).to eq('administrator')
+      expect(response).to have_http_status(:conflict)
+      expect(response.parsed_body['error']).to eq('not_agent')
       expect(admin.account_users.find_by(account_id: account.id)).to be_administrator
+      expect(InboxMember.where(user_id: admin.id)).to be_empty
+    end
+
+    it 'refuses to provision an agent who is administrator in another account (409, nothing created)' do
+      user = create(:user, password: 'OriginalPass123!')
+      create(:account_user, user: user, account: create(:account), role: 'administrator')
+
+      post_signed(path, { account_id: account.id, email: user.email, name: user.name })
+      expect(response).to have_http_status(:conflict)
+      expect(response.parsed_body['error']).to eq('not_agent')
+      expect(AccountUser.exists?(account_id: account.id, user_id: user.id)).to be(false)
+      expect(InboxMember.where(user_id: user.id)).to be_empty
+      expect(user.reload.valid_password?('OriginalPass123!')).to be(true)
+    end
+
+    it 'refuses to provision a SuperAdmin with agent membership (409, nothing changed)' do
+      super_admin = create(:super_admin)
+      create(:account_user, user: super_admin, account: account, role: 'agent')
+
+      post_signed(path, { account_id: account.id, email: super_admin.email, name: super_admin.name })
+      expect(response).to have_http_status(:conflict)
+      expect(response.parsed_body['error']).to eq('not_agent')
+      expect(super_admin.account_users.find_by(account_id: account.id)).to be_agent
+      expect(InboxMember.where(user_id: super_admin.id)).to be_empty
     end
 
     it 'does not add the agent to admin_only scoped inboxes' do
@@ -133,6 +155,31 @@ RSpec.describe 'Connecta v1 users provisioning', type: :request do
       expect(admin.reload.valid_password?('Password1!')).to be(true)
     end
 
+    it 'refuses an administrator in another account with 409 not_agent (nothing changed)' do
+      agent = create(:user, password: 'OldPassword123!', account: account)
+      create(:account_user, user: agent, account: create(:account), role: 'administrator')
+      agent.update!(tokens: { 'client' => { 'token' => 'abc', 'expiry' => 1.hour.from_now.to_i } })
+
+      post_signed("/connecta/v1/users/#{agent.id}/password", { account_id: account.id, password: 'BrandNewPass123!' })
+      expect(response).to have_http_status(:conflict)
+      expect(response.parsed_body['error']).to eq('not_agent')
+      expect(agent.reload.valid_password?('OldPassword123!')).to be(true)
+      expect(agent.tokens).not_to eq({})
+    end
+
+    it 'refuses a SuperAdmin with 409 not_agent (nothing changed)' do
+      super_admin = create(:super_admin)
+      create(:account_user, user: super_admin, account: account, role: 'agent')
+      super_admin.update!(tokens: { 'client' => { 'token' => 'abc', 'expiry' => 1.hour.from_now.to_i } })
+
+      post_signed("/connecta/v1/users/#{super_admin.id}/password",
+                  { account_id: account.id, password: 'BrandNewPass123!' })
+      expect(response).to have_http_status(:conflict)
+      expect(response.parsed_body['error']).to eq('not_agent')
+      expect(super_admin.reload.valid_password?('Password1!')).to be(true)
+      expect(super_admin.tokens).not_to eq({})
+    end
+
     it 'returns 404 for a user outside the account' do
       outsider = create(:user)
 
@@ -146,6 +193,15 @@ RSpec.describe 'Connecta v1 users provisioning', type: :request do
       post_signed("/connecta/v1/users/#{agent.id}/password", { account_id: account.id, password: 'short' })
       expect(response).to have_http_status(:unprocessable_entity)
       expect(response.parsed_body['error']).to eq('invalid_password')
+    end
+
+    it 'maps a Devise content rejection to 422 invalid_password' do
+      agent = create(:user, account: account)
+
+      post_signed("/connecta/v1/users/#{agent.id}/password", { account_id: account.id, password: 'NoSpecial1234' })
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response.parsed_body['error']).to eq('invalid_password')
+      expect(agent.reload.valid_password?('Password1!')).to be(true)
     end
   end
 
@@ -183,6 +239,26 @@ RSpec.describe 'Connecta v1 users provisioning', type: :request do
       expect(response).to have_http_status(:conflict)
       expect(response.parsed_body['error']).to eq('not_agent')
       expect(AccountUser.exists?(account_id: account.id, user_id: admin.id)).to be(true)
+    end
+
+    it 'refuses an administrator in another account with 409 not_agent (membership kept)' do
+      agent = create(:user, account: account)
+      create(:account_user, user: agent, account: create(:account), role: 'administrator')
+
+      post_signed("/connecta/v1/users/#{agent.id}/deactivate", { account_id: account.id })
+      expect(response).to have_http_status(:conflict)
+      expect(response.parsed_body['error']).to eq('not_agent')
+      expect(AccountUser.exists?(account_id: account.id, user_id: agent.id)).to be(true)
+    end
+
+    it 'refuses a SuperAdmin with 409 not_agent (membership kept)' do
+      super_admin = create(:super_admin)
+      create(:account_user, user: super_admin, account: account, role: 'agent')
+
+      post_signed("/connecta/v1/users/#{super_admin.id}/deactivate", { account_id: account.id })
+      expect(response).to have_http_status(:conflict)
+      expect(response.parsed_body['error']).to eq('not_agent')
+      expect(AccountUser.exists?(account_id: account.id, user_id: super_admin.id)).to be(true)
     end
 
     it 'reactivates by provisioning again' do

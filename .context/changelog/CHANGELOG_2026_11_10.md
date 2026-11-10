@@ -1,0 +1,17 @@
+# Changelog 2026-11-10
+
+## Fase 1 vinculo simplificado: correcoes de seguranca do revisor (privilegiados, lapide de trinca, invalid_password)
+
+- Achados (revisor rejeitou o fork; humano aprovou "corrigir junto com o que o revisor apontar"):
+  1. Sem guarda de privilegiado: `set_password!`/`deactivate!`/`provision!` so barravam `administrator` do vinculo da conta; SuperAdmin (STI `users.type`) ou administrator em OUTRA conta passava (senha/tokens sao globais no User).
+  2. Bypass de lapide legada: `grant.revoke` com `grant_id` lapidava so o `grant_id`; um `grant.upsert` legado (sem `grant_id`, WP `c47dd1c`) da mesma trinca recriava o acesso.
+  3. `RecordInvalid` do Devise no `set_password!` caia em 422 `provision_rejected`; o documentado e 422 `{error:"invalid_password", reason}`.
+- Codigo (branch `feat/vinculo-simplificado-fase1`):
+  - `app/services/connecta/provisioning/agent_provisioner.rb`: novo `privileged?` (`type == 'SuperAdmin'` OU `account_users` com `administrator` em qualquer conta); `provision!`/`set_password!`/`deactivate!` levantam `NotAgent` (409 `not_agent`) sem criar/alterar nada; `set_password!` converte `RecordInvalid` em `InvalidPassword` (422 `invalid_password`). Mudanca de contrato: `provision` agora pode retornar 409 `not_agent` (WP trata como erro `chatwoot_role_not_agent`).
+  - `db/migrate/20261109000000_add_grant_tombstones_to_connecta_acl.rb` (mesmo arquivo novo, ainda nao aplicado em producao — `origin/main` nao o contem; max prod `20261024000001`): `connecta_revoked_grants` ganha `user_id`/`org_unit_id`/`permission` + indice da trinca; `down` atualizado. `db/schema.rb` e `app/models/connecta/revoked_grant.rb` (anotacao) espelham.
+  - `app/services/connecta/runtime/acl_sync_service.rb`: `revoke_grant_by_id!` com trinca completa tambem lapida a trinca; `upsert_grant!` sem `grant_id` de trinca lapidada e ignorado; com `grant_id` novo aplica e limpa so a trinca (lápides por `grant_id` antigo seguem valendo — extraido em `legacy_tombstoned_grant?` para nao estourar `Metrics/CyclomaticComplexity`). Revoke so com `grant_id` (sem trinca) nao lapida trinca: legado ainda recria (compat WP `c47dd1c`).
+- Specs (escritas antes da correcao, falham sem ela):
+  - `spec/requests/connecta/users_provisioning_spec.rb`: agente-em-A+admin-em-B e SuperAdmin -> password/deactivate/provision 409 sem nada mudar; teste antigo "keeps the administrator role" virou 409 `not_agent`; `RecordInvalid` do Devise (`NoSpecial1234`: 14 chars sem especial) -> 422 `invalid_password`.
+  - `spec/connecta/runtime_acl_sync_grants_spec.rb`: upsert legado apos lapide nao recria; re-concessao com `grant_id` novo restaura e limpa a lapide; revoke so com `grant_id` nao veta o legado.
+- Validacao: `ruby -c` OK nos 6 RB via container `chatwootnext:local` (montagem `:ro`); `bundle exec rspec`/`rubocop` indisponiveis localmente (sem Ruby; rubocop fora do bundle da imagem) — validado pelo CI (`run_foss_spec.yml` workflow_dispatch no branch). Baseline lint-backend (74 ofensas pre-existentes) e security-scan (CVEs de Rails) seguem aceitos; nenhum arquivo tocado adiciona ofensa nova (complexidade/linhas conferidas contra `.rubocop.yml`: LineLength 150, MethodLength 19, CyclomaticComplexity padrao 7).
+- Historico CI: a registrar apos o dispatch (run id/resultado abaixo).

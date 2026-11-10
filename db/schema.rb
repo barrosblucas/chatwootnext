@@ -862,9 +862,13 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_09_000000) do
   end
 
   create_table "connecta_revoked_grants", primary_key: "grant_id", id: :string, force: :cascade do |t|
+    t.bigint "user_id"
+    t.uuid "org_unit_id"
+    t.string "permission"
     t.datetime "revoked_at", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.index ["user_id", "org_unit_id", "permission"], name: "idx_connecta_revoked_grants_triple"
   end
 
   create_table "connecta_scoped_inboxes", force: :cascade do |t|
