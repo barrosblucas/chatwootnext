@@ -13,7 +13,7 @@ require_relative 'support/g0_product_tables'
 Connecta::G0ScopeSchema.ensure!
 Connecta::G0ProductTables.install!
 
-RSpec.describe 'Connecta runtime · scope.revoked no commit da transferência' do
+RSpec.describe 'Connecta runtime · scope.revoked no commit da transferência' do # rubocop:disable RSpec/DescribeClass
   include ActiveJob::TestHelper
   include_context 'with connecta g0 scope fixture'
 
