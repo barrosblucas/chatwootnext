@@ -5,8 +5,8 @@ require 'rails_helper'
 # B3 (lápide de grant) + Q7.5 (foto no re-vínculo): eventos do contrato de fio
 # v1 §8 (WP→fork) com os campos novos `grant_id` (uuid do staff_grant do WP) e
 # `active_grant_ids`. Eventos legados sem os campos mantêm o comportamento.
-RSpec.describe Connecta::Runtime::AclSyncService, 'grant tombstone + snapshot' do
-  let(:service) { described_class.new }
+RSpec.describe 'Connecta runtime · ACL grant tombstone + snapshot' do # rubocop:disable RSpec/DescribeClass
+  let(:service) { Connecta::Runtime::AclSyncService.new }
   let(:org) { Connecta::OrgUnit.create!(name: 'Setor', path: "/setor-#{SecureRandom.hex(3)}/") }
   let(:user_id) { 900_001 }
   let(:grant_id) { SecureRandom.uuid }

@@ -11,6 +11,7 @@
 - Specs (mesmas assercoes, so lint): `users_provisioning_spec.rb`: `JSON.parse(response.body)` -> `response.parsed_body` (12x), `:aggregate_failures` nos 2 exemplos com >7 expects, alinhamento `headers:`/`params:`; `runtime_acl_sync_grants_spec.rb`: `describe` passa a citar `Connecta::Runtime::AclSyncService`, `@version` vira `let(:projection)`.
 - Validacao: `ruby -c` OK nos 5 RB (container `chatwootnext:local`, `--network none`); `git diff --check` limpo; `bundle exec rspec`/`rubocop` locais indisponiveis (sem Ruby/Postgres na maquina) — segue para o CI (`run_foss_spec.yml` workflow_dispatch).
 - Historico: lint-backend ja falhava na main `0e4bcf18` (74 ofensas pre-existentes; branch tinha 96 = 74 + 22 da Fase-1, agora zeradas) e backend-tests passava 100% na main; security-scan falha nas duas (CVEs de Rails, pre-existente, sem upgrade).
+- CI run 1 (`be5210cc`, `workflow_dispatch` 42726945083): backend-tests (0) OK — 104 exemplos, 0 falhas (3 falhas de provision zeradas); lint-backend ainda com 2 ofensas novas em `runtime_acl_sync_grants_spec.rb` (`RSpec/SpecFilePathFormat` + `RSpec/DescribeMethod`, introduzidas ao trocar o `describe` para a classe). Correcao: voltar ao `describe` string original com `# rubocop:disable RSpec/DescribeClass` (convencao ja usada em `baileys_agent_signature_spec.rb`/`outbound_dispatch_spec.rb`), mantendo `let(:projection)` no lugar de `@version`.
 
 ## Intenção da feature
 Corrigir o popup enganoso "You are not authorized to do this action" exibido para o
