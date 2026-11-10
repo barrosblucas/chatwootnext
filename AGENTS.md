@@ -88,6 +88,13 @@ Automate this with your worktree tool's create hook (e.g. worktrunk's `pre-start
 - Example: `feat(auth): add user authentication`
 - Don't reference Claude in commit messages
 
+## Base de trabalho (obrigatório)
+
+1. Antes de criar branch/worktree: `git fetch origin '+refs/heads/main:refs/remotes/origin/main'` e conferir `git ls-remote origin refs/heads/main` == `git rev-parse origin/main`. Se diferirem, parar.
+2. A base é sempre o SHA da main remota obtido por `ls-remote` (nunca ref local, branch antiga ou worktree existente). Registrar o SHA base no relatório e no changelog do dia.
+3. Antes de push de branch para deploy, merge na main ou deploy: `git merge-base --is-ancestor <SHA em produção> HEAD` e `git merge-base --is-ancestor <SHA da main remota> HEAD` devem passar. SHA em produção: `docker exec chatwootnext-rails-1 cat /app/.git_sha`. Falhou: rebase sobre a main remota e repetir CI.
+4. Nunca usar uma worktree antiga como base sem refazer os passos 1–3.
+
 ## Git Remotes & PRs
 
 This repo is a fork of `chatwoot/chatwoot`. Remotes and their roles:

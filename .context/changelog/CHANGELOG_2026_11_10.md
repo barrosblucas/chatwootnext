@@ -43,3 +43,9 @@
 ## CI (run_foss_spec.yml no branch fix/transfer-contador-20261110)
 - Run 42837578237 (head `2ce62fc7`, base antiga `0e4bcf18`): plan success; lint-frontend success; frontend-tests success; backend-tests (0) success (spec novo, 3 exemplos); lint-backend failure = baseline 74 (0 novos; 3 Metrics em `adopt_callback_scope!` pré-existentes); security-scan failure = baseline (Brakeman 41, nenhum nos arquivos tocados; bundle-audit só advisories de deps).
 - Runs anteriores no mesmo branch: 42834228477 (3 exemplos do spec novo falhavam — namespace `Connecta::UserGrant` vs `Scope::` + `have_enqueued_job` no `ActionCableBroadcastJob`) e 42835491084 (2 falhavam — mesmos ajustes); ambos superados em `2ce62fc7`. Iterações de fix: 2 (dentro do limite).
+
+## Regra obrigatória de base na main remota (docs, 2026-11-10)
+
+- `AGENTS.md` (raiz): nova seção "Base de trabalho (obrigatório)" — fetch + `ls-remote` == `rev-parse origin/main` antes de criar branch/worktree; base sempre o SHA da main remota; `merge-base --is-ancestor` do SHA em produção e da main remota antes de push/merge/deploy; nunca reutilizar worktree antiga sem refazer os passos.
+- `.context/gotchas.md`: gotcha do incidente 2026-11-10 (branch de `0e4bcf18` local em vez de `6c32c0e2` remota).
+- Verificação própria (passos 1–3 da regra): main remota `6c32c0e27d4265b36e776d7d24b1982f809af08a` == `origin/main` local (fetch ok); produção (`docker exec chatwootnext-rails-1 cat /app/.git_sha`) `6c32c0e27d4265b36e776d7d24b1982f809af08a` é ancestral de `HEAD` (`afdc9e89`); main remota é ancestral de `HEAD`. Branch `fix/transfer-contador-20261110`.
