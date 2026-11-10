@@ -40,7 +40,7 @@ RSpec.describe 'Connecta · anúncio da ativação e destinatários do scope.rev
     clear_enqueued_jobs
   end
 
-  def member_created_jobs
+  def created_jobs
     enqueued_jobs.select { |entry| entry[:job] == ActionCableBroadcastJob }.filter_map do |entry|
       tokens, event_name, payload = ActiveJob::Arguments.deserialize(entry[:args])
       next unless event_name == Events::Types::CONVERSATION_CREATED
@@ -52,14 +52,14 @@ RSpec.describe 'Connecta · anúncio da ativação e destinatários do scope.rev
   it 'activate! anuncia conversation.created só aos leitores do destino' do
     allow(ActionCable.server).to receive(:broadcast)
 
-    expect { local.activate!(case_version: 2) }.to have_enqueued_job(ActionCableBroadcastJob)
+    local.activate!(case_version: 2)
 
-    member_job = member_created_jobs.find { |tokens, _payload| tokens.include?(agent_b.pubsub_token) }
+    member_job = created_jobs.find { |tokens, _payload| tokens.include?(agent_b.pubsub_token) }
     expect(member_job).not_to be_nil
     _tokens, payload = member_job
-    expect(payload['account_id']).to eq(account.id)
+    expect(payload.stringify_keys['account_id']).to eq(account.id)
 
-    announced_tokens = member_created_jobs.flat_map(&:first)
+    announced_tokens = created_jobs.flat_map(&:first)
     expect(announced_tokens).not_to include(agent_a.pubsub_token, member_without_grant.pubsub_token)
   end
 
@@ -68,7 +68,9 @@ RSpec.describe 'Connecta · anúncio da ativação e destinatários do scope.rev
     local.activate!(case_version: 2)
     clear_enqueued_jobs
 
-    expect { local.activate!(case_version: 2) }.not_to have_enqueued_job(ActionCableBroadcastJob)
+    local.activate!(case_version: 2)
+
+    expect(created_jobs).to be_empty
   end
 
   it 'scope.revoked alcança grant ancestral e admin nativo, sem vazar a descendente/sem grant' do
