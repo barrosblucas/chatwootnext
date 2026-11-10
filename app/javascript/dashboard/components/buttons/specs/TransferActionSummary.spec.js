@@ -9,7 +9,10 @@ const mockAlert = vi.fn();
 const mockCommit = vi.fn();
 let mockSelectedChat = { id: 42, status: wootConstants.STATUS_TYPE.OPEN };
 
-vi.mock('vue-router', () => ({ useRouter: () => ({ push: mockPush }) }));
+vi.mock('vue-router', () => ({
+  useRouter: () => ({ push: mockPush }),
+  useRoute: () => ({ name: 'home', params: { accountId: '1' } }),
+}));
 vi.mock('dashboard/composables', () => ({
   useAlert: (...args) => mockAlert(...args),
 }));
@@ -20,7 +23,7 @@ vi.mock('dashboard/composables/useConfig', () => ({
   }),
 }));
 vi.mock('dashboard/composables/store', () => ({
-  useStore: () => ({ commit: mockCommit }),
+  useStore: () => ({ commit: mockCommit, dispatch: vi.fn() }),
   useStoreGetters: () => ({
     getSelectedChat: {
       get value() {
@@ -45,6 +48,11 @@ vi.mock('dashboard/helper/URLHelper', () => ({
   frontendURL: path => `/app/${path}`,
   conversationUrl: ({ accountId, id }) =>
     `accounts/${accountId}/conversations/${id}`,
+  conversationListPageURL: ({ accountId }) =>
+    `/app/accounts/${accountId}/dashboard`,
+}));
+vi.mock('shared/helpers/mitt', () => ({
+  emitter: { emit: vi.fn() },
 }));
 
 describe('TransferAction summary mode', () => {
@@ -112,6 +120,8 @@ describe('TransferAction summary mode', () => {
         nextAction: 'Aguardar envio do documento.',
       },
     });
-    expect(mockPush).not.toHaveBeenCalled();
+    // Human-number answers 202 without a display_id: the origin route would
+    // 404, so the transfer lands back on the current tab list.
+    expect(mockPush).toHaveBeenCalledWith('/app/accounts/1/dashboard');
   });
 });

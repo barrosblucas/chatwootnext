@@ -1,5 +1,6 @@
 import { describe, it, beforeEach, afterEach, expect, vi } from 'vitest';
 import ActionCableConnector from '../actionCable';
+import { emitter } from 'shared/helpers/mitt';
 import { FEATURE_FLAGS } from 'dashboard/featureFlags';
 
 vi.mock('shared/helpers/mitt', () => ({
@@ -602,6 +603,39 @@ describe('ActionCableConnector - Copilot Tests', () => {
       actionCable.onReceived(assigneeChanged(null, null));
 
       expect(mockDispatch).not.toHaveBeenCalledWith('conversationPins/fetch');
+    });
+  });
+
+  describe('connecta scope.revoked handler', () => {
+    const scopeRevoked = () => ({
+      event: 'scope.revoked',
+      data: { account_id: 1, conversation_id: 7, inbox_id: 3 },
+    });
+
+    beforeEach(() => {
+      store.$store.commit = vi.fn();
+      store.$store.getters.getCurrentAccountId = 1;
+    });
+
+    it('commits the revocation, bumps the metadata epoch and refetches tab stats', () => {
+      actionCable.onReceived(scopeRevoked());
+
+      expect(store.$store.commit).toHaveBeenCalledWith(
+        'REVOKE_CONNECTA_SCOPE',
+        scopeRevoked().data
+      );
+      expect(mockDispatch).toHaveBeenCalledWith('connectaMetadata/bumpEpoch');
+      expect(emitter.emit).toHaveBeenCalledWith('fetch_conversation_stats');
+    });
+
+    it('ignores scope.revoked from another account', () => {
+      actionCable.onReceived({
+        event: 'scope.revoked',
+        data: { account_id: 999, conversation_id: 7, inbox_id: 3 },
+      });
+
+      expect(store.$store.commit).not.toHaveBeenCalled();
+      expect(emitter.emit).not.toHaveBeenCalledWith('fetch_conversation_stats');
     });
   });
 });

@@ -8,8 +8,10 @@ import wootConstants from 'dashboard/constants/globals';
 import messages from 'dashboard/i18n';
 
 const mockPush = vi.fn();
+let mockRoute = { name: 'home', params: { accountId: '1' } };
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: mockPush }),
+  useRoute: () => mockRoute,
 }));
 
 const mockUseAlert = vi.fn();
@@ -18,10 +20,14 @@ vi.mock('dashboard/composables', () => ({
 }));
 
 let mockConnectaTransferEnabled = true;
+let mockConnectaHumanNumberEnabled = false;
 vi.mock('dashboard/composables/useConfig', () => ({
   useConfig: () => ({
     get connectaTransferEnabled() {
       return mockConnectaTransferEnabled;
+    },
+    get connectaHumanNumberEnabled() {
+      return mockConnectaHumanNumberEnabled;
     },
   }),
 }));
@@ -53,14 +59,47 @@ vi.mock('dashboard/composables/store', () => ({
 vi.mock('dashboard/api/inbox/conversation', () => ({
   default: {
     getConnectaTransferDestinations: vi.fn(),
+    showConnectaScope: vi.fn(),
     createConnectaTransfer: vi.fn(),
   },
+}));
+
+const mockEmit = vi.fn();
+vi.mock('shared/helpers/mitt', () => ({
+  emitter: { emit: (...args) => mockEmit(...args) },
 }));
 
 vi.mock('dashboard/helper/URLHelper', () => ({
   frontendURL: path => `/app/${path}`,
   conversationUrl: ({ accountId, id }) =>
     `accounts/${accountId}/conversations/${id}`,
+  conversationListPageURL: ({
+    accountId,
+    conversationType = '',
+    inboxId,
+    label,
+    teamId,
+    customViewId,
+  }) => {
+    let url = `accounts/${accountId}/dashboard`;
+    if (label) {
+      url = `accounts/${accountId}/label/${label}`;
+    } else if (teamId) {
+      url = `accounts/${accountId}/team/${teamId}`;
+    } else if (inboxId) {
+      url = `accounts/${accountId}/inbox/${inboxId}`;
+    } else if (customViewId) {
+      url = `accounts/${accountId}/custom_view/${customViewId}`;
+    } else if (conversationType) {
+      const urlMap = {
+        mention: 'mentions/conversations',
+        participating: 'participating/conversations',
+        unattended: 'unattended/conversations',
+      };
+      url = `accounts/${accountId}/${urlMap[conversationType]}`;
+    }
+    return `/app/${url}`;
+  },
 }));
 
 // Real EN messages so useI18n() resolves the strings the component
@@ -86,6 +125,8 @@ describe('TransferAction.vue', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockConnectaTransferEnabled = true;
+    mockConnectaHumanNumberEnabled = false;
+    mockRoute = { name: 'home', params: { accountId: '1' } };
     mockSelectedChat = { id: 42, status: wootConstants.STATUS_TYPE.OPEN };
     mockAccountId = 1;
   });
@@ -389,6 +430,101 @@ describe('TransferAction.vue', () => {
       expect(mockUseAlert).toHaveBeenCalledWith(
         'Could not transfer the conversation. Please try again.'
       );
+    });
+  });
+
+  describe('Human-number transfer (202 without display_id)', () => {
+    const humanResponse = {
+      data: {
+        status: 'pending_activation',
+        transfer_id: 't-1',
+        source_conversation_id: 42,
+      },
+    };
+
+    beforeEach(() => {
+      mockConnectaHumanNumberEnabled = true;
+      conversationAPI.showConnectaScope.mockResolvedValue({
+        data: { can_transfer: true },
+      });
+      conversationAPI.getConnectaTransferDestinations.mockResolvedValue({
+        data: { destinations: [{ id: 'u-b', name: 'Hospital Municipal' }] },
+      });
+    });
+
+    const openFillAndConfirm = async () => {
+      const wrapper = mountComponent();
+      await flushPromises();
+      await wrapper.find('button').trigger('click');
+      await flushPromises();
+
+      wrapper
+        .findComponent({ name: 'ComboBox' })
+        .vm.$emit('update:modelValue', 'u-b');
+      const [subjectField, completedField, nextActionField] = wrapper.findAll(
+        'textarea.form-textarea'
+      );
+      await subjectField.setValue('Dor de cabeça');
+      await completedField.setValue('Pressão aferida.');
+      await nextActionField.setValue('Retorno do hospital.');
+      await wrapper.vm.$nextTick();
+
+      wrapper.findComponent({ name: 'Dialog' }).vm.$emit('confirm');
+      await flushPromises();
+
+      return wrapper;
+    };
+
+    it('navigates back to the current tab list and emits stats with the captured id', async () => {
+      mockRoute = {
+        name: 'conversations_through_inbox',
+        params: { accountId: '1', inbox_id: '5' },
+      };
+      conversationAPI.createConnectaTransfer.mockResolvedValue(humanResponse);
+
+      await openFillAndConfirm();
+
+      expect(conversationAPI.createConnectaTransfer).toHaveBeenCalledWith(42, {
+        targetOrgUnitId: 'u-b',
+        summary: {
+          subject: 'Dor de cabeça',
+          completed: 'Pressão aferida.',
+          nextAction: 'Retorno do hospital.',
+        },
+      });
+      expect(mockCommit).toHaveBeenCalledWith(
+        types.CHANGE_CONVERSATION_STATUS,
+        {
+          conversationId: 42,
+          status: wootConstants.STATUS_TYPE.RESOLVED,
+          snoozedUntil: null,
+        }
+      );
+      expect(mockDispatch).toHaveBeenCalledWith('connectaMetadata/refresh', 42);
+      expect(mockEmit).toHaveBeenCalledWith('fetch_conversation_stats');
+      expect(mockPush).toHaveBeenCalledWith('/app/accounts/1/inbox/5');
+    });
+
+    it('still resolves and navigates when the selection clears before the response', async () => {
+      conversationAPI.createConnectaTransfer.mockImplementation(async () => {
+        // scope.revoked lands mid-flight and clears the selection.
+        mockSelectedChat = null;
+        return humanResponse;
+      });
+
+      await openFillAndConfirm();
+
+      expect(mockCommit).toHaveBeenCalledWith(
+        types.CHANGE_CONVERSATION_STATUS,
+        {
+          conversationId: 42,
+          status: wootConstants.STATUS_TYPE.RESOLVED,
+          snoozedUntil: null,
+        }
+      );
+      expect(mockDispatch).toHaveBeenCalledWith('connectaMetadata/refresh', 42);
+      expect(mockEmit).toHaveBeenCalledWith('fetch_conversation_stats');
+      expect(mockPush).toHaveBeenCalledWith('/app/accounts/1/dashboard');
     });
   });
 });

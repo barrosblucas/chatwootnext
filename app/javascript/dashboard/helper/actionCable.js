@@ -124,6 +124,9 @@ class ActionCableConnector extends BaseActionCableConnector {
   onConnectaScopeRevoked = data => {
     this.app.$store.commit('REVOKE_CONNECTA_SCOPE', data);
     this.app.$store.dispatch('connectaMetadata/bumpEpoch');
+    // The revoked conversation leaves every tab count: refetch the badge now
+    // instead of waiting for the next manual tab switch.
+    this.fetchConversationStats();
   };
 
   onConnectaAclRevoked = data => {

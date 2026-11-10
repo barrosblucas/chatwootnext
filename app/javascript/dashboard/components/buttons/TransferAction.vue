@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, nextTick, watch } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { useAlert } from 'dashboard/composables';
 import { useI18n } from 'vue-i18n';
 import { useStore, useStoreGetters } from 'dashboard/composables/store';
@@ -8,7 +8,18 @@ import { useConfig } from 'dashboard/composables/useConfig';
 import conversationAPI from 'dashboard/api/inbox/conversation';
 import wootConstants from 'dashboard/constants/globals';
 import types from 'dashboard/store/mutation-types';
-import { frontendURL, conversationUrl } from 'dashboard/helper/URLHelper';
+import {
+  frontendURL,
+  conversationUrl,
+  conversationListPageURL,
+} from 'dashboard/helper/URLHelper';
+import {
+  isOnFoldersView,
+  isOnMentionsView,
+  isOnParticipatingView,
+  isOnUnattendedView,
+} from 'dashboard/store/modules/conversations/helpers/actionHelpers';
+import { emitter } from 'shared/helpers/mitt';
 
 import Dialog from 'dashboard/components-next/dialog/Dialog.vue';
 import ComboBox from 'dashboard/components-next/combobox/ComboBox.vue';
@@ -32,6 +43,7 @@ const canTransfer = ref(false);
 
 const currentChat = computed(() => getters.getSelectedChat.value);
 const accountId = computed(() => getters.getCurrentAccountId.value);
+const route = useRoute();
 const hasValidSummary = computed(() =>
   Object.entries(summary.value).every(
     ([key, value]) =>
@@ -122,15 +134,53 @@ const openDialog = async () => {
   fetchDestinations();
 };
 
+// Same tab detection as ChatList redirectToConversationList: after the origin
+// conversation leaves the agent's scope, land back on its list.
+const navigateToConversationList = () => {
+  const {
+    params: {
+      accountId: routeAccountId,
+      inbox_id: inboxId,
+      label,
+      teamId,
+      id: folderId,
+    },
+    name,
+  } = route;
+
+  let conversationType = '';
+  if (isOnMentionsView({ route: { name } })) {
+    conversationType = wootConstants.CONVERSATION_TYPE.MENTION;
+  } else if (isOnParticipatingView({ route: { name } })) {
+    conversationType = wootConstants.CONVERSATION_TYPE.PARTICIPATING;
+  } else if (isOnUnattendedView({ route: { name } })) {
+    conversationType = wootConstants.CONVERSATION_TYPE.UNATTENDED;
+  }
+  router.push(
+    conversationListPageURL({
+      accountId: routeAccountId ?? accountId.value,
+      conversationType,
+      customViewId: isOnFoldersView({ route: { name } }) ? folderId : undefined,
+      inboxId,
+      label,
+      teamId,
+    })
+  );
+};
+
 const handleConfirm = async () => {
   if (!selectedDepartmentId.value) return;
   if (connectaHumanNumberEnabled && !hasValidSummary.value) return;
 
   isLoading.value = true;
 
+  // Race-safe: a scope.revoked can clear the selection while the POST is in
+  // flight, so every post-response use reads the captured id.
+  const conversationId = currentChat.value.id;
+
   try {
     const { data } = await conversationAPI.createConnectaTransfer(
-      currentChat.value.id,
+      conversationId,
       connectaHumanNumberEnabled
         ? {
             targetOrgUnitId: selectedDepartmentId.value,
@@ -144,7 +194,7 @@ const handleConfirm = async () => {
     );
 
     store.commit(types.CHANGE_CONVERSATION_STATUS, {
-      conversationId: currentChat.value.id,
+      conversationId,
       status: wootConstants.STATUS_TYPE.RESOLVED,
       snoozedUntil: null,
     });
@@ -160,13 +210,14 @@ const handleConfirm = async () => {
 
     // A transferência muda o vínculo/setor da conversa sem necessariamente
     // mudar o display_id na lista; invalida e refaz a busca no escopo atual.
-    store.dispatch('connectaMetadata/refresh', currentChat.value.id);
+    store.dispatch('connectaMetadata/refresh', conversationId);
+    emitter.emit('fetch_conversation_stats');
 
     const newConversationId = connectaHumanNumberEnabled
       ? null
       : data.display_id || data.new_conversation_id;
     if (newConversationId) {
-      if (Number(newConversationId) !== Number(currentChat.value.id)) {
+      if (Number(newConversationId) !== Number(conversationId)) {
         store.dispatch('connectaMetadata/refresh', newConversationId);
       }
       router.push(
@@ -177,6 +228,11 @@ const handleConfirm = async () => {
           })
         )
       );
+    } else {
+      // Human-number answers 202 with { status, transfer_id,
+      // source_conversation_id } and no display_id: the origin route would
+      // 404, so go back to the list of the tab the transfer started from.
+      navigateToConversationList();
     }
   } catch (error) {
     useAlert(error.response?.data?.error || t('CONVERSATION.TRANSFER.ERROR'));

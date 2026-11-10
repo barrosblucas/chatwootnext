@@ -152,7 +152,7 @@ class Connecta::Transfer::LocalTransaction # rubocop:disable Metrics/ClassLength
   # versão diferente continua recusado (VersionMismatch) sem mudar nada. Nova instância resolve o transfer pela
   # origem verificada (source_conversation_id do scope), nunca pelo "último destino".
   def activate!(case_version:)
-    locked do
+    activated = locked do
       record = activation_record!
       @record = record
       destination = scoped_destination(record)
@@ -162,10 +162,16 @@ class Connecta::Transfer::LocalTransaction # rubocop:disable Metrics/ClassLength
         require_pending_destination!(destination)
         destination.update!(state: 'active', case_version: case_version)
         record.update!(state: 'committed')
+        true
       else
         require_committed_destination!(record, destination, case_version)
+        false
       end
     end
+    # Só na transição: a repetição idempotente não reanuncia. Fora do lock para
+    # o listener ler o escopo já commitado; o gate do socket (READ_STATES +
+    # grant ancestral) entrega só a quem lê o destino.
+    notify_destination_active! if activated
   end
 
   # Divergência irrecuperável depois do commit local: o destino fica só para admin. A origem nunca volta.
@@ -371,6 +377,19 @@ class Connecta::Transfer::LocalTransaction # rubocop:disable Metrics/ClassLength
 
   def scoped_destination(record)
     Connecta::Scope::ConversationScope.find_by!(conversation_id: record.destination_conversation_id)
+  end
+
+  # O destino nasceu pending_activation (invisível: fora de READ_STATES, o gate
+  # derrubou o conversation.created do create!). Agora ativo, reanuncia pelo
+  # caminho padrão para os leitores do destino verem sem reload; o gate do
+  # socket filtra (quem não lê o destino não recebe). Falha de anúncio nunca
+  # desfaz a ativação já commitada.
+  def notify_destination_active!
+    destination_conversation = Conversation.find(@record.destination_conversation_id)
+    Rails.configuration.dispatcher.dispatch(Events::Types::CONVERSATION_CREATED, Time.zone.now,
+                                            conversation: destination_conversation)
+  rescue StandardError => e
+    Rails.logger.warn("[connecta] anúncio do destino #{@record.id} falhou: #{e.class}")
   end
 
   # Primeira ativação: o destino precisa ser o desta transferência, ainda pendente, sem versão gravada.

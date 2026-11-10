@@ -18,3 +18,19 @@
   - run 1 (`c9964cc8`, run 42743035331): backend-tests (0) success — 114 exemplos, 0 falhas (specs novos inclusos); lint-backend failure com 75 ofensas = 74 pre-existentes + 1 nova em arquivo tocado (`Rails/WhereExists` em `acl_sync_service.rb:131`, meu `where(...).exists?`); security-scan failure (baseline: CVEs de Rails/brakeman, sem gem nova).
   - correcao (`14e86c4f`): `triple_tombstoned?` usa `exists?(...)` direto.
   - run 2 (`14e86c4f`, run 42743519530): backend-tests (0) success — 114 exemplos, 0 falhas; lint-backend failure com 74 ofensas = baseline, ZERO nos arquivos tocados; security-scan failure (mesmo baseline). AC1–AC4 atendidos.
+
+
+## Fixed
+- Correção 01 (transferência some da contagem / destino não aparece sem reload): após `scope.revoked` o front refaz `fetch_conversation_stats`; `TransferAction` usa o id capturado antes do POST (race-safe), emite stats e, no caminho human-number (202 sem `display_id`), volta para a lista da aba atual em vez de permanecer na rota da origem (404).
+- Ativação da transferência reanuncia `conversation.created` pelo dispatcher padrão depois do commit (só na transição; idempotente não reanuncia): o gate do socket entrega só a quem lê o destino (READ_STATES + grant ancestral).
+- `CacheRevocation.scope!`: direção do grant corrigida (grant ancestral libera, gate.rb `granted_sector?` — antes incluía descendente e excluía ancestral/nominal raiz) + admins nativos same-account passam a receber `scope.revoked`.
+
+## Tests
+- `actionCable.spec.js`: `scope.revoked` → commit + `bumpEpoch` + stats fetch; ignora conta alheia.
+- `TransferAction.spec.js`: resposta human-number navega para a lista da aba (inbox) com o id capturado; seleção zerada mid-flight continua resolvendo/navegando; emite `fetch_conversation_stats`.
+- `TransferActionSummary.spec.js`: atualizado para a navegação à lista no 202 sem `display_id` (+ mocks `useRoute`/`conversationListPageURL`/`dispatch`).
+- Novo `spec/connecta/transfer_activation_broadcast_spec.rb`: announce gated no `activate!` (leitor do destino recebe, origem/sem grant não), sem reanúncio idempotente, e destinatários do `scope.revoked`.
+
+## Validacao
+- Local: `pnpm vitest run` nos 3 specs de front tocados — 53 passed; eslint direto nos 5 arquivos tocados — 0 errors (2 warnings pré-existentes).
+- Ruby indisponível neste ambiente (`ruby: command not found`); RSpec real via `run_foss_spec.yml` no branch (ver CI abaixo).
