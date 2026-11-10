@@ -15,15 +15,12 @@ Connecta::G0TransferSchema.ensure!
 Connecta::Scope::Installer.install!
 Connecta::Transfer::Installer.install!
 
-RSpec.describe 'Connecta · anúncio da ativação e destinatários do scope.revoked', type: :request do # rubocop:disable RSpec/DescribeClass
+RSpec.describe 'Connecta · anúncio da ativação e destinatários do scope.revoked', type: :request do
   include ActiveJob::TestHelper
   include_context 'with connecta g0 scope fixture'
 
   let!(:native_admin) { create(:user, account: account, role: :administrator) }
   let!(:descendant_agent) { create(:user, account: account, role: :agent) }
-  let!(:descendant_grant) do
-    Connecta::UserGrant.create!(user_id: descendant_agent.id, org_unit: org_a1, permission: 'atender')
-  end
   let(:origin_scope) { Connecta::Scope::ConversationScope.find_by!(conversation_id: conv_a.id) }
   let(:local) { Connecta::Transfer::LocalTransaction.new(scope: origin_scope, destination_org_unit: org_b) }
   let(:summary) { 'Assunto: segunda via. Feito: dados conferidos. Pendencia: retorno do setor B.' }
@@ -33,6 +30,7 @@ RSpec.describe 'Connecta · anúncio da ativação e destinatários do scope.rev
       create(:inbox_member, inbox: whatsapp_inbox, user: user)
       Connecta::Scope::UserAuthEpoch.create!(user_id: user.id, epoch: 1)
     end
+    Connecta::Scope::UserGrant.create!(user_id: descendant_agent.id, org_unit: org_a1, permission: 'atender')
     local.begin!
     local.commit_local!(target_case_version: 2, summary: summary)
     clear_enqueued_jobs
@@ -61,10 +59,8 @@ RSpec.describe 'Connecta · anúncio da ativação e destinatários do scope.rev
     _tokens, payload = member_job
     expect(payload['account_id']).to eq(account.id)
 
-    member_created_jobs.each do |tokens, _payload|
-      expect(tokens).not_to include(agent_a.pubsub_token)
-      expect(tokens).not_to include(member_without_grant.pubsub_token)
-    end
+    announced_tokens = member_created_jobs.flat_map(&:first)
+    expect(announced_tokens).not_to include(agent_a.pubsub_token, member_without_grant.pubsub_token)
   end
 
   it 'activate! idempotente não reanuncia o destino' do
