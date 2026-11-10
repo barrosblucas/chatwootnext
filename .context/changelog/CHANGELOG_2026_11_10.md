@@ -19,6 +19,11 @@
   - correcao (`14e86c4f`): `triple_tombstoned?` usa `exists?(...)` direto.
   - run 2 (`14e86c4f`, run 42743519530): backend-tests (0) success — 114 exemplos, 0 falhas; lint-backend failure com 74 ofensas = baseline, ZERO nos arquivos tocados; security-scan failure (mesmo baseline). AC1–AC4 atendidos.
 
+## Rebase sobre main 6c32c0e2 (correcao 01 continua; base anterior 0e4bcf18 estava defasada)
+- Rebase dos 4 commits do fix para `6c32c0e2` (Phase 1: provisioning, grant tombstones, heartbeat grace); unico conflito no changelog do dia (uniao das secoes, sem perda).
+- `CacheRevocation.scope!` revalidado contra a Phase 1: gate (`granted_sector?`, agora sob `usable?`) e tabelas inalterados no que importa — continua lendo `Scope::UserGrant`/`Scope::OrgUnit` (g0, mesma fonte do gate), prefixo ancestral, + admins nativos; grants revogados (tombstones destroem a linha) saem sozinhos dos destinatarios.
+- CI pos-rebase, run 42839986935 (head `b0c76a07`): plan success; lint-frontend success; frontend-tests success; backend-tests (0) success; lint-backend failure = baseline 74 (0 novos; mesmos 3 Metrics pre-existentes em `adopt_callback_scope!`); security-scan failure = baseline (Brakeman 41, 0 nos arquivos tocados).
+
 
 ## Fixed
 - Correção 01 (transferência some da contagem / destino não aparece sem reload): após `scope.revoked` o front refaz `fetch_conversation_stats`; `TransferAction` usa o id capturado antes do POST (race-safe), emite stats e, no caminho human-number (202 sem `display_id`), volta para a lista da aba atual em vez de permanecer na rota da origem (404).
@@ -36,5 +41,5 @@
 - Ruby indisponível neste ambiente (`ruby: command not found`); RSpec real via `run_foss_spec.yml` no branch (ver CI abaixo).
 
 ## CI (run_foss_spec.yml no branch fix/transfer-contador-20261110)
-- Run 42837578237 (head `2ce62fc7`): plan success; lint-frontend success; frontend-tests success; backend-tests (0) success (spec novo, 3 exemplos); lint-backend failure = baseline 74 (0 novos; 3 Metrics em `adopt_callback_scope!` pré-existentes); security-scan failure = baseline (Brakeman 41, nenhum nos arquivos tocados; bundle-audit só advisories de deps).
+- Run 42837578237 (head `2ce62fc7`, base antiga `0e4bcf18`): plan success; lint-frontend success; frontend-tests success; backend-tests (0) success (spec novo, 3 exemplos); lint-backend failure = baseline 74 (0 novos; 3 Metrics em `adopt_callback_scope!` pré-existentes); security-scan failure = baseline (Brakeman 41, nenhum nos arquivos tocados; bundle-audit só advisories de deps).
 - Runs anteriores no mesmo branch: 42834228477 (3 exemplos do spec novo falhavam — namespace `Connecta::UserGrant` vs `Scope::` + `have_enqueued_job` no `ActionCableBroadcastJob`) e 42835491084 (2 falhavam — mesmos ajustes); ambos superados em `2ce62fc7`. Iterações de fix: 2 (dentro do limite).
