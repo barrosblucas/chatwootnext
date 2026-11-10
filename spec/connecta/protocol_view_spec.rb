@@ -204,6 +204,41 @@ RSpec.describe 'Connecta · protocolo, metadados e busca', type: :request do
       ).to eq(205)
     end
 
+    it 'página que enche exatamente na cauda do lote cheio continua o histórico (B15)' do
+      boundary_protocol = "BND#{SecureRandom.hex(4).upcase}"
+      contact = create(:contact, account: account)
+      pairs = Array.new(150) do |index|
+        conversation = create(:conversation, account: account, inbox: inbox, contact: contact)
+        # Histórico terminal + etapa atual ativa: formato compatível com o
+        # índice parcial do par (só há um escopo não-terminal).
+        scope = Connecta::Scope::ConversationScope.create!(
+          conversation_id: conversation.id, inbox_id: inbox.id, contact_id: contact.id,
+          org_unit: org_a, state: index == 149 ? 'active' : 'closed',
+          case_protocol: boundary_protocol, case_version: 1
+        )
+        [scope, conversation]
+      end
+      expected_ids = pairs.sort_by { |scope, _conversation| [scope.created_at, scope.id] }
+                          .map { |_scope, conversation| conversation.display_id }
+
+      get "/api/v1/accounts/#{account.id}/connecta/protocols/#{boundary_protocol}",
+          params: { limit: 100 }, headers: token_native
+      expect(response).to have_http_status(:ok)
+      first_ids = body_json.fetch('stages').pluck('conversation_id')
+      cursor = body_json['next_cursor']
+      expect(first_ids.size).to eq(100)
+      expect(cursor).to be_present
+
+      get "/api/v1/accounts/#{account.id}/connecta/protocols/#{boundary_protocol}",
+          params: { limit: 100, cursor: cursor }, headers: token_native
+      expect(response).to have_http_status(:ok)
+      second_ids = body_json.fetch('stages').pluck('conversation_id')
+      expect(second_ids.size).to eq(50)
+      expect(body_json['next_cursor']).to be_nil
+
+      expect(first_ids + second_ids).to eq(expected_ids)
+    end
+
     it 'página final vazia do cursor responde 200 sem repetir etapa' do
       cursor = Connecta::Scope::ProtocolView.send(:encode_cursor, 1.hour.from_now, 10**9)
 

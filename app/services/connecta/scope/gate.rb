@@ -148,6 +148,6 @@ class Connecta::Scope::Gate
     # Manutenção nega leitura de não-admin no detalhe (a lista já exclui a inbox: ConversationQuery#enforced_inbox_ids).
     return false if !@projection.admin? && maintenance_inbox?(inbox_id)
 
-    @projection.verified? && @projection.fresh? && state_allows?(scope, action) && granted_sector?(scope, action)
+    @projection.usable? && state_allows?(scope, action) && granted_sector?(scope, action)
   end
 end

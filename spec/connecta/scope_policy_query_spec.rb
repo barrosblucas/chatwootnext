@@ -180,8 +180,8 @@ RSpec.describe 'Connecta G0 · escopo de conversas (T0.2 parte A)', type: :reque
       expect(response).to have_http_status(:not_found)
     end
 
-    it 'heartbeat vencido nega não-admin na lista e no detalhe' do
-      projection_heartbeat.update!(last_heartbeat_at: 10.minutes.ago)
+    it 'heartbeat além da graça nega não-admin na lista e no detalhe' do
+      projection_heartbeat.update!(last_heartbeat_at: 30.minutes.ago)
 
       get conversations_path, headers: agent_a.create_new_auth_token
       expect(json['data']['payload'].pluck('id')).to contain_exactly(conv_control.display_id)
@@ -191,6 +191,36 @@ RSpec.describe 'Connecta G0 · escopo de conversas (T0.2 parte A)', type: :reque
 
       get "#{conversations_path}/#{conv_transferred.display_id}", headers: admin_nominal.create_new_auth_token
       expect(response).to have_http_status(:ok)
+    end
+
+    it 'heartbeat dentro da janela de graça mantém a leitura do último grant aplicado' do
+      projection_heartbeat.update!(last_heartbeat_at: 5.minutes.ago)
+
+      get conversations_path, headers: agent_a.create_new_auth_token
+      expect(json['data']['payload'].pluck('id')).to contain_exactly(conv_a.display_id, conv_a1.display_id, conv_control.display_id)
+
+      get "#{conversations_path}/#{conv_a.display_id}", headers: agent_a.create_new_auth_token
+      expect(response).to have_http_status(:ok)
+    end
+
+    it 'usuário revogado continua negado mesmo dentro da janela de graça' do
+      projection_heartbeat.update!(last_heartbeat_at: 5.minutes.ago)
+      Connecta::Scope::UserAuthEpoch.find_by!(user_id: agent_a.id).update!(revoked_locally_at: Time.current)
+
+      get conversations_path, headers: agent_a.create_new_auth_token
+      expect(json['data']['payload'].pluck('id')).to contain_exactly(conv_control.display_id)
+
+      get "#{conversations_path}/#{conv_a.display_id}", headers: agent_a.create_new_auth_token
+      expect(response).to have_http_status(:not_found)
+    end
+
+    it 'graça zerada desliga o fail-open (fail-closed direto no TTL)' do
+      with_modified_env CONNECTA_ACL_STALE_GRACE_SEC: '0' do
+        projection_heartbeat.update!(last_heartbeat_at: 5.minutes.ago)
+
+        get conversations_path, headers: agent_a.create_new_auth_token
+        expect(json['data']['payload'].pluck('id')).to contain_exactly(conv_control.display_id)
+      end
     end
 
     it 'revogação local vale na requisição seguinte, sem cache' do

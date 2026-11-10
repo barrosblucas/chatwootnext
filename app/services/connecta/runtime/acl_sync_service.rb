@@ -69,17 +69,48 @@ class Connecta::Runtime::AclSyncService
     user_id = integer(data['chatwoot_user_id'] || data['user_id'])
     unit_id = required(data, 'org_unit_id')
     permission = required(data, 'permission')
+    grant_id = data['grant_id'].to_s.presence
+    # Lápide B3: grant revogado não ressuscita por replay/atraso do WP.
+    return if grant_id && Connecta::RevokedGrant.exists?(grant_id: grant_id)
+
+    # Busca pela trinca (não pelo grant_id): adota a linha legada da era
+    # pré-grant_id em vez de duplicá-la e violar a unicidade da trinca.
     grant = Connecta::UserGrant.find_or_initialize_by(user_id: user_id, org_unit_id: unit_id, permission: permission)
+    grant.grant_id = grant_id if grant_id
     grant.version = integer(data['version'] || 1)
     grant.save!
     ensure_active_epoch!(user_id, data['epoch'])
   end
 
   def revoke_grant!(data)
-    scope = Connecta::UserGrant.where(user_id: integer(data['chatwoot_user_id'] || data['user_id']))
+    user_id = integer(data['chatwoot_user_id'] || data['user_id'])
+    grant_id = data['grant_id'].to_s.presence
+    if grant_id
+      revoke_grant_by_id!(user_id, data, grant_id)
+      return
+    end
+
+    scope = Connecta::UserGrant.where(user_id: user_id)
     scope = scope.where(org_unit_id: data['org_unit_id']) if data['org_unit_id'].present?
     scope = scope.where(permission: data['permission']) if data['permission'].present?
     scope.destroy_all
+  end
+
+  # Revogação com grant_id: apaga a linha do grant, a linha legada da mesma
+  # trinca (criada antes do WP enviar grant_id) quando a trinca vem completa,
+  # e grava a lápide para que um upsert tardio seja ignorado.
+  def revoke_grant_by_id!(user_id, data, grant_id)
+    scope = Connecta::UserGrant.where(user_id: user_id)
+    if data['org_unit_id'].present? && data['permission'].present?
+      scope = scope.where(org_unit_id: data['org_unit_id'], permission: data['permission'])
+      scope = scope.where('grant_id = ? OR grant_id IS NULL', grant_id)
+    else
+      scope = scope.where(grant_id: grant_id)
+    end
+    scope.destroy_all
+    Connecta::RevokedGrant.find_or_create_by!(grant_id: grant_id) do |tombstone|
+      tombstone.revoked_at = Time.current
+    end
   end
 
   def verify_link!(data)
@@ -91,6 +122,23 @@ class Connecta::Runtime::AclSyncService
     return if record.epoch > epoch || (record.revoked_locally_at.present? && record.epoch >= epoch)
 
     record.update!(epoch: epoch, revoked_locally_at: nil, source: 'platform')
+    # Foto Q7.5: com a lista de grants ativos do WP, apaga os grants obsoletos
+    # do usuário (fora da lista ou legados sem grant_id) para que o re-vínculo
+    # não ressuscite acesso já removido. Sem a lista, mantém o comportamento.
+    apply_grant_snapshot!(user_id, data['active_grant_ids']) if data.key?('active_grant_ids') && !data['active_grant_ids'].nil?
+  end
+
+  def apply_grant_snapshot!(user_id, active_grant_ids)
+    raise InvalidProjection, 'active_grant_ids must be an array' unless active_grant_ids.is_a?(Array)
+
+    base = Connecta::UserGrant.where(user_id: user_id)
+    doomed = if active_grant_ids.empty?
+               base
+             else
+               listed = active_grant_ids.map(&:to_s)
+               base.where.not(grant_id: listed).or(base.where(grant_id: nil))
+             end
+    doomed.destroy_all
   end
 
   def revoke_link!(data)

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_10_24_000001) do
+ActiveRecord::Schema[7.1].define(version: 2026_11_09_000000) do
   # These extensions should be enabled to support this database
   enable_extension "pg_stat_statements"
   enable_extension "pg_trgm"
@@ -861,6 +861,12 @@ ActiveRecord::Schema[7.1].define(version: 2026_10_24_000001) do
     t.index ["status", "created_at"], name: "index_connecta_outbox_on_status_and_created_at"
   end
 
+  create_table "connecta_revoked_grants", primary_key: "grant_id", id: :string, force: :cascade do |t|
+    t.datetime "revoked_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+  end
+
   create_table "connecta_scoped_inboxes", force: :cascade do |t|
     t.bigint "inbox_id", null: false
     t.string "enforcement", default: "enforce", null: false
@@ -908,6 +914,8 @@ ActiveRecord::Schema[7.1].define(version: 2026_10_24_000001) do
     t.integer "version", default: 1, null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "grant_id"
+    t.index ["grant_id"], name: "idx_connecta_user_grants_grant_id"
     t.index ["user_id", "org_unit_id", "permission"], name: "idx_connecta_user_grants_unique", unique: true
   end
 

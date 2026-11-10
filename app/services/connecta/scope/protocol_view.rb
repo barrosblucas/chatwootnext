@@ -49,8 +49,11 @@ class Connecta::Scope::ProtocolView
 
           visible << [scope, conversation]
           if visible.length >= page_size
+            # Lote cheio (ou cauda não consumida): pode haver mais linhas, então
+            # o cursor fica no último item visível; só um lote curto totalmente
+            # consumido prova que o histórico acabou (B15).
             last_scope = batch.last
-            next_position = [scope.created_at, scope.id] unless scope.equal?(last_scope) && batch.length < SCAN_BATCH_SIZE
+            next_position = [scope.created_at, scope.id] if batch.length >= SCAN_BATCH_SIZE || !scope.equal?(last_scope)
             break
           end
         end

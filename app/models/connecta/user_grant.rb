@@ -9,10 +9,12 @@
 #  updated_at  :datetime         not null
 #  org_unit_id :uuid             not null
 #  user_id     :bigint           not null
+#  grant_id    :string
 #
 # Indexes
 #
-#  idx_connecta_user_grants_unique  (user_id,org_unit_id,permission) UNIQUE
+#  idx_connecta_user_grants_unique   (user_id,org_unit_id,permission) UNIQUE
+#  idx_connecta_user_grants_grant_id (grant_id)
 #
 class Connecta::UserGrant < Connecta::BaseRecord
   self.table_name = 'connecta_user_grants'

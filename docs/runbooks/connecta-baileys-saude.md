@@ -119,6 +119,18 @@ Campo de evidência: [ ] escalado para: ____ · motivo: ____ · horário: ____
 
 Campo de evidência: [ ] TTL fork: ____ s · MAX_AGE WP: ____ s · iguais: sim/não · operador: ____
 
+## 5.1b Janela de graça do heartbeat (fork; WP fora derruba menos)
+
+- Entre `CONNECTA_ACL_HEARTBEAT_TTL_SEC` (padrão 120 s) e TTL +
+  `CONNECTA_ACL_STALE_GRACE_SEC` (padrão 900 s; `0` desliga), o fork opera em
+  **modo degradado**: mantém a leitura com os últimos grants aplicados
+  (`Gate#read?` e lista via `Projection#usable?`), em vez de esconder todas as
+  conversas durante um deploy/outage do WP. Passada a graça, fail-closed como antes.
+- Já-revogado continua negado na graça (`revoked_locally_at` em `verified?` não
+  muda); `TransferPolicy` e `can_transfer?` seguem fail-closed no TTL (só leitura
+  é degradada). Degradado gera `Rails.logger.warn` (`connecta_acl_degraded`).
+- Verificação: `Projection#degraded?`/`usable?` (`app/services/connecta/scope/projection.rb`); decisão 003.
+
 ## 5.2 Pré-requisito de autorização para (re)parear (`admin_nominal`)
 
 - Em inbox marcada `enforce`, `setup_channel_provider` (QR novo), `disconnect` e a criação de inbox WhatsApp passam pelo guard Connecta (`app/services/connecta/scope/inbox_hook.rb`), que exige `Projection#admin?` = usuário verificado + grant `admin_nominal`. O papel nativo `administrator` sozinho é negado com 403 (o modal "Vincular dispositivo" dispara o setup sozinho ao abrir e mostra o 403).

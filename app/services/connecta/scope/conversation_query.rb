@@ -50,7 +50,7 @@ class Connecta::Scope::ConversationQuery
   end
 
   def read_path_patterns
-    return [] unless @projection.verified? && @projection.fresh?
+    return [] unless @projection.usable?
 
     @projection.granted_paths(Connecta::Scope::Gate::READ_PERMISSIONS).map { |path| "#{path}%" }
   end
