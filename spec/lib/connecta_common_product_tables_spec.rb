@@ -90,9 +90,11 @@ RSpec.describe Connecta::CommonProductTables do # rubocop:disable RSpec/SpecFile
     expect { Connecta::Scope::Projection.marked?(1) }.to raise_error(ActiveRecord::StatementInvalid)
   end
 
-  it 'a fonte de produção Projection não tem fail-open com rescue falso' do
+  it 'a fonte de produção Projection não tem fail-open com rescue falso em marked?' do
     source = File.read(Rails.root.join('app/services/connecta/scope/projection.rb'))
+    marked_source = source[/def self\.marked\?.*?(?=^\s*def |\Z)/m]
 
-    expect(source).not_to match(/rescue.*false/m)
+    expect(marked_source).to be_present
+    expect(marked_source).not_to match(/rescue.*false/m)
   end
 end

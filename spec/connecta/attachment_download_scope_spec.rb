@@ -321,14 +321,36 @@ RSpec.describe 'Connecta G0 · download de anexo marcado (T0.2-c3)', type: :requ
       expect(response.body).not_to include(BODY)
     end
 
-    it 'heartbeat vencido nega o download com token ainda válido (Gate real, sem stub)' do
+    it 'heartbeat vencido além da graça nega o download com token ainda válido (Gate real, sem stub)' do
       token = issue_token_for(agent_a)
-      projection_heartbeat.update!(last_heartbeat_at: 10.minutes.ago)
+      projection_heartbeat.update!(last_heartbeat_at: 30.minutes.ago)
 
       get "#{download_path}?token=#{CGI.escape(token)}", headers: token_a
 
       expect(response).to have_http_status(:not_found)
       expect(response.body).not_to include(BODY)
+    end
+
+    it 'heartbeat dentro da janela de graça mantém o download com token ainda válido' do
+      token = issue_token_for(agent_a)
+      projection_heartbeat.update!(last_heartbeat_at: 5.minutes.ago)
+
+      get "#{download_path}?token=#{CGI.escape(token)}", headers: token_a
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to eq(BODY)
+    end
+
+    it 'graça zerada desliga o fail-open do download (fail-closed direto no TTL)' do
+      with_modified_env CONNECTA_ACL_STALE_GRACE_SEC: '0' do
+        token = issue_token_for(agent_a)
+        projection_heartbeat.update!(last_heartbeat_at: 10.minutes.ago)
+
+        get "#{download_path}?token=#{CGI.escape(token)}", headers: token_a
+
+        expect(response).to have_http_status(:not_found)
+        expect(response.body).not_to include(BODY)
+      end
     end
   end
 
