@@ -108,3 +108,9 @@ inbox.update!(
 ## Tests
 - Ruby indisponível neste ambiente; sintaxe validada via `ruby -c` no container rails (11 arquivos, OK); linhas ≤150; `node --check` no script do Response.vue OK.
 - Validação real via `run_foss_spec.yml` no branch (ver CI abaixo).
+
+## Validacao Fase 2 (local, 2026-11-10)
+- `pnpm vitest run app/javascript/survey`: 4 arquivos, 35 testes passed (inclui os 3 novos de `disable_feedback`).
+- `eslint` nos 2 arquivos tocados: 0 errors (1 warning pré-existente em `Response.vue:73`, `$t` dinâmico original).
+- `ruby -c` (container rails, só leitura): Syntax OK nos 11 arquivos Ruby novos/tocados; `node --check` OK no script do `Response.vue` e no spec.
+- Backend RSpec + `run_foss_spec.yml`: pendente de disparo — sem `gh`/token neste ambiente; branch `feat/fase2-csat` (`b35f61bd`) já no remoto; disparar com `gh workflow run run_foss_spec.yml --ref feat/fase2-csat --field full=true`.
