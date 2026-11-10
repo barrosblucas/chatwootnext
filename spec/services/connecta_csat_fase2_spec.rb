@@ -4,7 +4,7 @@ require 'rails_helper'
 # Usa as tabelas de produto (connecta_scoped_inboxes / connecta_conversation_scopes),
 # sem o ambiente especial G0: os hooks de ciclo de vida não estão instalados aqui,
 # então os escopos são criados direto no estado desejado.
-RSpec.describe 'Connecta Fase 2 · CSAT com protocolo e senha gerenciada' do
+RSpec.describe 'Connecta Fase 2 · CSAT com protocolo e senha gerenciada' do # rubocop:disable RSpec/DescribeClass
   let(:account) { create(:account) }
   let(:inbox) { create(:inbox, account: account, csat_survey_enabled: true) }
   let(:contact) { create(:contact, account: account) }
@@ -28,11 +28,13 @@ RSpec.describe 'Connecta Fase 2 · CSAT com protocolo e senha gerenciada' do
   end
 
   describe CsatSurveyService do
+    let(:open_window) { instance_double(Conversations::MessageWindowService, can_reply?: true) }
+
     before do
-      allow(Conversations::MessageWindowService).to receive(:new).and_return(double(can_reply?: true))
+      allow(Conversations::MessageWindowService).to receive(:new).and_return(open_window)
     end
 
-    context 'em inbox marcada' do
+    context 'when the inbox is marked' do
       before { mark_inbox!(inbox) }
 
       it 'envia na resolução final do protocolo (escopo closed com protocolo)' do
@@ -65,7 +67,7 @@ RSpec.describe 'Connecta Fase 2 · CSAT com protocolo e senha gerenciada' do
       end
     end
 
-    context 'em inbox não marcada' do
+    context 'when the inbox is not marked' do
       it 'mantém o comportamento nativo' do
         expect(described_class.new(conversation: conversation).perform).not_to eq(:not_eligible)
       end
@@ -73,10 +75,12 @@ RSpec.describe 'Connecta Fase 2 · CSAT com protocolo e senha gerenciada' do
   end
 
   describe 'texto da pesquisa com protocolo' do
+    let(:open_window) { instance_double(Conversations::MessageWindowService, can_reply?: true) }
+
     before do
       mark_inbox!(inbox)
       scope_for!(conversation, state: 'closed', protocol: 'BND00000042')
-      allow(Conversations::MessageWindowService).to receive(:new).and_return(double(can_reply?: true))
+      allow(Conversations::MessageWindowService).to receive(:new).and_return(open_window)
     end
 
     it 'usa o padrão pt-BR com o protocolo quando a inbox não configura mensagem' do
@@ -152,8 +156,8 @@ RSpec.describe 'Connecta Fase 2 · CSAT com protocolo e senha gerenciada' do
       other = create(:inbox, account: account, csat_survey_enabled: true)
       other_conversation = create(:conversation, account: account, inbox: other, status: :resolved)
       other_message = create(:message, conversation: other_conversation, inbox: other, account: account,
-                                         message_type: :outgoing, content_type: :input_csat,
-                                         content_attributes: {
+                                       message_type: :outgoing, content_type: :input_csat,
+                                       content_attributes: {
                                            'submitted_values' => { 'csat_survey_response' => { 'rating' => 3 } }
                                          })
 
@@ -194,9 +198,8 @@ RSpec.describe 'Connecta Fase 2 · CSAT com protocolo e senha gerenciada' do
   end
 
   describe Connecta::Runtime::PasswordGuard do
-    around do |example|
+    before do
       stub_const('ENV', ENV.to_h.merge('CONNECTA_ACCOUNT_ID' => account.id.to_s))
-      example.run
     end
 
     it 'gerenciado: agent da conta Connecta sem privilégio' do
@@ -221,7 +224,7 @@ RSpec.describe 'Connecta Fase 2 · CSAT com protocolo e senha gerenciada' do
 
     it 'não gerenciado: SuperAdmin' do
       super_admin = create(:user, account: account, role: :agent)
-      super_admin.update_column(:type, 'SuperAdmin')
+      super_admin.update!(type: 'SuperAdmin')
 
       expect(described_class.managed?(super_admin)).to be(false)
     end
@@ -235,9 +238,8 @@ RSpec.describe 'Connecta Fase 2 · CSAT com protocolo e senha gerenciada' do
   end
 
   describe 'bloqueio de troca de senha (AC3)' do
-    around do |example|
+    before do
       stub_const('ENV', ENV.to_h.merge('CONNECTA_ACCOUNT_ID' => account.id.to_s))
-      example.run
     end
 
     let!(:managed) { create(:user, account: account, role: :agent) }
@@ -450,7 +452,7 @@ RSpec.describe 'Connecta Fase 2 · CSAT com protocolo e senha gerenciada' do
     end
   end
 
-  describe 'nota digitada no WhatsApp via endpoint público (modo whatsapp)' do
+  describe 'nota digitada no WhatsApp via endpoint público (modo whatsapp)', type: :request do
     it 'cria a resposta sem comentário e empurra a nota ao WP' do
       mark_inbox!(inbox)
       scope_for!(conversation, state: 'closed', protocol: 'BND00000444')

@@ -14,14 +14,10 @@ class Connecta::V1::CsatConfigController < Connecta::V1::BaseController
   def update
     inbox = enforced_inbox!
     mode = config_params[:mode].to_s
-    unless MODES.include?(mode)
-      render json: { error: 'invalid_mode', allowed: MODES }, status: :unprocessable_entity and return
-    end
+    return render_invalid_mode unless MODES.include?(mode)
 
     window_minutes = parse_window_minutes
-    unless window_minutes
-      render json: { error: 'invalid_window_minutes' }, status: :unprocessable_entity and return
-    end
+    return render_invalid_window_minutes unless window_minutes
 
     apply_csat_config!(inbox, mode, window_minutes)
 
@@ -29,6 +25,14 @@ class Connecta::V1::CsatConfigController < Connecta::V1::BaseController
   end
 
   private
+
+  def render_invalid_mode
+    render json: { error: 'invalid_mode', allowed: MODES }, status: :unprocessable_entity
+  end
+
+  def render_invalid_window_minutes
+    render json: { error: 'invalid_window_minutes' }, status: :unprocessable_entity
+  end
 
   def apply_csat_config!(inbox, mode, window_minutes)
     inbox.update!(
@@ -72,7 +76,8 @@ class Connecta::V1::CsatConfigController < Connecta::V1::BaseController
     raw = config_params[:window_minutes]
     return DEFAULT_WINDOW_MINUTES if raw.nil?
 
-    minutes = Integer(raw, 10)
+    # JSON entrega Integer (base explícita estouraria); form entrega String.
+    minutes = raw.is_a?(Numeric) ? raw.to_i : Integer(raw.to_s.strip, 10)
     minutes.positive? ? minutes : nil
   rescue ArgumentError, TypeError
     nil

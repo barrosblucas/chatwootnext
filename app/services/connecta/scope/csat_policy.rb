@@ -75,6 +75,17 @@ module Connecta::Scope::CsatPolicy
       template.gsub('{{protocolo}}', protocol).gsub('{{protocol}}', protocol)
     end
 
+    # Conteúdo da mensagem de pesquisa para o builder nativo: conversa
+    # escopada com protocolo usa o texto do protocolo (config com
+    # `{{protocolo}}` ou padrão pt-BR); demais casos mantêm o nativo.
+    def message_content_for(conversation)
+      if scoped_inbox?(conversation.inbox_id) && protocol_for(conversation).present?
+        return survey_message(conversation)
+      end
+
+      conversation.inbox.csat_config&.dig('message') || 'Please rate this conversation'
+    end
+
     # Nomes das tabelas para SQL cru (claim): modelo do domínio quando a
     # tabela existe, senão o modelo de produto (runner comum sem G0Adapter).
     def scope_table_name

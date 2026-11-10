@@ -17,33 +17,37 @@ class Connecta::Transfer::OutboundDispatch
     # (input_csat, com protocolo) despacha com o escopo `closed`.
     def claim_sql
       dispatch_table = Connecta::Transfer::OutboundDispatchRecord.table_name
-      scope_table = Connecta::Scope::CsatPolicy.scope_table_name
-      inbox_table = Connecta::Scope::CsatPolicy.scoped_inbox_table_name
-      csat_content_type = Message.content_types.fetch('input_csat')
-      enforcement_condition = claim_enforcement_condition(dispatch_table)
 
       <<~SQL.squish
         UPDATE #{dispatch_table} AS d
-        SET state = CASE WHEN EXISTS (
-              SELECT 1 FROM #{scope_table} AS s
-              JOIN #{inbox_table} AS i ON i.inbox_id = s.inbox_id
-              JOIN messages AS m ON m.id = d.message_id
-              WHERE s.conversation_id = d.conversation_id
-                AND #{enforcement_condition}
-                AND (s.state = 'active' OR (s.state = 'reception' AND m.sender_type = 'User' AND m.sender_id IN (?))
-                     OR (s.state = 'closed' AND s.case_protocol IS NOT NULL AND s.case_protocol <> '' AND m.content_type = #{csat_content_type}))
-            ) THEN 'dispatching' ELSE 'parked' END,
-            attempted_at = now(), updated_at = now()
+        SET state = CASE WHEN EXISTS (#{claim_scope_exists_sql}) THEN 'dispatching' ELSE 'parked' END,
+          attempted_at = now(), updated_at = now()
         WHERE d.message_id = ? AND d.state = 'queued'
         RETURNING d.state
+      SQL
+    end
+
+    def claim_scope_exists_sql
+      scope_table = Connecta::Scope::CsatPolicy.scope_table_name
+      inbox_table = Connecta::Scope::CsatPolicy.scoped_inbox_table_name
+      csat_content_type = Message.content_types.fetch('input_csat')
+
+      <<~SQL.squish
+        SELECT 1 FROM #{scope_table} AS s
+        JOIN #{inbox_table} AS i ON i.inbox_id = s.inbox_id
+        JOIN messages AS m ON m.id = d.message_id
+        WHERE s.conversation_id = d.conversation_id
+          AND #{claim_enforcement_condition}
+          AND (s.state = 'active' OR (s.state = 'reception' AND m.sender_type = 'User' AND m.sender_id IN (?))
+               OR (s.state = 'closed' AND s.case_protocol IS NOT NULL AND s.case_protocol <> '' AND m.content_type = #{csat_content_type}))
       SQL
     end
 
     # Preserva a semântica de cada ambiente: no spike (g0) vale a condição
     # original (`<> 'maintenance'`); com tabelas de produto vale a do
     # G0Adapter (`= 'enforce'`). A exceção CSAT vale nos dois.
-    def claim_enforcement_condition(dispatch_table)
-      if dispatch_table == 'connecta_g0_outbound_dispatches'
+    def claim_enforcement_condition
+      if Connecta::Transfer::OutboundDispatchRecord.table_name == 'connecta_g0_outbound_dispatches'
         "i.maintenance = false AND i.enforcement <> 'maintenance'"
       else
         "i.enforcement = 'enforce' AND i.maintenance = false"

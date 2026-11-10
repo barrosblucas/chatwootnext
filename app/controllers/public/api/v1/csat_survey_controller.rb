@@ -37,6 +37,11 @@ class Public::Api::V1::CsatSurveyController < PublicController
   end
 
   def strip_submitted_feedback!(node)
+    response = csat_submitted_response(node)
+    response.delete(:feedback_message) if response.respond_to?(:delete)
+  end
+
+  def csat_submitted_response(node)
     node = node.first if node.is_a?(Array)
     return unless node.respond_to?(:[])
 
@@ -44,8 +49,7 @@ class Public::Api::V1::CsatSurveyController < PublicController
     submitted = submitted.first if submitted.is_a?(Array)
     return unless submitted.respond_to?(:[])
 
-    response = submitted[:csat_survey_response] || submitted['csat_survey_response']
-    response.delete(:feedback_message) if response.respond_to?(:delete)
+    submitted[:csat_survey_response] || submitted['csat_survey_response']
   end
 
   def check_csat_locked

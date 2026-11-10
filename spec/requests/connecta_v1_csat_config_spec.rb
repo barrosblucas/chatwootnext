@@ -94,9 +94,10 @@ RSpec.describe 'Connecta v1 CSAT config', type: :request do
   end
 
   it 'recusa assinatura inválida com 401' do
-    post path, params: { account_id: account.id, inbox_id: inbox.id, mode: 'link' }.to_json,
-         headers: { 'X-Connecta-Timestamp' => Time.current.to_i.to_s,
-                    'X-Connecta-Signature' => 'sha256=0' * 8, 'Content-Type' => 'application/json' }
+    body = { account_id: account.id, inbox_id: inbox.id, mode: 'link' }.to_json
+    headers = { 'X-Connecta-Timestamp' => Time.current.to_i.to_s,
+                'X-Connecta-Signature' => 'sha256=0' * 8, 'Content-Type' => 'application/json' }
+    post path, params: body, headers: headers
 
     expect(response).to have_http_status(:unauthorized)
   end
