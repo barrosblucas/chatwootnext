@@ -128,11 +128,12 @@ RSpec.describe 'Connecta Fase 2 · CSAT com protocolo e senha gerenciada' do
         'submitted_values' => { 'csat_survey_response' => { 'rating' => 5, 'feedback_message' => 'ótimo' } }
       }
 
-      expect { described_class.new(message: csat_message).perform }
+      built = nil
+      expect { built = described_class.new(message: csat_message).perform }
         .to have_enqueued_job(Connecta::Runtime::CsatPushJob)
 
-      expect(csat_message.csat_survey_response.feedback_message).to be_nil
-      expect(csat_message.csat_survey_response.rating).to eq(5)
+      expect(built.feedback_message).to be_nil
+      expect(built.rating).to eq(5)
     end
 
     it 'mantém o comentário sem a flag e empurra a nota ao WP' do
@@ -140,10 +141,11 @@ RSpec.describe 'Connecta Fase 2 · CSAT com protocolo e senha gerenciada' do
         'submitted_values' => { 'csat_survey_response' => { 'rating' => 5, 'feedback_message' => 'ótimo' } }
       }
 
-      expect { described_class.new(message: csat_message).perform }
+      built = nil
+      expect { built = described_class.new(message: csat_message).perform }
         .to have_enqueued_job(Connecta::Runtime::CsatPushJob)
 
-      expect(csat_message.csat_survey_response.feedback_message).to eq('ótimo')
+      expect(built.feedback_message).to eq('ótimo')
     end
 
     it 'não empurra ao WP fora do enforcement' do

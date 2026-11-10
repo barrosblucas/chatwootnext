@@ -319,7 +319,10 @@ describe('Response', () => {
       await flushPromises();
 
       expect(updateSurvey).toHaveBeenCalledTimes(1);
-      expect(updateSurvey.mock.calls[0][0].data.message.submitted_values.csat_survey_response).toEqual({
+      expect(
+        updateSurvey.mock.calls[0][0].data.message.submitted_values
+          .csat_survey_response
+      ).toEqual({
         rating: 5,
         feedback_message: null,
       });
