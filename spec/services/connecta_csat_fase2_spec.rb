@@ -157,9 +157,7 @@ RSpec.describe 'Connecta Fase 2 · CSAT com protocolo e senha gerenciada' do # r
       other_conversation = create(:conversation, account: account, inbox: other, status: :resolved)
       other_message = create(:message, conversation: other_conversation, inbox: other, account: account,
                                        message_type: :outgoing, content_type: :input_csat,
-                                       content_attributes: {
-                                           'submitted_values' => { 'csat_survey_response' => { 'rating' => 3 } }
-                                         })
+                                       content_attributes: { 'submitted_values' => { 'csat_survey_response' => { 'rating' => 3 } } })
 
       expect { described_class.new(message: other_message).perform }
         .not_to have_enqueued_job(Connecta::Runtime::CsatPushJob)
@@ -237,7 +235,7 @@ RSpec.describe 'Connecta Fase 2 · CSAT com protocolo e senha gerenciada' do # r
     end
   end
 
-  describe 'bloqueio de troca de senha (AC3)' do
+  describe 'bloqueio de troca de senha (AC3)', type: :request do
     before do
       stub_const('ENV', ENV.to_h.merge('CONNECTA_ACCOUNT_ID' => account.id.to_s))
     end
@@ -453,21 +451,24 @@ RSpec.describe 'Connecta Fase 2 · CSAT com protocolo e senha gerenciada' do # r
   end
 
   describe 'nota digitada no WhatsApp via endpoint público (modo whatsapp)', type: :request do
-    it 'cria a resposta sem comentário e empurra a nota ao WP' do
+    it 'aceita a nota sem comentário e o builder empurra a nota ao WP' do
       mark_inbox!(inbox)
       scope_for!(conversation, state: 'closed', protocol: 'BND00000444')
       inbox.update!(csat_config: { 'mode' => 'whatsapp', 'disable_feedback' => true })
       message = create(:message, conversation: conversation, inbox: inbox, account: account,
                                  message_type: :outgoing, content_type: :input_csat, content: 'x')
 
-      built = nil
-      expect do
-        patch "/public/api/v1/csat_survey/#{conversation.uuid}",
-              params: { message: { submitted_values: { csat_survey_response: { rating: 5 } } } }, as: :json
-        built = message.reload.csat_survey_response
-      end.to have_enqueued_job(Connecta::Runtime::CsatPushJob)
+      patch "/public/api/v1/csat_survey/#{conversation.uuid}",
+            params: { message: { submitted_values: { csat_survey_response: { rating: 5 } } } }, as: :json
 
       expect(response).to have_http_status(:success)
+
+      # O dispatcher do listener é assíncrono (EventDispatcherJob): roda o
+      # builder aqui como o listener faria após o PUT.
+      built = nil
+      expect { built = CsatSurveys::ResponseBuilder.new(message: message.reload).perform }
+        .to have_enqueued_job(Connecta::Runtime::CsatPushJob)
+
       expect(built.rating).to eq(5)
       expect(built.feedback_message).to be_nil
     end
