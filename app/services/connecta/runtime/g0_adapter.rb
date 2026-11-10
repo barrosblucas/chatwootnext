@@ -39,23 +39,12 @@ class Connecta::Runtime::G0Adapter
     Connecta::Scope::ConversationQuery.prepend(ConversationQueryTablesHook)
   end
 
+  # Sem efeito desde a Fase 2: `OutboundDispatch.claim_sql` monta o SQL com as
+  # tabelas vivas dos modelos (+ exceção da pesquisa CSAT em escopo `closed`),
+  # então não há mais constante para remapear. Mantido como no-op para não
+  # quebrar chamadores.
   def self.patch_outbound_claim
-    model = Connecta::Transfer::OutboundDispatch
-    model.send(:remove_const, :CLAIM_SQL) if model.const_defined?(:CLAIM_SQL, false)
-    model.const_set(:CLAIM_SQL, <<~SQL.squish.freeze)
-      UPDATE connecta_outbound_dispatches AS d
-      SET state = CASE WHEN EXISTS (
-            SELECT 1 FROM connecta_conversation_scopes AS s
-            JOIN connecta_scoped_inboxes AS i ON i.inbox_id = s.inbox_id
-            JOIN messages AS m ON m.id = d.message_id
-            WHERE s.conversation_id = d.conversation_id
-              AND i.enforcement = 'enforce' AND i.maintenance = false
-              AND (s.state = 'active' OR (s.state = 'reception' AND m.sender_type = 'User' AND m.sender_id IN (?)))
-          ) THEN 'dispatching' ELSE 'parked' END,
-          attempted_at = now(), updated_at = now()
-      WHERE d.message_id = ? AND d.state = 'queued'
-      RETURNING d.state
-    SQL
+    nil
   end
 
   module ProjectionTablesHook

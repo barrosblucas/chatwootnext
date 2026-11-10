@@ -125,10 +125,10 @@ RSpec.describe 'Connecta route inventory' do
                      api/v1/accounts/branded_email_layouts api/v1/accounts/onboardings api/v1/accounts/saml_settings
                      api/v1/accounts/redirect_tokens]
       },
-      'Connecta: fronteira plataforma → fork (acl sync/revoke, ativação de escopo, estado de transferência, vínculo de usuário)' => {
+      'Connecta: fronteira plataforma → fork (acl sync/revoke, ativação de escopo, estado de transferência, vínculo de usuário, modo CSAT)' => {
         auth: 'plataforma: HMAC com CONNECTA_PLATFORM_TO_FORK_SECRET (connecta/v1/base_controller.rb:15-17); ' \
               'account_id conferido contra a conta configurada (base_controller.rb:22-28); sem usuário',
-        controllers: %w[connecta/v1/acl connecta/v1/scopes connecta/v1/transfers connecta/v1/users]
+        controllers: %w[connecta/v1/acl connecta/v1/scopes connecta/v1/transfers connecta/v1/users connecta/v1/csat_config]
       },
       'Connecta na conta (vínculo de identidade, revogação de emergência, modo de caixa, despacho pendente)' => {
         auth: 'conta: Api::V1::Accounts::BaseController. identity_link: usuário atual (identity_links_controller.rb:6-9); ' \

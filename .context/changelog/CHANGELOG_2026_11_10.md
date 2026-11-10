@@ -114,3 +114,32 @@ inbox.update!(
 - `eslint` nos 2 arquivos tocados: 0 errors (1 warning pré-existente em `Response.vue:73`, `$t` dinâmico original).
 - `ruby -c` (container rails, só leitura): Syntax OK nos 11 arquivos Ruby novos/tocados; `node --check` OK no script do `Response.vue` e no spec.
 - Backend RSpec + `run_foss_spec.yml`: pendente de disparo — sem `gh`/token neste ambiente; branch `feat/fase2-csat` (`b35f61bd`) já no remoto; disparar com `gh workflow run run_foss_spec.yml --ref feat/fase2-csat --field full=true`.
+
+## Fase 2 rodada 2 · modo whatsapp/link/off + entrega da pesquisa (branch feat/fase2-csat)
+
+- Base: main remota `57d4cf6365e90d8902971938e39db48f13c6ab5c` (fetch ok, ls-remote == origin/main, sem movimento desde a rodada 1 — sem rebase); produção `5752fd8dd9477761af9b8b3c8d0671872970977e` ancestral de `origin/main` (exit 0).
+
+## Fixed (bug crítico de entrega)
+- `OutboundDispatch.claim!` estacionava a pesquisa (escopo `closed` pós-resolução). Agora `claim_sql` é montado com as tabelas vivas dos modelos (+ exceção Fase 2: `input_csat` com protocolo e escopo `closed` despacha; qualquer outra saída em `closed` continua `parked`). `G0Adapter.patch_outbound_claim` virou no-op (sem constante para remapear); semântica de enforcement preservada por ambiente (g0: `<> 'maintenance'`; produto: `= 'enforce'`).
+
+## Added
+- `POST /connecta/v1/csat_config` (HMAC plataforma→fork, `Connecta::V1::CsatConfigController#update`): body `{account_id, inbox_id, mode: whatsapp|link|off, window_minutes?}` → atualiza a inbox (só se marcada) `csat_survey_enabled` (false no `off`) e `csat_config {mode, display_type star, disable_feedback true, window_minutes}` (padrão 60); 200 devolve a config aplicada; 404 `inbox_not_enforced`; 422 `invalid_mode`/`invalid_window_minutes`; idempotente. Rota em `config/routes.rb` + `route_inventory_spec`.
+- Modo whatsapp: `CsatPolicy::WHATSAPP_MESSAGE_TEMPLATE` ("...Responda esta mensagem com uma nota de *1 a 5*..."), sem link no presenter/builders; `survey_mode`/`whatsapp_mode?` na política.
+- `Connecta::Runtime::CsatSentJob`: após a pesquisa aceita no claim (`resolve!` com `accepted`), posta `POST /attendance/v1/csat/sent` `{account_id, conversation_id: display_id, case_protocol, survey_uuid, contact_id, mode, sent_at}` — sem telefone/nome, retry 24x.
+- Specs: claim (pesquisa final despacha × texto/origem/sem-protocolo estacionam × controle active), `CsatSentJob` (contrato exato), texto whatsapp sem link, `PUT` público com nota no modo whatsapp (resposta sem comentário + push `csat`), endpoint (8 exemplos).
+
+## Deploy (atualizado — WP aplica; fallback manual)
+- Produção será configurada pelo WP via `POST /connecta/v1/csat_config` (sem intervenção no fork). Fallback manual (só se o endpoint indisponível), rails runner:
+```ruby
+inbox = Inbox.find(9)
+inbox.update!(
+  csat_survey_enabled: true,
+  csat_config: inbox.csat_config.merge(
+    'mode' => 'link', 'display_type' => 'star', 'disable_feedback' => true, 'window_minutes' => 60
+  )
+)
+```
+
+## Validacao
+- `ruby -c` (container rails, só leitura): Syntax OK nos 10 arquivos Ruby novos/tocados; linhas ≤150.
+- Backend RSpec + `run_foss_spec.yml`: ver CI abaixo.

@@ -16,8 +16,8 @@ class MessageContentPresenter < SimpleDelegator
   def content_with_survey_link
     if should_append_survey_link?
       survey_link = survey_url(conversation.uuid)
-      connecta_message = connecta_survey_message
-      return "#{connecta_message} #{survey_link}" if connecta_message.present?
+      connecta_message = connecta_survey_message(survey_link)
+      return connecta_message if connecta_message.present?
 
       custom_message = inbox.csat_config&.dig('message')
       custom_message.present? ? "#{custom_message} #{survey_link}" : I18n.t('conversations.survey.response', link: survey_link)
@@ -28,11 +28,15 @@ class MessageContentPresenter < SimpleDelegator
 
   # Conversa escopada com protocolo usa o texto do protocolo (config com
   # `{{protocolo}}` ou padrão pt-BR); demais casos seguem o nativo (nil).
-  def connecta_survey_message
+  # No modo whatsapp o cidadão responde na conversa: sem link.
+  def connecta_survey_message(survey_link)
     return nil unless Connecta::Scope::CsatPolicy.scoped_inbox?(conversation.inbox_id)
     return nil if Connecta::Scope::CsatPolicy.protocol_for(conversation).blank?
 
-    Connecta::Scope::CsatPolicy.survey_message(conversation)
+    base = Connecta::Scope::CsatPolicy.survey_message(conversation)
+    return base if Connecta::Scope::CsatPolicy.whatsapp_mode?(conversation.inbox)
+
+    "#{base} #{survey_link}"
   end
 
   def should_append_survey_link?

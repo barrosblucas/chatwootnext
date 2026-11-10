@@ -293,4 +293,181 @@ RSpec.describe 'Connecta Fase 2 · CSAT com protocolo e senha gerenciada' do
       expect(response).to have_http_status(:success)
     end
   end
+
+  describe 'claim da pesquisa em escopo closed (Fase 2 · entrega crítica)' do
+    let(:record_for) do
+      ->(message) { Connecta::Transfer::OutboundDispatchRecord.find_by!(message_id: message.id) }
+    end
+
+    def claimable_message!(target_conversation, content_type: :input_csat, message_type: :outgoing)
+      create(:message, conversation: target_conversation, inbox: target_conversation.inbox,
+                       account: target_conversation.account, message_type: message_type,
+                       content_type: content_type, content: 'x')
+    end
+
+    before { mark_inbox!(inbox) }
+
+    it 'pesquisa final (closed + protocolo, input_csat) despacha' do
+      scope_for!(conversation, state: 'closed', protocol: 'BND00000111')
+      message = claimable_message!(conversation)
+
+      Connecta::Transfer::OutboundDispatch.enqueue!(message)
+
+      expect(Connecta::Transfer::OutboundDispatch.claim!(message)).to be(true)
+      expect(record_for.call(message).state).to eq('dispatching')
+    end
+
+    it 'outra saída em escopo closed continua estacionada' do
+      scope_for!(conversation, state: 'closed', protocol: 'BND00000111')
+      message = claimable_message!(conversation, content_type: :text)
+
+      Connecta::Transfer::OutboundDispatch.enqueue!(message)
+
+      expect(Connecta::Transfer::OutboundDispatch.claim!(message)).to be(false)
+      expect(record_for.call(message).state).to eq('parked')
+    end
+
+    it 'pesquisa sem protocolo em closed continua estacionada' do
+      scope_for!(conversation, state: 'closed', protocol: nil)
+      message = claimable_message!(conversation)
+
+      Connecta::Transfer::OutboundDispatch.enqueue!(message)
+
+      expect(Connecta::Transfer::OutboundDispatch.claim!(message)).to be(false)
+      expect(record_for.call(message).state).to eq('parked')
+    end
+
+    it 'pesquisa de origem de transferência (transferred_out) continua estacionada' do
+      scope_for!(conversation, state: 'transferred_out', protocol: 'BND00000111')
+      message = claimable_message!(conversation)
+
+      Connecta::Transfer::OutboundDispatch.enqueue!(message)
+
+      expect(Connecta::Transfer::OutboundDispatch.claim!(message)).to be(false)
+      expect(record_for.call(message).state).to eq('parked')
+    end
+
+    it 'saída comum em escopo active despacha (controle nativo)' do
+      scope_for!(conversation, state: 'active', protocol: 'BND00000111')
+      message = claimable_message!(conversation, content_type: :text)
+
+      Connecta::Transfer::OutboundDispatch.enqueue!(message)
+
+      expect(Connecta::Transfer::OutboundDispatch.claim!(message)).to be(true)
+      expect(record_for.call(message).state).to eq('dispatching')
+    end
+
+    it 'avisa o WP (csat/sent) quando a pesquisa é aceita' do
+      scope_for!(conversation, state: 'closed', protocol: 'BND00000111')
+      message = claimable_message!(conversation)
+      Connecta::Transfer::OutboundDispatch.enqueue!(message)
+      expect(Connecta::Transfer::OutboundDispatch.claim!(message)).to be(true)
+
+      expect { Connecta::Transfer::OutboundDispatch.resolve!(message, 'accepted') }
+        .to have_enqueued_job(Connecta::Runtime::CsatSentJob).with(message.id)
+    end
+
+    it 'não avisa o WP quando a saída comum é aceita' do
+      scope_for!(conversation, state: 'active', protocol: 'BND00000111')
+      message = claimable_message!(conversation, content_type: :text)
+      Connecta::Transfer::OutboundDispatch.enqueue!(message)
+      expect(Connecta::Transfer::OutboundDispatch.claim!(message)).to be(true)
+
+      expect { Connecta::Transfer::OutboundDispatch.resolve!(message, 'accepted') }
+        .not_to have_enqueued_job(Connecta::Runtime::CsatSentJob)
+    end
+  end
+
+  describe Connecta::Runtime::CsatSentJob do
+    it 'posta o contrato exato do aviso de envio, sem telefone/nome' do
+      mark_inbox!(inbox)
+      scope_for!(conversation, state: 'closed', protocol: 'BND00000222')
+      inbox.update!(csat_config: { 'mode' => 'whatsapp', 'window_minutes' => 30 })
+      message = create(:message, conversation: conversation, inbox: inbox, account: account,
+                                 message_type: :outgoing, content_type: :input_csat, content: 'x')
+      stub_const('ENV', ENV.to_h.merge('CONNECTA_ACCOUNT_ID' => account.id.to_s,
+                                       'CONNECTA_PLATFORM_URL' => 'https://wp.example',
+                                       'CONNECTA_FORK_TO_PLATFORM_SECRET' => 's3cret'))
+      client = instance_double(Connecta::Runtime::PlatformClient)
+      allow(Connecta::Runtime::PlatformClient).to receive(:new).and_return(client)
+      posted = nil
+      allow(client).to receive(:post) { |path, payload| posted = [path, payload] }
+
+      described_class.new.perform(message.id)
+
+      expect(posted[0]).to eq('/attendance/v1/csat/sent')
+      expect(posted[1]).to include(
+        account_id: account.id,
+        conversation_id: conversation.display_id,
+        case_protocol: 'BND00000222',
+        survey_uuid: conversation.uuid,
+        contact_id: conversation.contact_id,
+        mode: 'whatsapp',
+        sent_at: message.reload.created_at.iso8601
+      )
+      expect(posted[1].keys).to match_array(
+        %i[account_id conversation_id case_protocol survey_uuid contact_id mode sent_at]
+      )
+    end
+  end
+
+  describe 'modo whatsapp: texto sem link' do
+    before do
+      mark_inbox!(inbox)
+      scope_for!(conversation, state: 'closed', protocol: 'BND00000333')
+      inbox.update!(csat_config: { 'mode' => 'whatsapp' })
+    end
+
+    it 'survey_message usa o texto de resposta na conversa com o protocolo' do
+      text = Connecta::Scope::CsatPolicy.survey_message(conversation)
+
+      expect(text).to include('BND00000333')
+      expect(text).to include('nota de *1 a 5*')
+      expect(text).not_to include('survey/responses')
+    end
+
+    it 'presenter não anexa link no modo whatsapp' do
+      api_inbox = create(:inbox, account: account, channel: create(:channel_api, account: account),
+                                 csat_survey_enabled: true, csat_config: { 'mode' => 'whatsapp' })
+      mark_inbox!(api_inbox)
+      api_conversation = create(:conversation, account: account, inbox: api_inbox, status: :resolved)
+      scope_for!(api_conversation, state: 'closed', protocol: 'BND00000344')
+      csat_message = create(:message, conversation: api_conversation, inbox: api_inbox, account: account,
+                                      message_type: :outgoing, content_type: :input_csat, content: 'x')
+
+      rendered = MessageContentPresenter.new(csat_message).outgoing_content
+
+      expect(rendered).to include('BND00000344')
+      expect(rendered).not_to include("/survey/responses/#{api_conversation.uuid}")
+    end
+
+    it 'modo link mantém texto do protocolo (controle)' do
+      inbox.update!(csat_config: { 'mode' => 'link' })
+      link_text = Connecta::Scope::CsatPolicy.survey_message(conversation)
+
+      expect(link_text).to start_with('✅ Seu atendimento do protocolo')
+      expect(link_text).to include('BND00000333')
+    end
+  end
+
+  describe 'nota digitada no WhatsApp via endpoint público (modo whatsapp)' do
+    it 'cria a resposta sem comentário e empurra a nota ao WP' do
+      mark_inbox!(inbox)
+      scope_for!(conversation, state: 'closed', protocol: 'BND00000444')
+      inbox.update!(csat_config: { 'mode' => 'whatsapp', 'disable_feedback' => true })
+      message = create(:message, conversation: conversation, inbox: inbox, account: account,
+                                 message_type: :outgoing, content_type: :input_csat, content: 'x')
+
+      built = nil
+      expect do
+        patch "/public/api/v1/csat_survey/#{conversation.uuid}",
+              params: { message: { submitted_values: { csat_survey_response: { rating: 5 } } } }, as: :json
+        built = message.reload.csat_survey_response
+      end.to have_enqueued_job(Connecta::Runtime::CsatPushJob)
+
+      expect(response).to have_http_status(:success)
+      expect(built.rating).to eq(5)
+      expect(built.feedback_message).to be_nil
+    end
+  end
 end

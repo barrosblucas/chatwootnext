@@ -11,27 +11,45 @@ class Connecta::Transfer::OutboundDispatch
   # superfície HTTP (409) e o parked do claim é barreira temporária.
   PARKED_VISIBLE_ERROR = 'Mensagem não enviada: o atendimento ainda não tem setor definido (recepção) ou está em transferência.'.freeze
 
-  # Uma instrução só: a troca de estado e a checagem do escopo acontecem juntas, então não há janela entre elas.
-  # T3.9: em maintenance, o claim vira parked (não despacha); a superfície HTTP traduz em 409.
-  # Recepção: libera só mensagem cujo remetente persistido (sender_type/sender_id
-  # da linha messages, nunca content_attributes) é um usuário de serviço
-  # configurado (CONNECTA_RECEPTION_SENDER_USER_IDS, vazio = nada liberado).
-  CLAIM_SQL = <<~SQL.squish.freeze
-    UPDATE connecta_g0_outbound_dispatches AS d
-    SET state = CASE WHEN EXISTS (
-          SELECT 1 FROM connecta_g0_conversation_scopes AS s
-          JOIN connecta_g0_scoped_inboxes AS i ON i.inbox_id = s.inbox_id
-          JOIN messages AS m ON m.id = d.message_id
-          WHERE s.conversation_id = d.conversation_id
-            AND i.maintenance = false AND i.enforcement <> 'maintenance'
-            AND (s.state = 'active' OR (s.state = 'reception' AND m.sender_type = 'User' AND m.sender_id IN (?)))
-        ) THEN 'dispatching' ELSE 'parked' END,
-        attempted_at = now(), updated_at = now()
-    WHERE d.message_id = ? AND d.state = 'queued'
-    RETURNING d.state
-  SQL
-
   class << self
+    # SQL do claim com tabelas vivas (g0 no spike, produto em produção/com
+    # G0Adapter ou no runner comum) + exceção Fase 2: a pesquisa CSAT
+    # (input_csat, com protocolo) despacha com o escopo `closed`.
+    def claim_sql
+      dispatch_table = Connecta::Transfer::OutboundDispatchRecord.table_name
+      scope_table = Connecta::Scope::CsatPolicy.scope_table_name
+      inbox_table = Connecta::Scope::CsatPolicy.scoped_inbox_table_name
+      csat_content_type = Message.content_types.fetch('input_csat')
+      enforcement_condition = claim_enforcement_condition(dispatch_table)
+
+      <<~SQL.squish
+        UPDATE #{dispatch_table} AS d
+        SET state = CASE WHEN EXISTS (
+              SELECT 1 FROM #{scope_table} AS s
+              JOIN #{inbox_table} AS i ON i.inbox_id = s.inbox_id
+              JOIN messages AS m ON m.id = d.message_id
+              WHERE s.conversation_id = d.conversation_id
+                AND #{enforcement_condition}
+                AND (s.state = 'active' OR (s.state = 'reception' AND m.sender_type = 'User' AND m.sender_id IN (?))
+                     OR (s.state = 'closed' AND s.case_protocol IS NOT NULL AND s.case_protocol <> '' AND m.content_type = #{csat_content_type}))
+            ) THEN 'dispatching' ELSE 'parked' END,
+            attempted_at = now(), updated_at = now()
+        WHERE d.message_id = ? AND d.state = 'queued'
+        RETURNING d.state
+      SQL
+    end
+
+    # Preserva a semântica de cada ambiente: no spike (g0) vale a condição
+    # original (`<> 'maintenance'`); com tabelas de produto vale a do
+    # G0Adapter (`= 'enforce'`). A exceção CSAT vale nos dois.
+    def claim_enforcement_condition(dispatch_table)
+      if dispatch_table == 'connecta_g0_outbound_dispatches'
+        "i.maintenance = false AND i.enforcement <> 'maintenance'"
+      else
+        "i.enforcement = 'enforce' AND i.maintenance = false"
+      end
+    end
+
     # Mensagem de saída/template, não privada, de inbox marcada. O source_id não
     # entra aqui: uma mensagem já enviada continua sendo gerenciada pelo Connecta
     # e o hook não pode reenviá-la pelo caminho nativo.
@@ -56,9 +74,10 @@ class Connecta::Transfer::OutboundDispatch
 
     # Verdadeiro só para quem trocou queued por dispatching; com o escopo fora de active a linha vira parked.
     # Os ids de remetente entram como parâmetro (IN (?); vazio vira IN (NULL) e nunca libera a recepção).
+    # Exceção Fase 2: a pesquisa CSAT (input_csat, com protocolo) despacha com o escopo `closed`.
     def claim!(message)
       state = Connecta::Transfer::OutboundDispatchRecord.connection.select_value(
-        ActiveRecord::Base.sanitize_sql_array([CLAIM_SQL, Connecta::Runtime::Feature.reception_sender_user_ids, message.id])
+        ActiveRecord::Base.sanitize_sql_array([claim_sql, Connecta::Runtime::Feature.reception_sender_user_ids, message.id])
       )
       state == 'dispatching'
     end
@@ -82,8 +101,21 @@ class Connecta::Transfer::OutboundDispatch
     end
 
     # Grava o resultado do conector. Nunca reenvia: só o claim tira uma linha de queued.
+    # Quando a pesquisa CSAT é aceita (criada e despachada), avisa o WP para
+    # que ele interprete a nota digitada no WhatsApp (job com retry).
     def resolve!(message, state)
       Connecta::Transfer::OutboundDispatchRecord.find_by!(message_id: message.id).update!(state: state, connector_message_id: message.source_id)
+      enqueue_csat_sent!(message) if state == 'accepted'
+    end
+
+    def enqueue_csat_sent!(message)
+      return unless message.input_csat?
+      return unless Connecta::Scope::CsatPolicy.scoped_inbox?(message.inbox_id)
+
+      conversation = message.conversation
+      return unless Connecta::Scope::CsatPolicy.final_protocol_resolution?(conversation)
+
+      Connecta::Runtime::CsatSentJob.perform_later(message.id)
     end
 
     # Início da transferência (escopo já transferring). Numa transação: com uncertain nada é parkeado.

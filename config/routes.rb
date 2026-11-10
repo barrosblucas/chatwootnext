@@ -45,6 +45,7 @@ Rails.application.routes.draw do
   post '/connecta/v1/users/provision', to: 'connecta/v1/users#provision'
   post '/connecta/v1/users/:user_id/password', to: 'connecta/v1/users#set_password'
   post '/connecta/v1/users/:user_id/deactivate', to: 'connecta/v1/users#deactivate'
+  post '/connecta/v1/csat_config', to: 'connecta/v1/csat_config#update'
   post '/connecta/v1/scopes/:conversation_id/activate', to: 'connecta/v1/scopes#activate'
   get '/connecta/v1/transfers/:id', to: 'connecta/v1/transfers#show'
   namespace :api, defaults: { format: 'json' } do

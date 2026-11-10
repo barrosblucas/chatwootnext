@@ -10,6 +10,11 @@ module Connecta::Scope::CsatPolicy
   # via `{{protocolo}}` (ou `{{protocol}}`).
   DEFAULT_MESSAGE_TEMPLATE = '✅ Seu atendimento do protocolo *{{protocolo}}* foi finalizado.\nAvalie o atendimento de 1 a 5:'.freeze
 
+  # Texto padrão do modo whatsapp (sem link: o cidadão responde na conversa).
+  WHATSAPP_MESSAGE_TEMPLATE = '✅ Seu atendimento do protocolo *{{protocolo}}* foi finalizado.\n' \
+                              'Responda esta mensagem com uma nota de *1 a 5* para avaliar o atendimento ' \
+                              '(1 = muito ruim, 5 = ótimo).'.freeze
+
   class << self
     # Inbox sob enforcement Connecta (alguma linha em connecta_scoped_inboxes).
     def scoped_inbox?(inbox_id)
@@ -44,11 +49,40 @@ module Connecta::Scope::CsatPolicy
       inbox.csat_config.is_a?(Hash) && inbox.csat_config['disable_feedback'] == true
     end
 
-    # Texto da pesquisa para conversa escopada (sem o link; o presenter anexa).
+    # Modo da pesquisa na inbox: "link" (padrão), "whatsapp" ou "off".
+    def survey_mode(inbox)
+      mode = inbox.csat_config.is_a?(Hash) ? inbox.csat_config['mode'].to_s : ''
+      %w[whatsapp link off].include?(mode) ? mode : 'link'
+    end
+
+    def whatsapp_mode?(inbox)
+      survey_mode(inbox) == 'whatsapp'
+    end
+
+    # Texto da pesquisa para conversa escopada. No modo whatsapp não há link
+    # (o cidadão responde na conversa); no modo link o presenter anexa.
     def survey_message(conversation)
+      return whatsapp_survey_message(conversation) if whatsapp_mode?(conversation.inbox)
+
       template = conversation.inbox.csat_config&.dig('message').presence || DEFAULT_MESSAGE_TEMPLATE
       protocol = protocol_for(conversation).to_s
       template.gsub('{{protocolo}}', protocol).gsub('{{protocol}}', protocol)
+    end
+
+    def whatsapp_survey_message(conversation)
+      template = conversation.inbox.csat_config&.dig('message').presence || WHATSAPP_MESSAGE_TEMPLATE
+      protocol = protocol_for(conversation).to_s
+      template.gsub('{{protocolo}}', protocol).gsub('{{protocol}}', protocol)
+    end
+
+    # Nomes das tabelas para SQL cru (claim): modelo do domínio quando a
+    # tabela existe, senão o modelo de produto (runner comum sem G0Adapter).
+    def scope_table_name
+      pick_table_name(Connecta::Scope::ConversationScope, Connecta::ConversationScope)
+    end
+
+    def scoped_inbox_table_name
+      pick_table_name(Connecta::Scope::ScopedInbox, Connecta::ScopedInbox)
     end
 
     private
@@ -69,6 +103,10 @@ module Connecta::Scope::CsatPolicy
       model.table_exists?
     rescue StandardError
       false
+    end
+
+    def pick_table_name(primary, fallback)
+      [primary, fallback].find { |model| table_present?(model) }&.table_name || primary.table_name
     end
   end
 end
