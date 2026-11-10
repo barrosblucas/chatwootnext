@@ -22,7 +22,17 @@
 ## Rebase sobre main 6c32c0e2 (correcao 01 continua; base anterior 0e4bcf18 estava defasada)
 - Rebase dos 4 commits do fix para `6c32c0e2` (Phase 1: provisioning, grant tombstones, heartbeat grace); unico conflito no changelog do dia (uniao das secoes, sem perda).
 - `CacheRevocation.scope!` revalidado contra a Phase 1: gate (`granted_sector?`, agora sob `usable?`) e tabelas inalterados no que importa — continua lendo `Scope::UserGrant`/`Scope::OrgUnit` (g0, mesma fonte do gate), prefixo ancestral, + admins nativos; grants revogados (tombstones destroem a linha) saem sozinhos dos destinatarios.
+## Rebase sobre main 6c32c0e2 (correção 01 continua; base anterior 0e4bcf18 estava defasada)
+- Rebase dos 4 commits do fix para `6c32c0e2` (Phase 1: provisioning, grant tombstones, heartbeat grace); unico conflito no changelog do dia (uniao das secoes, sem perda).
+- `CacheRevocation.scope!` revalidado contra a Phase 1: gate (`granted_sector?`, agora sob `usable?`) e tabelas inalterados no que importa — continua lendo `Scope::UserGrant`/`Scope::OrgUnit` (g0, mesma fonte do gate), prefixo ancestral, + admins nativos; grants revogados (tombstones destroem a linha) saem sozinhos dos destinatarios.
 - CI pos-rebase, run 42839986935 (head `b0c76a07`): plan success; lint-frontend success; frontend-tests success; backend-tests (0) success; lint-backend failure = baseline 74 (0 novos; mesmos 3 Metrics pre-existentes em `adopt_callback_scope!`); security-scan failure = baseline (Brakeman 41, 0 nos arquivos tocados).
+
+## Revisor: revogacao agnostica a tabela + announce nao-fatal (achado critico procede)
+- Achado: `cache_revocation.rb` hardcodava `connecta_g0_org_units`; em producao o G0Adapter remapeia Scope:: para `connecta_org_units` -> `StatementInvalid` em todo commit (transfer_transaction.rb:159), sem rescue, commit pela metade. CI em modo G0 nao pegava.
+- Prova failing-first, run 42844564343 (spec-only `738e014a`): `PG::UndefinedTable: missing FROM-clause entry for table "connecta_g0_org_units"` em `cache_revocation.rb:12` via `commit_local_destination!` — o commit nao retornava `pending_activation`.
+- Fix: `quoted_table_name` + `.merge(Scope::OrgUnit.where(enabled: true))` + LIKE com coluna quotada do modelo; leitores por grant filtrados por epoca valida (`revoked_locally_at: nil`, espelho de projection `verified?`; nativo bypassa epoca como no gate); `announce_scope_revoked` com rescue+warn em `commit_local_destination!` (nunca aborta o commit).
+- Novo `spec/connecta/transfer_scope_revoked_runtime_spec.rb` (modo runtime, `G0ProductTables.install!`): commit integral retorna `pending_activation` e anuncia a leitor da origem/ancestral/nativo, excluindo descendente/sem-grant/epoca-revogada.
+- CI verde, run 42852767286 (head `f63922af`): plan/lint-frontend/frontend-tests/backend-tests success; lint-backend failure = baseline 74 com ZERO nos arquivos tocados (3 Metrics `adopt_callback_scope!`/`prepare_remote!`/`transfer_transaction` pre-existentes); security-scan = baseline (Brakeman 41, 0 nos tocados).
 
 
 ## Fixed
