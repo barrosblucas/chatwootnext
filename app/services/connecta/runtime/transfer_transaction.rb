@@ -156,12 +156,7 @@ class Connecta::Runtime::TransferTransaction
 
     destination_scope = Connecta::Scope::ConversationScope.find_by!(conversation_id: destination.id)
     destination_scope.update!(transfer_id: transfer.id, platform_session_ref: transfer.platform_session_ref)
-    # O announce é só notificação de UI: nunca aborta o commit já gravado.
-    begin
-      Connecta::Runtime::CacheRevocation.scope!(source)
-    rescue StandardError => e
-      Rails.logger.warn("[connecta] scope.revoked announce failed transfer_id=#{transfer.id}: #{e.class}")
-    end
+    announce_scope_revoked(source, transfer)
     Connecta::Outbox.create!(
       dedupe_key: "transfer.committed:#{transfer.id}", event_type: 'transfer.committed',
       payload: {
@@ -172,6 +167,13 @@ class Connecta::Runtime::TransferTransaction
     Connecta::Runtime::TransferCommitJob.perform_later(transfer.id)
 
     { status: 'pending_activation', transfer_id: transfer.id, source_conversation_id: @conversation.display_id }
+  end
+
+  # O announce é só notificação de UI: nunca aborta o commit já gravado.
+  def announce_scope_revoked(source, transfer)
+    Connecta::Runtime::CacheRevocation.scope!(source)
+  rescue StandardError => e
+    Rails.logger.warn("[connecta] scope.revoked announce failed transfer_id=#{transfer.id}: #{e.class}")
   end
 
   def normalize_summary(input)
