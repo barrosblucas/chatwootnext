@@ -5,15 +5,16 @@ require 'rails_helper'
 # B3 (lápide de grant) + Q7.5 (foto no re-vínculo): eventos do contrato de fio
 # v1 §8 (WP→fork) com os campos novos `grant_id` (uuid do staff_grant do WP) e
 # `active_grant_ids`. Eventos legados sem os campos mantêm o comportamento.
-RSpec.describe 'Connecta runtime · ACL grant tombstone + snapshot' do
-  let(:service) { Connecta::Runtime::AclSyncService.new }
+RSpec.describe Connecta::Runtime::AclSyncService, 'grant tombstone + snapshot' do
+  let(:service) { described_class.new }
   let(:org) { Connecta::OrgUnit.create!(name: 'Setor', path: "/setor-#{SecureRandom.hex(3)}/") }
   let(:user_id) { 900_001 }
   let(:grant_id) { SecureRandom.uuid }
+  let(:projection) { { version: 1 } }
 
   def sync(events)
-    @version = (@version || 1) + 1
-    service.call({ 'projection_version' => @version, 'events' => events })
+    projection[:version] += 1
+    service.call({ 'projection_version' => projection[:version], 'events' => events })
   end
 
   def grant_upsert(overrides = {})

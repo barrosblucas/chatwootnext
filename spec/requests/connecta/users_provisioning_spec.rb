@@ -33,11 +33,11 @@ RSpec.describe 'Connecta v1 users provisioning', type: :request do
   describe 'POST /connecta/v1/users/provision' do
     let(:path) { '/connecta/v1/users/provision' }
 
-    it 'creates the user, the agent membership and the scoped inbox membership' do
+    it 'creates the user, the agent membership and the scoped inbox membership', :aggregate_failures do
       post_signed(path, { account_id: account.id, email: '  New.Agent@Example.com ', name: 'New Agent', password: 'StrongPass123!' })
 
       expect(response).to have_http_status(:ok)
-      body = JSON.parse(response.body)
+      body = response.parsed_body
       expect(body['user_created']).to be(true)
       expect(body['membership_created']).to be(true)
       expect(body['role']).to eq('agent')
@@ -53,21 +53,21 @@ RSpec.describe 'Connecta v1 users provisioning', type: :request do
       post_signed(path, { account_id: account.id, email: 'nopass@example.com', name: 'No Pass' })
 
       expect(response).to have_http_status(:ok)
-      expect(JSON.parse(response.body)['user_created']).to be(true)
+      expect(response.parsed_body['user_created']).to be(true)
     end
 
-    it 'reuses an existing user without changing password or name, and is idempotent' do
+    it 'reuses an existing user without changing password or name, and is idempotent', :aggregate_failures do
       existing = create(:user, email: 'reuse@example.com', name: 'Original', password: 'OriginalPass123!')
 
       post_signed(path, { account_id: account.id, email: 'reuse@example.com', name: 'Changed', password: 'OtherPass123!' })
       expect(response).to have_http_status(:ok)
-      first = JSON.parse(response.body)
+      first = response.parsed_body
       expect(first['chatwoot_user_id']).to eq(existing.id)
       expect(first['membership_created']).to be(true)
 
       post_signed(path, { account_id: account.id, email: 'reuse@example.com', name: 'Changed', password: 'OtherPass123!' })
       expect(response).to have_http_status(:ok)
-      second = JSON.parse(response.body)
+      second = response.parsed_body
       expect(second['chatwoot_user_id']).to eq(existing.id)
       expect(second['user_created']).to be(false)
       expect(second['membership_created']).to be(false)
@@ -82,7 +82,7 @@ RSpec.describe 'Connecta v1 users provisioning', type: :request do
 
       post_signed(path, { account_id: account.id, email: admin.email, name: admin.name })
       expect(response).to have_http_status(:ok)
-      body = JSON.parse(response.body)
+      body = response.parsed_body
       expect(body['membership_created']).to be(false)
       expect(body['role']).to eq('administrator')
       expect(admin.account_users.find_by(account_id: account.id)).to be_administrator
@@ -94,14 +94,14 @@ RSpec.describe 'Connecta v1 users provisioning', type: :request do
 
       post_signed(path, { account_id: account.id, email: 'scoped@example.com', name: 'Scoped' })
       expect(response).to have_http_status(:ok)
-      user_id = JSON.parse(response.body)['chatwoot_user_id']
+      user_id = response.parsed_body['chatwoot_user_id']
       expect(InboxMember.exists?(inbox_id: admin_only_inbox.id, user_id: user_id)).to be(false)
       expect(InboxMember.exists?(inbox_id: inbox.id, user_id: user_id)).to be(true)
     end
 
     it 'rejects a missing signature with 401' do
       post path, params: { account_id: account.id, email: 'x@example.com', name: 'X' }.to_json,
-                headers: { 'Content-Type' => 'application/json' }
+                 headers: { 'Content-Type' => 'application/json' }
       expect(response).to have_http_status(:unauthorized)
     end
 
@@ -129,7 +129,7 @@ RSpec.describe 'Connecta v1 users provisioning', type: :request do
 
       post_signed("/connecta/v1/users/#{admin.id}/password", { account_id: account.id, password: 'BrandNewPass123!' })
       expect(response).to have_http_status(:conflict)
-      expect(JSON.parse(response.body)['error']).to eq('not_agent')
+      expect(response.parsed_body['error']).to eq('not_agent')
       expect(admin.reload.valid_password?('Password1!')).to be(true)
     end
 
@@ -145,7 +145,7 @@ RSpec.describe 'Connecta v1 users provisioning', type: :request do
 
       post_signed("/connecta/v1/users/#{agent.id}/password", { account_id: account.id, password: 'short' })
       expect(response).to have_http_status(:unprocessable_entity)
-      expect(JSON.parse(response.body)['error']).to eq('invalid_password')
+      expect(response.parsed_body['error']).to eq('invalid_password')
     end
   end
 
@@ -159,7 +159,7 @@ RSpec.describe 'Connecta v1 users provisioning', type: :request do
 
       post_signed("/connecta/v1/users/#{agent.id}/deactivate", { account_id: account.id })
       expect(response).to have_http_status(:ok)
-      expect(JSON.parse(response.body)).to eq({ 'deactivated' => true })
+      expect(response.parsed_body).to eq({ 'deactivated' => true })
 
       expect(AccountUser.exists?(account_id: account.id, user_id: agent.id)).to be(false)
       expect(InboxMember.exists?(inbox_id: inbox.id, user_id: agent.id)).to be(false)
@@ -173,7 +173,7 @@ RSpec.describe 'Connecta v1 users provisioning', type: :request do
 
       post_signed("/connecta/v1/users/#{agent.id}/deactivate", { account_id: account.id })
       expect(response).to have_http_status(:ok)
-      expect(JSON.parse(response.body)).to eq({ 'already_inactive' => true })
+      expect(response.parsed_body).to eq({ 'already_inactive' => true })
     end
 
     it 'refuses an administrator with 409 not_agent' do
@@ -181,7 +181,7 @@ RSpec.describe 'Connecta v1 users provisioning', type: :request do
 
       post_signed("/connecta/v1/users/#{admin.id}/deactivate", { account_id: account.id })
       expect(response).to have_http_status(:conflict)
-      expect(JSON.parse(response.body)['error']).to eq('not_agent')
+      expect(response.parsed_body['error']).to eq('not_agent')
       expect(AccountUser.exists?(account_id: account.id, user_id: admin.id)).to be(true)
     end
 
@@ -193,7 +193,7 @@ RSpec.describe 'Connecta v1 users provisioning', type: :request do
 
       post_signed('/connecta/v1/users/provision', { account_id: account.id, email: 'back@example.com', name: 'Back' })
       expect(response).to have_http_status(:ok)
-      body = JSON.parse(response.body)
+      body = response.parsed_body
       expect(body['chatwoot_user_id']).to eq(agent.id)
       expect(body['membership_created']).to be(true)
       expect(body['role']).to eq('agent')

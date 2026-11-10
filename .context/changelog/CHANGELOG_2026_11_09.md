@@ -1,5 +1,17 @@
 # Changelog 2026-11-09
 
+## Fase 1 vinculo simplificado: CI verde (provision sem senha, reativacao, lint) — 2026-11-10
+
+- Causa (run 42725253050, backend-tests F5: 104 exemplos, 3 falhas; lint-backend: 96 ofensas, 22 novas da Fase-1):
+  - provision sem `password` -> 422: `SecureRandom.base58(32)` nunca tem especial e o Devise `secure_password` exige 1 maiuscula + 1 minuscula + 1 digito + 1 especial (`config/initializers/secure_password.rb`) — `User#save!` fazia rollback e caia em 422 `provision_rejected` (mesma causa nas 2 falhas de 422: `:52` sem senha e `:91` admin_only).
+  - reativar via provision -> 500: `deactivate!` destruia `AccountUser`/`InboxMember` mas mantinha `notification_settings` (unicidade `(account_id,user_id)`); no re-provision o `after_create_commit :create_notification_setting` estourava e virava 500 (log: `NotificationSetting Create` + `ROLLBACK`).
+- Codigo (branch `feat/vinculo-simplificado-fase1`, sem mudar contrato de fio nem papel administrator):
+  - `app/services/connecta/provisioning/agent_provisioner.rb`: `self.generate_password` (`"Aa1!" + base58(28)`, 32 chars, garante as 4 classes); `provision!` fatiado em `normalize_email!`/`validate_name!`/`find_or_create_user!`/`ensure_agent_membership!` (zera Metrics AbcSize/Cyclomatic/MethodLength); `deactivate!` passa a remover `notification_settings` da conta.
+  - `app/services/connecta/runtime/acl_sync_service.rb`: `verify_link!` extrai `stale_link?` e `apply_snapshot_if_present!` (mesmo comportamento, zera CyclomaticComplexity).
+- Specs (mesmas assercoes, so lint): `users_provisioning_spec.rb`: `JSON.parse(response.body)` -> `response.parsed_body` (12x), `:aggregate_failures` nos 2 exemplos com >7 expects, alinhamento `headers:`/`params:`; `runtime_acl_sync_grants_spec.rb`: `describe` passa a citar `Connecta::Runtime::AclSyncService`, `@version` vira `let(:projection)`.
+- Validacao: `ruby -c` OK nos 5 RB (container `chatwootnext:local`, `--network none`); `git diff --check` limpo; `bundle exec rspec`/`rubocop` locais indisponiveis (sem Ruby/Postgres na maquina) — segue para o CI (`run_foss_spec.yml` workflow_dispatch).
+- Historico: lint-backend ja falhava na main `0e4bcf18` (74 ofensas pre-existentes; branch tinha 96 = 74 + 22 da Fase-1, agora zeradas) e backend-tests passava 100% na main; security-scan falha nas duas (CVEs de Rails, pre-existente, sem upgrade).
+
 ## Intenção da feature
 Corrigir o popup enganoso "You are not authorized to do this action" exibido para o
 agente legítimo ao abrir `settings/connecta`: o vínculo de identidade (POST

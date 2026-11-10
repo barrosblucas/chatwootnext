@@ -119,13 +119,27 @@ class Connecta::Runtime::AclSyncService
 
     epoch = integer(data['epoch'])
     record = Connecta::UserAuthEpoch.find_or_initialize_by(user_id: user_id)
-    return if record.epoch > epoch || (record.revoked_locally_at.present? && record.epoch >= epoch)
+    return if stale_link?(record, epoch)
 
     record.update!(epoch: epoch, revoked_locally_at: nil, source: 'platform')
-    # Foto Q7.5: com a lista de grants ativos do WP, apaga os grants obsoletos
-    # do usuário (fora da lista ou legados sem grant_id) para que o re-vínculo
-    # não ressuscite acesso já removido. Sem a lista, mantém o comportamento.
-    apply_grant_snapshot!(user_id, data['active_grant_ids']) if data.key?('active_grant_ids') && !data['active_grant_ids'].nil?
+    apply_snapshot_if_present!(user_id, data)
+  end
+
+  # Evento obsoleto: época menor que a registrada, ou época igual quando o
+  # vínculo já foi revogado localmente (a revogação vence o empate).
+  def stale_link?(record, epoch)
+    return true if record.epoch > epoch
+
+    record.revoked_locally_at.present? && record.epoch >= epoch
+  end
+
+  # Foto Q7.5: com a lista de grants ativos do WP, apaga os grants obsoletos
+  # do usuário (fora da lista ou legados sem grant_id) para que o re-vínculo
+  # não ressuscite acesso já removido. Sem a lista, mantém o comportamento.
+  def apply_snapshot_if_present!(user_id, data)
+    return unless data.key?('active_grant_ids') && !data['active_grant_ids'].nil?
+
+    apply_grant_snapshot!(user_id, data['active_grant_ids'])
   end
 
   def apply_grant_snapshot!(user_id, active_grant_ids)
