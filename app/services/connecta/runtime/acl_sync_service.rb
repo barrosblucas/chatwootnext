@@ -128,7 +128,7 @@ class Connecta::Runtime::AclSyncService
   end
 
   def triple_tombstoned?(user_id, unit_id, permission)
-    Connecta::RevokedGrant.where(user_id: user_id, org_unit_id: unit_id, permission: permission).exists?
+    Connecta::RevokedGrant.exists?(user_id: user_id, org_unit_id: unit_id, permission: permission)
   end
 
   # Decide o veto da trinca lapidada: com grant_id novo, limpa a lápide da
