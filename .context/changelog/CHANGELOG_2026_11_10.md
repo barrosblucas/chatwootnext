@@ -1,5 +1,15 @@
 # Changelog 2026-11-10
 
+## Specs stale do heartbeat/grace B5 (test-only; merged to main)
+
+- Base: `5752fd8d` (fork main em 2026-11-10; worktree `/home/thanos/wt-chatwoot-specs-20261110`, branch `fix/specs-heartbeat-20261110`, commit `1e5ae978`).
+- Causa: 2 failures PRE-EXISTENTES desde Phase-1 `2b45dc6c3` (também vermelhos em produção `6c32c0e2`, run 42744485954; verdes em `0e4bcf18`): specs stale, não bugs de produção. Nenhuma mudança em código de produção.
+- Fix 1 — `spec/lib/connecta_common_product_tables_spec.rb:93-97`: o regex `/rescue.*false/m` varria `projection.rb` inteiro e passou a casar o `heartbeat_usable?` fail-closed (`rescue ArgumentError; false`, intencional). Asserção restringida à fonte de `self.marked?` (extrai `def self.marked?`...`end`; exige presente e sem `rescue.*false`). Intenção do spec preservada (sem fail-open em `marked?`).
+- Fix 2 — `spec/connecta/attachment_download_scope_spec.rb:326`: `10.minutes.ago` caiu dentro da nova janela TTL 120 s + graça 900 s → 200, não 404. Trocado para `30.minutes.ago` (igual `scope_policy_query_spec.rb:184`); adicionados irmãos `5.minutes.ago` → 200 (janela de graça) e `with_modified_env CONNECTA_ACL_STALE_GRACE_SEC: '0'` + 10 min → 404 (padrão `scope_policy_query_spec.rb:218-225`).
+- Hardening opcional (`transfer_scope_revoked_runtime_spec.rb:14`, `install!` em load) NÃO aplicado: siblings (`scope_policy_query_spec`, `attachment_download_scope_spec`) fazem o mesmo em load; mudar só este quebraria a consistência sem ganho — reportado ao orquestrador.
+- CI (dispatch `full=true` no branch): run 42862344792 (head `1e5ae978`) — plan/lint-frontend/frontend-tests success; backend-tests (0-7) TODOS success (shards 4 e 6, antes failing, agora verdes); lint-backend failure = baseline idêntico (74 ofensas, ZERO nos 2 arquivos tocados — verificado no log do job 129991525617; baseline run 42856000722 job 129969059203 também 74); security-scan failure = baseline idêntico (mesmo step `Run bundle-audit`; baseline job 129969058347 falha no mesmo step). Ruby/GH-CLI indisponíveis localmente; validação via API do GitHub com credential helper (token nunca impresso).
+- MERGE EXECUTADO (fast-forward de `5752fd8d` para o tip do branch): a linha anterior ("main moveu para `c12ed527`") era uma checagem no repo errado (conectacidade, não chatwootnext) — a main do fork seguiu em `5752fd8d` (`ls-remote` == `origin/main`, ancestral do branch). Imagem `ee-src-5752fd8d` NÃO reconstruída (mudança só de teste/docs).
+
 ## Fase 1 vinculo simplificado: correcoes de seguranca do revisor (privilegiados, lapide de trinca, invalid_password)
 
 - Achados (revisor rejeitou o fork; humano aprovou "corrigir junto com o que o revisor apontar"):
