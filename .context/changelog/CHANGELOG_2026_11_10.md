@@ -143,3 +143,8 @@ inbox.update!(
 ## Validacao
 - `ruby -c` (container rails, só leitura): Syntax OK nos 10 arquivos Ruby novos/tocados; linhas ≤150.
 - Backend RSpec + `run_foss_spec.yml`: ver CI abaixo.
+
+## CI Fase 2 rodada 2 (run_foss_spec.yml full=true, branch feat/fase2-csat)
+- Run 42915701153 (head 3d75ba95): failure — 11 exemplos meus (stub_const em `around`, PUT sem type:request, `Integer(raw,10)` com Integer do JSON) + rubocop 88 (14 minhas).
+- Run 42918187509 (head 623ff474): failure — 6 restantes (type:request no describe AC3, PUT assíncrono via EventDispatcherJob, 3 rubocop minhas) + rubocop 77 (3 minhas).
+- Run 42919900663 (head 02970a2e): backend-tests shards 0–7 success; frontend-tests success; lint-frontend success; plan success; lint-backend failure = baseline exata 74 (0 nos arquivos tocados — única linha do padrão é `spec/connecta/outbound_dispatch_spec.rb:139` pré-existente); security-scan failure só no step bundle-audit (advisories de deps, baseline). 2 iterações de fix consumidas.
