@@ -35,14 +35,14 @@ jobs:
   guard:
     runs-on: ubuntu-latest
     steps:
-      - name: Allow only manual dispatch on the dedicated branch
+      - name: Allow only manual dispatch on the allowed branches
         env:
           REF_NAME: ${{ github.ref_name }}
           EVENT_NAME: ${{ github.event_name }}
           EXPECTED: ${{ env.EXPECTED_BRANCH }}
         run: |
-          if [ "$REF_NAME" != "$EXPECTED" ]; then
-            echo "Refusing: this workflow runs only on '$EXPECTED' (got '$REF_NAME')." >&2
+          if [ "$REF_NAME" != "$EXPECTED" ] && [ "$REF_NAME" != "main" ]; then
+            echo "Refusing: this workflow runs only on '$EXPECTED' or 'main' (got '$REF_NAME')." >&2
             exit 1
           fi
           if [ "$EVENT_NAME" != "workflow_dispatch" ]; then

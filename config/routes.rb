@@ -42,6 +42,9 @@ Rails.application.routes.draw do
   get '/api', to: 'api#index'
   post '/connecta/v1/acl/sync', to: 'connecta/v1/acl#sync'
   post '/connecta/v1/acl/revoke', to: 'connecta/v1/acl#revoke'
+  post '/connecta/v1/users/provision', to: 'connecta/v1/users#provision'
+  post '/connecta/v1/users/:user_id/password', to: 'connecta/v1/users#set_password'
+  post '/connecta/v1/users/:user_id/deactivate', to: 'connecta/v1/users#deactivate'
   post '/connecta/v1/scopes/:conversation_id/activate', to: 'connecta/v1/scopes#activate'
   get '/connecta/v1/transfers/:id', to: 'connecta/v1/transfers#show'
   namespace :api, defaults: { format: 'json' } do
