@@ -14,8 +14,8 @@ class Connecta::Runtime::CacheRevocation
 
   def self.grant_reader_ids(unit_path)
     readers = Connecta::Scope::UserGrant.joins(:org_unit)
-                                         .where(permission: %w[acompanhar atender admin_nominal])
-                                         .merge(Connecta::Scope::OrgUnit.where(enabled: true))
+                                        .where(permission: %w[acompanhar atender admin_nominal])
+                                        .merge(Connecta::Scope::OrgUnit.where(enabled: true))
     if unit_path.present?
       org_table = Connecta::Scope::OrgUnit.quoted_table_name
       path_column = Connecta::Scope::OrgUnit.connection.quote_column_name('path')
