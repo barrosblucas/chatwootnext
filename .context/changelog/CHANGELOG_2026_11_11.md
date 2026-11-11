@@ -17,3 +17,10 @@
 ## Docs
 
 - `architecture.md`: seção Etapa 3 (opt-out do bot por número).
+
+## CI (`run_foss_spec.yml`, workflow_dispatch `full=true` no branch)
+
+- Run 1 (`f944bf32`, run 42935082431): plan/lint-frontend/frontend-tests/backend-tests (0-3,5-7) success; backend-tests (4) failure com 3 falhas nos specs novos (causa: `friendly_status(e)` recebia a exceção em vez de `e.status` → 500 em vez de 422/503; + spy sem stub); lint-backend failure com 77 ofensas = 74 baseline + 3 novas (`FirstHashElementIndentation` ×2 no controller novo, `LineLength` no nome da superfície do inventário); security-scan failure = baseline (Brakeman em arquivos upstream + CVE em gem, nada nos tocados).
+- Correção (`5f7853a6`): `friendly_status(e.status)`, payload do POST em variável local, nome da superfície encurtado, stub do spy no spec.
+- Run 2 (`5f7853a6`, run 42936515087): plan success; lint-frontend success; frontend-tests success; backend-tests (0-7) TODOS success; lint-backend failure = baseline exato (74 ofensas, ZERO nos arquivos tocados); security-scan failure = baseline (Brakeman exit 3 em `search_service.rb` e outros upstream + `bundle-audit` CVE-2026-67991 em `ruby_llm`; 0 achados nos arquivos tocados).
+- AC1/AC2 atendidos; sem merge na main (só branch + CI, conforme escopo).
