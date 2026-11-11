@@ -115,6 +115,10 @@ RSpec.describe 'Connecta Bot Opt-out API', type: :request do
     end
 
     context 'when disabled is missing' do
+      before do
+        allow(platform).to receive(:post)
+      end
+
       it 'returns unprocessable entity' do
         post bot_optout_path, params: {}, headers: agent.create_new_auth_token, as: :json
 

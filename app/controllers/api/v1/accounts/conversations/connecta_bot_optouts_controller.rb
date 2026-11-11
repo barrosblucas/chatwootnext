@@ -11,24 +11,25 @@ class Api::V1::Accounts::Conversations::ConnectaBotOptoutsController < Api::V1::
     response = platform_client.get(bot_optout_path)
     render json: { disabled: response['disabled'] == true, contact_id: response['contact_id'] }
   rescue Connecta::Runtime::PlatformClient::Error => e
-    render json: { error: friendly_error(e) }, status: friendly_status(e)
+    render json: { error: friendly_error(e) }, status: friendly_status(e.status)
   end
 
   def create
     return render_not_scoped unless scoped_inbox?
     return render_invalid unless valid_optout_param?
 
-    response = platform_client.post('/attendance/v1/bot-optout', {
-                                     account_id: Current.account.id,
-                                     conversation_id: @conversation.display_id,
-                                     disabled: params[:disabled],
-                                     actor_chatwoot_user_id: current_user.id
-                                   })
+    payload = {
+      account_id: Current.account.id,
+      conversation_id: @conversation.display_id,
+      disabled: params[:disabled],
+      actor_chatwoot_user_id: current_user.id
+    }
+    response = platform_client.post('/attendance/v1/bot-optout', payload)
     disabled = response['disabled'] == true
     mirror_contact_optout(disabled)
     render json: { disabled: disabled, contact_id: response['contact_id'] }, status: :ok
   rescue Connecta::Runtime::PlatformClient::Error => e
-    render json: { error: friendly_error(e) }, status: friendly_status(e)
+    render json: { error: friendly_error(e) }, status: friendly_status(e.status)
   end
 
   private
