@@ -30,6 +30,8 @@ class CsatSurveyService
     # Inboxes sob enforcement Connecta só pesquisam a resolução FINAL do
     # protocolo (com protocolo, sem origem de transferência, sem triagem).
     # As demais inboxes mantêm o comportamento nativo.
+    # Bot desativado neste número (Etapa 3): sem pesquisa automatizada.
+    return false if Connecta::Scope::CsatPolicy.bot_disabled?(contact)
     return false unless conversation_allows_csat? && csat_enabled? && !csat_already_sent?
     return Connecta::Scope::CsatPolicy.final_protocol_resolution?(conversation) if Connecta::Scope::CsatPolicy.scoped_inbox?(inbox.id)
 

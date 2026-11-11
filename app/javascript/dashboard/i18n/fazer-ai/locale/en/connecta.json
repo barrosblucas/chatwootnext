@@ -48,6 +48,18 @@
       "REUSED": "An existing service will be reopened in your sector.",
       "CONFIRM": "Start"
     },
+    "BOT_OPTOUT": {
+      "DISABLE": "Disable bot for this number",
+      "ENABLE": "Re-enable bot for this number",
+      "DISABLED_NOTICE": "Bot disabled for this number — human service.",
+      "CONFIRM_TITLE": "Disable bot for this number?",
+      "CONFIRM_DESCRIPTION": "The bot will stop answering this number automatically. Messages will keep arriving here for human service.",
+      "CONFIRM_BUTTON": "Disable bot",
+      "CANCEL_BUTTON": "Cancel",
+      "SUCCESS_DISABLED": "Bot disabled for this number.",
+      "SUCCESS_ENABLED": "Bot re-enabled for this number.",
+      "ERROR": "Could not change the bot for this number. Try again."
+    },
     "SETTINGS": {
       "TITLE": "Municipal account",
       "LINK_TITLE": "Link municipal account",

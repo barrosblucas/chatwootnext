@@ -84,6 +84,16 @@ module Connecta::Scope::CsatPolicy
       conversation.inbox.csat_config&.dig('message') || 'Please rate this conversation'
     end
 
+    # Opt-out do bot neste número (Etapa 3): espelho local em
+    # contact.custom_attributes['connecta_bot_disabled']; bot desligado ⇒ sem
+    # pesquisa automatizada, em qualquer inbox.
+    def bot_disabled?(contact)
+      return false if contact.nil?
+
+      attrs = contact.custom_attributes
+      attrs.is_a?(Hash) && attrs['connecta_bot_disabled'] == true
+    end
+
     # Nomes das tabelas para SQL cru (claim): modelo do domínio quando a
     # tabela existe, senão o modelo de produto (runner comum sem G0Adapter).
     def scope_table_name

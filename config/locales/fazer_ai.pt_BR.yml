@@ -34,6 +34,11 @@ pt_BR:
         timeout: A solicitação ao gateway Connecta expirou
         gateway_error: O gateway Connecta retornou um erro
         target_department_id_required: target_department_id é obrigatório
+      connecta_bot_optout:
+        not_scoped: Esta conversa não está em uma caixa de atendimento humano Connecta
+        disabled_required: disabled precisa ser true ou false
+        not_human_service_inbox: A plataforma não atende este número como caixa humana
+        timeout: A solicitação à plataforma Connecta expirou
     conversation_pins:
       limit_reached: Você pode fixar no máximo %{limit} conversas.
       conversation_resolved: Não é possível fixar uma conversa resolvida.

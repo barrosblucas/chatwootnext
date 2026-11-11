@@ -34,6 +34,11 @@ en:
         timeout: Connecta gateway request timed out
         gateway_error: Connecta gateway returned an error
         target_department_id_required: target_department_id is required
+      connecta_bot_optout:
+        not_scoped: This conversation is not in a Connecta human-number inbox
+        disabled_required: disabled must be true or false
+        not_human_service_inbox: The platform does not serve this number as a human inbox
+        timeout: Connecta platform request timed out
     conversation_pins:
       limit_reached: You can pin up to %{limit} conversations.
       conversation_resolved: A resolved conversation cannot be pinned.

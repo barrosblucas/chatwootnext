@@ -46,6 +46,7 @@ Rails.application.routes.draw do
   post '/connecta/v1/users/:user_id/password', to: 'connecta/v1/users#set_password'
   post '/connecta/v1/users/:user_id/deactivate', to: 'connecta/v1/users#deactivate'
   post '/connecta/v1/csat_config', to: 'connecta/v1/csat_config#update'
+  post '/connecta/v1/contacts/bot_optout', to: 'connecta/v1/contacts#bot_optout'
   post '/connecta/v1/scopes/:conversation_id/activate', to: 'connecta/v1/scopes#activate'
   get '/connecta/v1/transfers/:id', to: 'connecta/v1/transfers#show'
   namespace :api, defaults: { format: 'json' } do
@@ -218,6 +219,9 @@ Rails.application.routes.draw do
               resource :connecta_transfer, only: [:create], controller: 'connecta_transfers' do
                 get :destinations
               end
+              # Opt-out do bot por número (Etapa 3): lê/altera no WP, espelha o
+              # estado no contato. Só inboxes sob enforcement Connecta.
+              resource :connecta_bot_optout, only: [:show, :create], controller: 'connecta_bot_optouts'
               # Admissão manual Baileys (micro passo 3): rotas de coleção no
               # nível da conta (sem :conversation_id — a conversa é CRIADA aqui).
               # Autorização: inbox show? + contact da conta no controller.

@@ -11,6 +11,7 @@ const props = defineProps({
 const { t } = useI18n();
 const { connectaHumanNumberEnabled } = useConfig();
 const scope = ref(null);
+const botDisabled = ref(false);
 const showProtocol = ref(false);
 const protocol = computed(() => scope.value?.case_protocol || '');
 
@@ -41,6 +42,7 @@ const messages = computed(() => {
   }
   if (scope.value.dispatch_state === 'uncertain')
     result.push(t('CONNECTA.STATUS.UNCERTAIN'));
+  if (botDisabled.value) result.push(t('CONNECTA.BOT_OPTOUT.DISABLED_NOTICE'));
   return result;
 });
 
@@ -48,12 +50,19 @@ watch(
   () => props.conversationId,
   async id => {
     scope.value = null;
+    botDisabled.value = false;
     if (!connectaHumanNumberEnabled || !id) return;
     try {
       const { data } = await connectaAPI.showScope(id);
       scope.value = data;
     } catch (_) {
       scope.value = null;
+    }
+    try {
+      const { data } = await connectaAPI.showBotOptout(id);
+      botDisabled.value = data.disabled === true;
+    } catch (_) {
+      botDisabled.value = false;
     }
   },
   { immediate: true }

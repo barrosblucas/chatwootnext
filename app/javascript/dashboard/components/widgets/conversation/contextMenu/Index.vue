@@ -2,6 +2,9 @@
 import { mapGetters } from 'vuex';
 import { useAdmin } from 'dashboard/composables/useAdmin';
 import { useAlert } from 'dashboard/composables';
+import { useConfig } from 'dashboard/composables/useConfig';
+import connectaAPI from 'dashboard/api/connecta';
+import ConfirmationModal from 'dashboard/components/widgets/modal/ConfirmationModal.vue';
 import { copyTextToClipboard } from 'shared/helpers/clipboard';
 import {
   getSortedAgentsByAvailability,
@@ -28,6 +31,7 @@ const MENU = {
   DELETE: 'delete',
   OPEN_NEW_TAB: 'open-new-tab',
   COPY_LINK: 'copy-link',
+  BOT_OPTOUT: 'bot-optout',
 };
 
 export default {
@@ -37,6 +41,7 @@ export default {
     AgentLoadingPlaceholder,
     NextInput,
     Icon,
+    ConfirmationModal,
   },
   props: {
     chatId: {
@@ -87,6 +92,7 @@ export default {
     'assignLabel',
     'removeLabel',
     'deleteConversation',
+    'botOptoutChanged',
     'close',
   ],
   setup() {
@@ -99,6 +105,9 @@ export default {
     return {
       MENU,
       labelSearchQuery: '',
+      // Opt-out do bot (Etapa 3): null = estado ainda desconhecido (item oculto).
+      botDisabled: null,
+      botOptoutBusy: false,
       STATUS_TYPE: wootConstants.STATUS_TYPE,
       readOption: {
         label: this.$t('CONVERSATION.CARD_CONTEXT_MENU.MARK_AS_READ'),
@@ -236,6 +245,25 @@ export default {
       // Don't show snooze if the conversation is already snoozed/resolved/pending
       return this.status === wootConstants.STATUS_TYPE.OPEN;
     },
+    connectaHumanNumberEnabled() {
+      return useConfig().connectaHumanNumberEnabled === true;
+    },
+    showBotOptoutItem() {
+      return (
+        this.connectaHumanNumberEnabled &&
+        this.botDisabled !== null &&
+        this.isAllowed([MENU.BOT_OPTOUT])
+      );
+    },
+    botOptoutOption() {
+      return {
+        key: MENU.BOT_OPTOUT,
+        icon: 'bot',
+        label: this.botDisabled
+          ? this.$t('CONNECTA.BOT_OPTOUT.ENABLE')
+          : this.$t('CONNECTA.BOT_OPTOUT.DISABLE'),
+      };
+    },
     filteredLabels() {
       const labels = this.labelSearchQuery
         ? picoSearch(this.labels, this.labelSearchQuery, ['title'])
@@ -247,6 +275,7 @@ export default {
   },
   mounted() {
     this.$store.dispatch('inboxAssignableAgents/fetch', [this.inboxId]);
+    this.fetchBotOptout();
   },
   methods: {
     isAllowed(keys) {
@@ -266,6 +295,41 @@ export default {
     },
     deleteConversation() {
       this.$emit('deleteConversation', this.chatId);
+    },
+    async fetchBotOptout() {
+      // Estado lido sob demanda, só quando o menu abre. Fora de caixa humana
+      // (404) ou com a plataforma fora, o item fica oculto.
+      if (!this.connectaHumanNumberEnabled || !this.chatId) return;
+      try {
+        const { data } = await connectaAPI.showBotOptout(this.chatId);
+        this.botDisabled = data.disabled === true;
+      } catch (error) {
+        this.botDisabled = null;
+      }
+    },
+    async toggleBotOptout() {
+      if (this.botDisabled === null || this.botOptoutBusy) return;
+      const next = !this.botDisabled;
+      if (next) {
+        const confirmed = await this.$refs.botOptoutConfirm.showConfirmation();
+        if (!confirmed) return;
+      }
+      this.botOptoutBusy = true;
+      try {
+        const { data } = await connectaAPI.setBotOptout(this.chatId, next);
+        this.botDisabled = data.disabled === true;
+        if (this.botDisabled) {
+          useAlert(this.$t('CONNECTA.BOT_OPTOUT.SUCCESS_DISABLED'));
+        } else {
+          useAlert(this.$t('CONNECTA.BOT_OPTOUT.SUCCESS_ENABLED'));
+        }
+        this.$emit('botOptoutChanged', this.botDisabled);
+        this.$emit('close');
+      } catch (error) {
+        useAlert(this.$t('CONNECTA.BOT_OPTOUT.ERROR'));
+      } finally {
+        this.botOptoutBusy = false;
+      }
     },
     openInNewTab() {
       if (!this.conversationUrl) return;
@@ -459,6 +523,14 @@ export default {
         @click.stop="copyConversationLink"
       />
     </template>
+    <template v-if="showBotOptoutItem">
+      <hr class="m-1 rounded border-b border-n-weak dark:border-n-weak" />
+      <MenuItem
+        :option="botOptoutOption"
+        variant="icon"
+        @click.stop="toggleBotOptout"
+      />
+    </template>
     <template v-if="isAdmin && isAllowed([MENU.DELETE])">
       <hr class="m-1 rounded border-b border-n-weak dark:border-n-weak" />
       <MenuItem
@@ -467,5 +539,12 @@ export default {
         @click.stop="deleteConversation"
       />
     </template>
+    <ConfirmationModal
+      ref="botOptoutConfirm"
+      :title="$t('CONNECTA.BOT_OPTOUT.CONFIRM_TITLE')"
+      :description="$t('CONNECTA.BOT_OPTOUT.CONFIRM_DESCRIPTION')"
+      :confirm-label="$t('CONNECTA.BOT_OPTOUT.CONFIRM_BUTTON')"
+      :cancel-label="$t('CONNECTA.BOT_OPTOUT.CANCEL_BUTTON')"
+    />
   </div>
 </template>

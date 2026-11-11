@@ -70,6 +70,21 @@ class ConnectaApi extends ApiClient {
     );
   }
 
+  // Opt-out do bot por número (Etapa 3). Estado lido sob demanda (só quando o
+  // menu abre ou a conversa abre); fora de caixa humana o servidor 404.
+  showBotOptout(conversationId) {
+    return axios.get(
+      `/api/v1/accounts/${this.accountIdFromRoute}/conversations/${conversationId}/connecta_bot_optout`
+    );
+  }
+
+  setBotOptout(conversationId, disabled) {
+    return axios.post(
+      `/api/v1/accounts/${this.accountIdFromRoute}/conversations/${conversationId}/connecta_bot_optout`,
+      { disabled }
+    );
+  }
+
   // Etapas visíveis do protocolo. O backend filtra por conta/inbox e aplica
   // Gate por etapa; etapas ocultas não retornam id, nome nem link.
   getProtocol(protocol, { cursor = null, limit = null } = {}) {

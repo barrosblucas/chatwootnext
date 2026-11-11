@@ -211,6 +211,10 @@ const onDeleteConversation = () => {
   closeContextMenu();
 };
 
+const onBotOptoutChanged = () => {
+  closeContextMenu();
+};
+
 const onTogglePin = () => {
   togglePin(props.source.id);
   closeContextMenu();
@@ -285,6 +289,7 @@ const onTogglePin = () => {
       @toggle-pin="onTogglePin"
       @assign-priority="onAssignPriority"
       @delete-conversation="onDeleteConversation"
+      @bot-optout-changed="onBotOptoutChanged"
       @close="closeContextMenu"
     />
   </ContextMenu>
