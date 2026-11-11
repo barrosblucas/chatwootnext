@@ -42,6 +42,8 @@ module Connecta::Scope::Installer
     # resolved↔open move o escopo closed↔active via after_update_commit.
     ::Message.prepend(Connecta::Scope::ConversationResolution::MessageHook) unless
       ::Message <= Connecta::Scope::ConversationResolution::MessageHook
+    ::Message.prepend(Connecta::Scope::FirstAgentAssignment) unless
+      ::Message <= Connecta::Scope::FirstAgentAssignment
     install_resolution_hook!
     # Reuso "abrir existente" no ConversationBuilder (micro passo 1b): roda
     # depois dos before_actions nativos (conta/inbox/contact/contact_inbox
