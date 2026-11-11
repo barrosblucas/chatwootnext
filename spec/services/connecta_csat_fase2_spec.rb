@@ -165,7 +165,7 @@ RSpec.describe 'Connecta Fase 2 · CSAT com protocolo e senha gerenciada' do # r
   end
 
   describe Connecta::Runtime::CsatPushJob do
-    it 'posta o contrato exato, sem PII nem comentário' do
+    it 'posta o contrato exato, sem PII nem comentário (sem atendente: null)' do
       mark_inbox!(inbox)
       scope_for!(conversation, state: 'closed', protocol: 'BND00000099')
       response = create(:csat_survey_response, account: account, conversation: conversation,
@@ -187,10 +187,39 @@ RSpec.describe 'Connecta Fase 2 · CSAT com protocolo e senha gerenciada' do # r
         case_protocol: 'BND00000099',
         rating: 4,
         responded_at: response.reload.updated_at.iso8601,
-        csat_response_id: response.id
+        csat_response_id: response.id,
+        assigned_agent_id: nil,
+        assigned_agent_name: nil
       )
       expect(posted[1].keys).to match_array(
-        %i[account_id conversation_id case_protocol rating responded_at csat_response_id]
+        %i[account_id conversation_id case_protocol rating responded_at csat_response_id assigned_agent_id
+           assigned_agent_name]
+      )
+    end
+
+    it 'leva o atendente da resposta (id + available_name, null-safe)' do
+      mark_inbox!(inbox)
+      scope_for!(conversation, state: 'closed', protocol: 'BND00000098')
+      agent = create(:user, account: account, role: :agent, name: 'Atendente Z')
+      response = create(:csat_survey_response, account: account, conversation: conversation,
+                                               contact: contact, rating: 5, assigned_agent: agent)
+      stub_const('ENV', ENV.to_h.merge('CONNECTA_ACCOUNT_ID' => account.id.to_s,
+                                       'CONNECTA_PLATFORM_URL' => 'https://wp.example',
+                                       'CONNECTA_FORK_TO_PLATFORM_SECRET' => 's3cret'))
+      client = instance_double(Connecta::Runtime::PlatformClient)
+      allow(Connecta::Runtime::PlatformClient).to receive(:new).and_return(client)
+      posted = nil
+      allow(client).to receive(:post) { |path, payload| posted = [path, payload] }
+
+      described_class.new.perform(response.id)
+
+      expect(posted[0]).to eq('/attendance/v1/csat')
+      expect(posted[1]).to include(
+        case_protocol: 'BND00000098',
+        rating: 5,
+        csat_response_id: response.id,
+        assigned_agent_id: agent.id,
+        assigned_agent_name: agent.available_name
       )
     end
   end
@@ -421,8 +450,11 @@ RSpec.describe 'Connecta Fase 2 · CSAT com protocolo e senha gerenciada' do # r
     it 'survey_message usa o texto de resposta na conversa com o protocolo' do
       text = Connecta::Scope::CsatPolicy.survey_message(conversation)
 
-      expect(text).to include('BND00000333')
-      expect(text).to include('nota de *1 a 5*')
+      expect(text).to eq(
+        "✅ Seu atendimento do protocolo *BND00000333* foi finalizado.\n" \
+        "\nComo você avalia o atendimento? Responda com um número de *1 a 5*:\n" \
+        "\n1️⃣ 😡 Muito ruim\n2️⃣ 🙁 Ruim\n3️⃣ 😐 Regular\n4️⃣ 🙂 Bom\n5️⃣ 🤩 Ótimo"
+      )
       expect(text).not_to include('survey/responses')
     end
 

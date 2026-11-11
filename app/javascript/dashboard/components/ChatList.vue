@@ -18,6 +18,7 @@ import {
   useFunctionGetter,
 } from 'dashboard/composables/store.js';
 import { startConnectaMetadataTimer } from 'dashboard/helper/connectaMetadataTimer';
+import { leaveConnectaConversationAfterResolve } from 'dashboard/helper/connectaResolveLeave';
 
 import ChatListHeader from './ChatListHeader.vue';
 import ConversationList from './ConversationList.vue';
@@ -83,7 +84,7 @@ const props = defineProps({
 
 const emit = defineEmits(['conversationLoad']);
 const { uiSettings } = useUISettings();
-const { connectaHumanNumberEnabled } = useConfig();
+const { connectaHumanNumberEnabled, connectaTransferEnabled } = useConfig();
 const { t } = useI18n();
 const router = useRouter();
 const route = useRoute();
@@ -829,7 +830,27 @@ function toggleConversationStatus(
 
   store
     .dispatch('toggleStatus', payload)
-    .then(() => useAlert(t('CONVERSATION.CHANGE_STATUS')))
+    .then(async () => {
+      useAlert(t('CONVERSATION.CHANGE_STATUS'));
+      if (status !== wootConstants.STATUS_TYPE.RESOLVED) return;
+      // Menu de contexto sobre conversa escopada Connecta: sai da
+      // lista/store e, se era a conversa aberta, volta para a lista — igual
+      // ao Resolver do cabeçalho e à transferência. Best-effort.
+      try {
+        await leaveConnectaConversationAfterResolve({
+          store,
+          router,
+          route,
+          accountId: currentAccountId.value,
+          conversationId,
+          connectaEnabled: connectaTransferEnabled,
+          isOpenConversation:
+            store.getters.getSelectedChat?.id === conversationId,
+        });
+      } catch (_) {
+        // Resolve já foi aplicado; a saída da lista é só UX.
+      }
+    })
     .catch(error =>
       useAssignmentError(error, t('CONVERSATION.CHANGE_STATUS_FAILED'))
     );

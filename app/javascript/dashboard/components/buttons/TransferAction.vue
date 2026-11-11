@@ -8,17 +8,8 @@ import { useConfig } from 'dashboard/composables/useConfig';
 import conversationAPI from 'dashboard/api/inbox/conversation';
 import wootConstants from 'dashboard/constants/globals';
 import types from 'dashboard/store/mutation-types';
-import {
-  frontendURL,
-  conversationUrl,
-  conversationListPageURL,
-} from 'dashboard/helper/URLHelper';
-import {
-  isOnFoldersView,
-  isOnMentionsView,
-  isOnParticipatingView,
-  isOnUnattendedView,
-} from 'dashboard/store/modules/conversations/helpers/actionHelpers';
+import { frontendURL, conversationUrl } from 'dashboard/helper/URLHelper';
+import { navigateToConversationList } from 'dashboard/helper/connectaResolveLeave';
 import { emitter } from 'shared/helpers/mitt';
 
 import Dialog from 'dashboard/components-next/dialog/Dialog.vue';
@@ -134,39 +125,8 @@ const openDialog = async () => {
   fetchDestinations();
 };
 
-// Same tab detection as ChatList redirectToConversationList: after the origin
-// conversation leaves the agent's scope, land back on its list.
-const navigateToConversationList = () => {
-  const {
-    params: {
-      accountId: routeAccountId,
-      inbox_id: inboxId,
-      label,
-      teamId,
-      id: folderId,
-    },
-    name,
-  } = route;
-
-  let conversationType = '';
-  if (isOnMentionsView({ route: { name } })) {
-    conversationType = wootConstants.CONVERSATION_TYPE.MENTION;
-  } else if (isOnParticipatingView({ route: { name } })) {
-    conversationType = wootConstants.CONVERSATION_TYPE.PARTICIPATING;
-  } else if (isOnUnattendedView({ route: { name } })) {
-    conversationType = wootConstants.CONVERSATION_TYPE.UNATTENDED;
-  }
-  router.push(
-    conversationListPageURL({
-      accountId: routeAccountId ?? accountId.value,
-      conversationType,
-      customViewId: isOnFoldersView({ route: { name } }) ? folderId : undefined,
-      inboxId,
-      label,
-      teamId,
-    })
-  );
-};
+// Destino da lista extraído para `dashboard/helper/connectaResolveLeave.js`
+// (o Resolver pós-escopo usa o mesmo); ver `navigateToConversationList` lá.
 
 const handleConfirm = async () => {
   if (!selectedDepartmentId.value) return;
@@ -232,7 +192,7 @@ const handleConfirm = async () => {
       // Human-number answers 202 with { status, transfer_id,
       // source_conversation_id } and no display_id: the origin route would
       // 404, so go back to the list of the tab the transfer started from.
-      navigateToConversationList();
+      navigateToConversationList(router, route, accountId.value);
     }
   } catch (error) {
     useAlert(error.response?.data?.error || t('CONVERSATION.TRANSFER.ERROR'));

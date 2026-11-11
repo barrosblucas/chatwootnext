@@ -3,10 +3,13 @@ import { ref, computed } from 'vue';
 import { useAlert, useAssignmentError } from 'dashboard/composables';
 import { useToggle } from '@vueuse/core';
 import { useI18n } from 'vue-i18n';
+import { useRoute, useRouter } from 'vue-router';
 import { useStore, useStoreGetters } from 'dashboard/composables/store';
 import { useEmitter } from 'dashboard/composables/emitter';
+import { useConfig } from 'dashboard/composables/useConfig';
 import { useKeyboardEvents } from 'dashboard/composables/useKeyboardEvents';
 import { useConversationRequiredAttributes } from 'dashboard/composables/useConversationRequiredAttributes';
+import { leaveConnectaConversationAfterResolve } from 'dashboard/helper/connectaResolveLeave';
 
 import WootDropdownItem from 'shared/components/ui/dropdown/DropdownItem.vue';
 import WootDropdownMenu from 'shared/components/ui/dropdown/DropdownMenu.vue';
@@ -23,6 +26,9 @@ import ConversationResolveAttributesModal from 'dashboard/components-next/Conver
 const store = useStore();
 const getters = useStoreGetters();
 const { t } = useI18n();
+const router = useRouter();
+const route = useRoute();
+const { connectaTransferEnabled } = useConfig();
 const { checkMissingAttributes } = useConversationRequiredAttributes();
 
 const arrowDownButtonRef = ref(null);
@@ -34,6 +40,7 @@ const closeDropdown = () => toggleDropdown(false);
 const openDropdown = () => toggleDropdown(true);
 
 const currentChat = computed(() => getters.getSelectedChat.value);
+const accountId = computed(() => getters.getCurrentAccountId.value);
 
 const isOpen = computed(
   () => currentChat.value.status === wootConstants.STATUS_TYPE.OPEN
@@ -85,8 +92,9 @@ const toggleStatus = (status, snoozedUntil, customAttributes = null) => {
   closeDropdown();
   isLoading.value = true;
 
+  const conversationId = currentChat.value.id;
   const payload = {
-    conversationId: currentChat.value.id,
+    conversationId,
     status,
     snoozedUntil,
   };
@@ -97,7 +105,26 @@ const toggleStatus = (status, snoozedUntil, customAttributes = null) => {
 
   store
     .dispatch('toggleStatus', payload)
-    .then(() => useAlert(t('CONVERSATION.CHANGE_STATUS')))
+    .then(async () => {
+      useAlert(t('CONVERSATION.CHANGE_STATUS'));
+      if (status !== wootConstants.STATUS_TYPE.RESOLVED) return;
+      // Conversa escopada Connecta sai da lista/store e volta para a lista,
+      // como na transferência; demais inboxes mantêm o comportamento nativo.
+      // Best-effort: nunca mascara o resolve bem-sucedido.
+      try {
+        await leaveConnectaConversationAfterResolve({
+          store,
+          router,
+          route,
+          accountId: accountId.value,
+          conversationId,
+          connectaEnabled: connectaTransferEnabled,
+          isOpenConversation: true,
+        });
+      } catch (_) {
+        // Resolve já foi aplicado; a saída da lista é só UX.
+      }
+    })
     .catch(error =>
       useAssignmentError(error, t('CONVERSATION.CHANGE_STATUS_FAILED'))
     )

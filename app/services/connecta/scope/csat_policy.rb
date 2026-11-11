@@ -11,9 +11,11 @@ module Connecta::Scope::CsatPolicy
   DEFAULT_MESSAGE_TEMPLATE = '✅ Seu atendimento do protocolo *{{protocolo}}* foi finalizado.\nAvalie o atendimento de 1 a 5:'.freeze
 
   # Texto padrão do modo whatsapp (sem link: o cidadão responde na conversa).
-  WHATSAPP_MESSAGE_TEMPLATE = '✅ Seu atendimento do protocolo *{{protocolo}}* foi finalizado.\n' \
-                              'Responda esta mensagem com uma nota de *1 a 5* para avaliar o atendimento ' \
-                              '(1 = muito ruim, 5 = ótimo).'.freeze
+  # Espelho do texto aprovado pelo solicitante: protocolo em {{protocolo}},
+  # pergunta com número de *1 a 5* e a escala com emojis, um item por linha.
+  WHATSAPP_MESSAGE_TEMPLATE = "✅ Seu atendimento do protocolo *{{protocolo}}* foi finalizado.\n" \
+                              "\nComo você avalia o atendimento? Responda com um número de *1 a 5*:\n" \
+                              "\n1️⃣ 😡 Muito ruim\n2️⃣ 🙁 Ruim\n3️⃣ 😐 Regular\n4️⃣ 🙂 Bom\n5️⃣ 🤩 Ótimo".freeze
 
   class << self
     # Inbox sob enforcement Connecta (alguma linha em connecta_scoped_inboxes).
