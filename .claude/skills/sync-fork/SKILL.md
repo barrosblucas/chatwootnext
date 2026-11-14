@@ -6,6 +6,8 @@ allowed-tools: Bash, Read, Edit, Write, Grep, Glob
 
 # Sync fork — (chatwoot → fazer-ai CE) and (fazer-ai CE → fazer-ai Pro)
 
+> ⚠️ **Fork-remotes mismatch (2026-11-14).** This skill was written for the `fazer-ai/chatwoot` (+ `fazer-ai/chatwoot-pro`) remotes, which do NOT exist in this clone (`git remote -v`: `origin → barrosblucas/chatwootnext`, `upstream-fazer → fazer-ai/chatwoot`). Remote names, destination repos and both merge flows below do not match this fork's reality — do not run this skill as-is; confirm direction and remotes with the user first.
+
 > **Direction is never implicit.** Before reading any further, confirm with the user which sync flow this is: `chatwoot/chatwoot → fazer-ai/chatwoot` (CE merge) or `fazer-ai/chatwoot → fazer-ai/chatwoot-pro` (Pro merge). Both flows share most patterns but diverge on branch names, push targets, and which side is HEAD. Picking the wrong flow silently inverts the KC/AI decisions in every recurring pattern below — do not infer from context, ask.
 
 The fazer-ai CE fork diverges from chatwoot upstream on real features (Baileys, Zapi, per-inbox signatures, scheduled messages, group conversations, internal chat). fazer-ai Pro further extends CE with Pro-only features (kanban, integrity reporting, protected subscription keys, configurable super-admin paywall URL, etc.). Every few releases we pull each level of upstream in to stay current. This skill captures the recurring patterns and footguns for **both** sync flows so the next merge doesn't rediscover them from scratch.

@@ -1,3 +1,5 @@
+> Arquivado em 2026-11-14: superado pelo commit consolidado `1772a68a3` (versão consolidada de produção 2026-10-29).
+
 # Plano de commit — fork Chatwootnext (Connecta G0/F7)
 
 Data: 2026-10-25 · Frente: FORK-c9 · Status: **somente plano. Nenhum `git add` ou `git commit` foi executado.** O humano revisa antes.

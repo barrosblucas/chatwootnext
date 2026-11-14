@@ -1,3 +1,5 @@
+> Arquivado em 2026-11-14: spike de teste encerrado; hooks de entrega existem em `app/services/connecta/scope/installer.rb:97-110` (`install_realtime!`).
+
 # G0 · RF4/RF5 — revalidar notificações existentes e entregas pendentes (spike, só teste) · rev. 2
 
 Escopo: só REQUIRED_FIXES 4 e 5 do Juiz T2 (`/home/thanos/.local/state/codex-judge/20261024T192516-1387110/verdict.md`).

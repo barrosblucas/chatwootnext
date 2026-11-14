@@ -1,4 +1,4 @@
-# Liga os hooks do spike G0. Só os specs G0 chamam install!; fora deles os hooks não são prepended e o código nativo permanece.
+# Liga os hooks de escopo. install! só roda em teste (guard Rails.env.test? abaixo); em produção o opt-in runtime (Connecta::Runtime::Installer, via CONNECTA_HUMAN_NUMBER_ENABLED) chama os install_* individuais.
 # Bootstrap coeso e idempotente dos hooks (registros por área + rota de download desenhada uma vez):
 # fatiar o módulo espalharia install!/guards de segurança e pioraria a clareza sem reduzir acoplamento real.
 # rubocop:disable Metrics/ModuleLength

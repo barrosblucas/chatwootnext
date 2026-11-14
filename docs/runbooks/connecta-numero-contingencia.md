@@ -15,7 +15,8 @@ Fork (chatwootnext), verificados por grep em `app/`:
 | `CONNECTA_PLATFORM_URL` + `CONNECTA_FORK_TO_PLATFORM_SECRET` | `runtime/platform_client.rb:13` | Fork → WP (destinos, prepare/commit/abort/activated, identity, revogações) |
 | `CONNECTA_PLATFORM_TO_FORK_SECRET` | `connecta/v1/base_controller.rb:16` | WP → fork (sync/heartbeat, revoke, activate) |
 | `CONNECTA_DISPATCH_WAIT_MS` (0–30000, padrão 5000) | `runtime/transfer_transaction.rb:138` | Espera por despacho antes de transferir |
-| `CONNECTA_ACL_HEARTBEAT_TTL_SEC` (padrão 60) | `runtime/g0_adapter.rb:62` | TTL do heartbeat fail-closed da ACL |
+| `CONNECTA_ACL_HEARTBEAT_TTL_SEC` (padrão 120) | `scope/projection.rb:5,13-15` | TTL do heartbeat da ACL; após TTL + graça, fail-closed |
+| `CONNECTA_ACL_STALE_GRACE_SEC` (padrão 900; 0 desliga) | `scope/projection.rb:9,17-19` | Janela de graça degradada após o TTL; depois dela, fail-closed |
 | `CONNECTA_RECEPTION_ORG_UNIT_ID` | `runtime/reception_scope_creator.rb:12` | Unidade de recepção; ausente com inbox marcada = erro explícito |
 | `ScopedInbox.enforcement` (`enforce`/`admin_only`) + `maintenance` (bool) | `models/connecta/scoped_inbox.rb`, migration `...human_number_tables.rb:9` | `admin_only` = servidor nega toda superfície a não-admin; `maintenance` = entradas gravadas, envio humano bloqueado |
 

@@ -15,7 +15,7 @@ scripts/connecta/   (novo em 2026-10-22: preparo do ambiente de teste G0)
 | Pasta | Responsabilidade | Observação |
 |---|---|---|
 | `app/` | Rails: controllers, models, services, jobs, `javascript/` (frontend Vue) | `app/services/connecta/` = transferência atual |
-| `app/services/connecta/scope/` | Spike G0 de escopo (T0.2 partes A e B1): modelos `connecta_g0_*`, projeção, gate, query e hooks prepended (HTTP de conversa e mensagens em `conversation_http_hook.rb`) | não é produto; `installer.rb` só é chamado pelo spec G0 |
+| `app/services/connecta/scope/` | Escopo de acesso (spike G0 T0.2 partes A e B1 + opt-in de produção): modelos `connecta_*`, projeção, gate, query e hooks prepended (HTTP de conversa e mensagens em `conversation_http_hook.rb`) | `Scope::Installer.install!` só roda em teste (`scope/installer.rb:6-7`); produção usa `Runtime::Installer.install!` via `config/initializers/connecta_runtime.rb:1-3`, com opt-in `CONNECTA_HUMAN_NUMBER_ENABLED` (padrão false, `runtime/feature.rb:3`) e tabelas verificadas (`runtime/g0_adapter.rb:18-22`), chamando os `install_*` individuais (`runtime/installer.rb:21-28`) |
 | `config/` | Rotas (`routes.rb`), `database.yml`, `sidekiq.yml`, initializers | |
 | `db/` | Migrações (`db/migrate/`, 185 arquivos) e `schema.rb` | |
 | `enterprise/` | Overlay Enterprise (estende OSS por módulos) | `AGENTS.md` |
@@ -33,7 +33,7 @@ scripts/connecta/   (novo em 2026-10-22: preparo do ambiente de teste G0)
 | `app/javascript/dashboard/store/modules/conversations/helpers/connectaMediaRehydrate.js` (+ specs) + `actions.js` (placeholder/hidratação) | Reidratação por viewer via GET com janela, updated_at, dedup/abort, sem cache entre usuários | release 2026-11-03 ativo em `8f2b...` |
 | `app/builders/messages/message_builder.rb` (`prepend_baileys_agent_name`) + `app/javascript/dashboard/helper/editorHelper.js` (espelho) | Assinatura Baileys `**_Nome_**:` (fio `*_Nome_*: `), idempotente + normaliza legados | release 2026-11-03 ativo em `8f2b...` |
 | `app/controllers/api/v1/accounts/conversations/connecta_transfers_controller.rb` (`transfer_destinations_list`) | Envelope destinations: objeto WP → array `{ destinations: [...] }` | release 2026-11-03 ativo em `8f2b...` |
-| `.context/evidence/g0/` | Evidências do G0: baseline por SHA256 (`00`), execução e validação (`01`), inventário T0.1 (`02`), retomada do runner (`03-retomada-*`, com cópias e logs), testes stub (`04`) e medições T0.4/T0.5 (`05-*`: EVID4, EVID6, baseline e logs), recuperação do lote B2 (`08-recuperacao-b2.md`, com logs em `08-logs/`) | novo em 2026-10-22 |
+| `.context/evidence/g0/` | Evidências do G0: baseline por SHA256 (`00`), execução e validação (`01`), inventário T0.1 (`02`), retomada do runner (`03-retomada-runner.md`, logs em `03-retomada-logs/`, hashes `03*-sha256.txt`), testes stub (`04`) e medições T0.4/T0.5 (`05-evid4-anexos.md`, `05-evid6-agentbot.md`, hash `05-baseline-sha256.txt`), recuperação do lote B2 (`08-recuperacao-b2.md`, com logs em `08-logs/`) | cópias de baseline removidas em 2026-11-14 (ver changelog do dia); novo em 2026-10-22 |
 | `spec/connecta/support/` | Helpers do spike G0 (`g0_scope_schema.rb`: schema create-only, fora do carregamento automático de `rails_helper`; `g0_scope_fixture.rb`: fixture compartilhado dos specs de escopo) | carregado por `require_relative` no spec de escopo |
 | `.bundle/gems/` | Gems do ambiente G0 (`BUNDLE_PATH`), gerado pelo `bundle install` | ignorado pelo git (`.gitignore:8`); não versionar |
 | `theme/` | Tema visual (ex.: `colors.js`, `icons.js`) | |

@@ -97,19 +97,18 @@ Automate this with your worktree tool's create hook (e.g. worktrunk's `pre-start
 
 ## Git Remotes & PRs
 
-This repo is a fork of `chatwoot/chatwoot`. Remotes and their roles:
+This repo (`barrosblucas/chatwootnext`) is a personal fork for the Connecta pilot. Remotes and their roles:
 
-- **origin** → `fazer-ai/chatwoot` (our CE fork). Feature/fix PRs from `main` target this repo.
-- **chatwoot-pro** → `fazer-ai/chatwoot-pro` (Pro fork). `chatwoot-pro-main` is merged directly (no PR) and carries the `vX.Y.Z-fazer-ai-pro.N` tags/releases.
-- **upstream** → `chatwoot/chatwoot` (Chatwoot OSS). Read-only / sync only (merge `develop` via the `sync-fork` skill). **Never open a PR against upstream.**
+- **origin** → `barrosblucas/chatwootnext`. Work and PRs target this repo (`main`).
+- **upstream-fazer** → `fazer-ai/chatwoot`. Read-only / sync only (pull to stay current). **Never open a PR against upstream-fazer.**
 
-⚠️ **`gh` fork gotcha:** because `origin` is a fork of `chatwoot/chatwoot`, `gh` resolves the PR base repo to the **parent (upstream)** when no default is set — so `gh pr create` silently opens the PR on `chatwoot/chatwoot`. Pin the base repo once per clone:
+⚠️ **`gh` fork gotcha:** because `origin` is a fork, `gh` resolves the PR base repo to the **parent** when no default is set — so `gh pr create` silently opens the PR on the wrong repo. Pin the base repo once per clone:
 
 ```sh
-gh repo set-default fazer-ai/chatwoot   # writes remote.origin.gh-resolved=base
+gh repo set-default barrosblucas/chatwootnext   # writes remote.origin.gh-resolved=base
 ```
 
-When unsure, be explicit: `gh pr create --repo fazer-ai/chatwoot` (for Pro PRs, `--repo fazer-ai/chatwoot-pro`).
+When unsure, be explicit: `gh pr create --repo barrosblucas/chatwootnext`.
 
 ### Merge strategy
 
