@@ -79,8 +79,11 @@ gem 'dotenv-rails', '>= 3.0.0'
 gem 'foreman'
 gem 'puma', '~> 7.2', '>= 7.2.2'
 gem 'vite_rails'
-# Pinned to the version fixing GHSA-42qh-8mx8-7wqm; vite_ruby >= 3.11 allows it
-# (3.10.x constrains rack-proxy to ~> 0.6, which is why vite_ruby floated).
+# Pinned: vite-plugin-ruby@^5.2.1 (package.json) is only compatible with
+# vite_ruby 3.10.x; 3.10.6 is the first 3.10 allowing rack-proxy >= 1.0
+# (matches upstream lock). 3.11.x breaks Rails boot via CompatibilityCheck.
+gem 'vite_ruby', '~> 3.10.6'
+# Pinned to the version fixing GHSA-42qh-8mx8-7wqm.
 gem 'rack-proxy', '~> 1.0.3'
 # metrics on heroku
 gem 'barnes'
