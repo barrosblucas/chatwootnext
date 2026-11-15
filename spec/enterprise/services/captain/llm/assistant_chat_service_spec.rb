@@ -70,7 +70,7 @@ RSpec.describe Captain::Llm::AssistantChatService do
 
     it 'marks final response generations for observation-level evaluators' do
       service = described_class.new(assistant: assistant, conversation: conversation)
-      message = instance_double(RubyLLM::Message, content: 'Final answer', input_tokens: 10, output_tokens: 20, tool_calls: {})
+      message = instance_double(RubyLLM::Message, content: 'Final answer', tokens: RubyLLM::Tokens.new(input: 10, output: 20), tool_calls: {})
 
       attributes = service.send(:generation_attributes, mock_chat, message)
 
@@ -82,8 +82,7 @@ RSpec.describe Captain::Llm::AssistantChatService do
       message = instance_double(
         RubyLLM::Message,
         content: '',
-        input_tokens: 10,
-        output_tokens: 20,
+        tokens: RubyLLM::Tokens.new(input: 10, output: 20),
         tool_calls: { 'call_1' => instance_double(RubyLLM::ToolCall) }
       )
 
