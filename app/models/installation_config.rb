@@ -78,8 +78,8 @@ class InstallationConfig < ApplicationRecord
   end
 
   # Compat: ChatwootHub e código upstream ainda usam val/val=
-  alias_method :val, :value
-  alias_method :val=, :value=
+  alias val value
+  alias val= value=
 
   private
 

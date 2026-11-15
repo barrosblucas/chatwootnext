@@ -20,6 +20,9 @@ module Connecta::Scope::ConversationHttpHook
   # T3.9 maintenance: a escrita humana nega com 409 quando a inbox está em
   # manutenção (a entrada continua gravada pelo ingresso). O check vem antes
   # do team_id: manutenção é contenção de envio, não erro de parâmetro.
+  # Ordem das negações é a política de segurança (manutenção antes de team_id antes de escrita);
+  # reordenar ou fatiar mudaria a precedência de negação.
+  # rubocop:disable Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity -- ver acima
   def connecta_scope_write_guard!
     return if request.get? || action_name == 'transcript' || @conversation.nil? || !Connecta::Scope::Projection.marked?(@conversation.inbox_id)
     return connecta_scope_maintenance_guard! if connecta_scope_maintenance_denial?
@@ -29,6 +32,7 @@ module Connecta::Scope::ConversationHttpHook
 
     raise Connecta::Scope::Denied, :forbidden
   end
+  # rubocop:enable Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
 
   # team_id proibido na inbox marcada (matriz 10.1, T0.2-c6 parte a): só roda depois da escrita autorizada,
   # para não ampliar acesso nem revelar existência (fora do escopo continua 404/403 pelo caminho nativo).

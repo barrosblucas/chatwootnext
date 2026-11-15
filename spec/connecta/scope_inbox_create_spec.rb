@@ -53,7 +53,7 @@ RSpec.describe 'Connecta inbox create (admin nominal e nativo)', type: :request 
   # Bootstrap C7: conta fresca (nenhuma inbox marcada) ainda não tem projeção/admin_nominal
   # sincronizado — o administrador nativo pode criar a primeira inbox WhatsApp, auditado
   # como allow em 'inbox_create_bootstrap'. Assim que há marca, vale a regra nominal.
-  context 'bootstrap (conta sem nenhuma inbox marcada)' do
+  context 'when faz bootstrap (conta sem nenhuma inbox marcada)' do
     before { Connecta::Scope::ScopedInbox.delete_all }
 
     it 'administrador nativo cria a primeira inbox WhatsApp (allow bootstrap auditado)' do
@@ -77,7 +77,7 @@ RSpec.describe 'Connecta inbox create (admin nominal e nativo)', type: :request 
     end
   end
 
-  context 'conta já marcada (regra nominal mantida)' do
+  context 'when a conta já está marcada (regra nominal mantida)' do
     it 'administrador nativo sem grant admin_nominal continua 403 com deny' do
       native_only = create(:user, account: account, role: :agent)
       account.account_users.find_by!(user: native_only).update!(role: :administrator)

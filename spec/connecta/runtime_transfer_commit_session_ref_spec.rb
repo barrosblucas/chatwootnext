@@ -41,6 +41,13 @@ RSpec.describe 'Connecta runtime · commit consome to_session_ref (§9.4)' do # 
   # (mesma montagem do contrato Fork→WP itens 3 e 5): origem transferred_out e
   # destino pending_activation versão 0 no inbox/contato da origem. O prepare real
   # nunca preenche platform_session_ref (WP ainda não criou a sessão destino).
+  def stub_transfer_outbox!
+    outbox = instance_double(Connecta::Outbox)
+    allow(Connecta::Outbox).to receive(:find_by!).and_return(outbox)
+    allow(Connecta::Outbox).to receive(:find_by).and_return(outbox)
+    allow(outbox).to receive(:update!)
+  end
+
   def prepare_committed_local!(session_ref:)
     Connecta::Scope::ConversationScope.find_by!(conversation_id: conv_a.id).update!(state: 'transferred_out')
     Connecta::Scope::ConversationScope.find_by!(conversation_id: conv_b.id)
@@ -51,10 +58,7 @@ RSpec.describe 'Connecta runtime · commit consome to_session_ref (§9.4)' do # 
       destination_conversation_id: conv_b.id, destination_org_unit_id: org_b.id,
       target_case_version: 2, platform_session_ref: session_ref
     )
-    outbox = instance_double(Connecta::Outbox)
-    allow(Connecta::Outbox).to receive(:find_by!).and_return(outbox)
-    allow(Connecta::Outbox).to receive(:find_by).and_return(outbox)
-    allow(outbox).to receive(:update!)
+    stub_transfer_outbox!
     transfer
   end
 
@@ -88,7 +92,7 @@ RSpec.describe 'Connecta runtime · commit consome to_session_ref (§9.4)' do # 
     expect(commit).not_to be_nil
   end
 
-  context 'resposta do commit sem to_session_ref' do
+  context 'when a resposta do commit vem sem to_session_ref' do
     let(:commit_response) { { 'case_version' => 2 } }
 
     it 'falha fechado com erro tipado e não grava nil' do

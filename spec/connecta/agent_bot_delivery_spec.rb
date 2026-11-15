@@ -139,7 +139,7 @@ RSpec.describe 'AgentBot delivery (T0.5 · EVID6)', type: :job do
       entry = ActiveJob::Base.queue_adapter.enqueued_jobs.find { |job| job[:job] == AgentBots::WebhookJob }
       break if entry.nil?
 
-      at = entry[:at] ? Time.at(entry[:at]) : Time.current
+      at = entry[:at] ? Time.zone.at(entry[:at]) : Time.current
       travel_to(at) { perform_enqueued_jobs(at: at) }
     end
   end

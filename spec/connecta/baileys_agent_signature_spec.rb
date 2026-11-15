@@ -157,9 +157,9 @@ RSpec.describe 'Connecta Baileys agent signature (S.1a)' do # rubocop:disable RS
     context 'when the message carries a caption with an attachment' do
       let(:params) do
         ActionController::Parameters.new({
-                                          content: 'foto da recepção',
-                                          attachments: [Rack::Test::UploadedFile.new('spec/assets/avatar.png', 'image/png')]
-                                        })
+                                           content: 'foto da recepção',
+                                           attachments: [Rack::Test::UploadedFile.new('spec/assets/avatar.png', 'image/png')]
+                                         })
       end
 
       before { user.update!(ui_settings: { 'channel_whatsapp_signature_enabled' => true }) }

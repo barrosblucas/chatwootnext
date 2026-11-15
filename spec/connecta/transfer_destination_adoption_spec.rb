@@ -47,9 +47,9 @@ RSpec.describe 'Connecta runtime · adoção do escopo de recepção do callback
     expect(transfer.begin!).to eq(:proceed)
 
     destination = nil
-    expect {
+    expect do
       destination = transfer.commit_local!(target_case_version: 2, summary: 'Assunto: a. Feito: b. Pendencia: c.')
-    }.not_to raise_error
+    end.not_to raise_error
 
     expect(destination).to be_a(Conversation)
     scopes = Connecta::Scope::ConversationScope.where(conversation_id: destination.id).to_a
@@ -76,10 +76,10 @@ RSpec.describe 'Connecta runtime · adoção do escopo de recepção do callback
     expect(transfer.begin!).to eq(:proceed)
     first = transfer.commit_local!(target_case_version: 2, summary: 'Assunto: a. Feito: b. Pendencia: c.')
 
-    expect {
+    expect do
       second = transfer.commit_local!(target_case_version: 2, summary: 'Assunto: a. Feito: b. Pendencia: c.')
       expect(second.id).to eq(first.id)
-    }.not_to change(Conversation, :count)
+    end.not_to change(Conversation, :count)
 
     expect(Connecta::Scope::ConversationScope.where(conversation_id: first.id).count).to eq(1)
     expect(Connecta::Transfer::TransferRecord.where(source_conversation_id: conv_a.id).count).to eq(1)
@@ -89,9 +89,9 @@ RSpec.describe 'Connecta runtime · adoção do escopo de recepção do callback
     with_callback_scope(state: 'active', case_protocol: 'CASO-X', case_version: 1)
     expect(transfer.begin!).to eq(:proceed)
 
-    expect {
+    expect do
       transfer.commit_local!(target_case_version: 2, summary: 'Assunto: a. Feito: b. Pendencia: c.')
-    }.to raise_error(ActiveRecord::RecordNotFound)
+    end.to raise_error(ActiveRecord::RecordNotFound)
 
     expect(origin_scope.reload.state).to eq('transferring')
     expect(transfer.record.reload.state).to eq('requested')
@@ -120,9 +120,9 @@ RSpec.describe 'Connecta runtime · adoção do escopo de recepção do callback
         conversation
       end
 
-      expect {
+      expect do
         transfer.commit_local!(target_case_version: 2, summary: 'Assunto: a. Feito: b. Pendencia: c.')
-      }.to raise_error(ActiveRecord::RecordNotFound)
+      end.to raise_error(ActiveRecord::RecordNotFound)
     end
     expect(origin_scope.reload.state).to eq('transferring')
   end
@@ -134,9 +134,9 @@ RSpec.describe 'Connecta runtime · adoção do escopo de recepção do callback
     conversations_before = Conversation.count
     scopes_before = Connecta::Scope::ConversationScope.count
 
-    expect {
+    expect do
       transfer.commit_local!(target_case_version: 2, summary: 'Assunto: a. Feito: b. Pendencia: c.')
-    }.to raise_error(ActiveRecord::RecordNotFound)
+    end.to raise_error(ActiveRecord::RecordNotFound)
 
     expect(Conversation.count).to eq(conversations_before)
     expect(Connecta::Scope::ConversationScope.count).to eq(scopes_before)

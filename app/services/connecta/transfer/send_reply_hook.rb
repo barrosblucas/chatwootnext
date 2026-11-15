@@ -3,6 +3,8 @@
 # para nós: outro worker detém o lock do mesmo message id e o provedor deduplica o reenvio, então a linha volta a queued e o retry
 # nativo (SendReplyJob, 60s) tenta de novo. O claim não age sobre linha fora de queued: re-execuções não reenviam.
 module Connecta::Transfer::SendReplyHook
+  # Claim/retry com rescue/else por etapa: dividir mudaria a semântica de retry do SendReplyJob.
+  # rubocop:disable Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity -- ver acima
   def perform(message_id)
     message = Message.find(message_id)
     return super unless Connecta::Transfer::OutboundDispatch.managed?(message)
@@ -38,6 +40,7 @@ module Connecta::Transfer::SendReplyHook
       Connecta::Transfer::OutboundDispatch.resolve!(message, message.reload.failed? ? 'failed' : 'accepted')
     end
   end
+  # rubocop:enable Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
 
   # O retry de um 409 pode encontrar a mensagem já enviada pelo worker que detinha
   # o lock (source_id preenchido). Sem esta reconciliação a linha ficaria queued

@@ -136,6 +136,7 @@ RSpec.describe 'Connecta G0 · despacho de saída e barreira de transferência (
   end
 end
 
+# rubocop:disable RSpec/DescribeClass -- bloco nomeado pela frente, como os demais deste arquivo
 RSpec.describe 'Connecta G0 · envio em recepção só pelo usuário de serviço (CONNECTA_RECEPTION_SENDER_USER_IDS)' do
   include_context 'with connecta g0 scope fixture'
 
@@ -245,6 +246,7 @@ end
 
 # Sem transação externa (use_transactional_tests = false): cada thread usa a própria conexão. A limpeza remove só as linhas
 # criadas por este exemplo; os dados são únicos por execução.
+# rubocop:enable RSpec/DescribeClass
 RSpec.describe 'Connecta G0 · claim concorrente do mesmo envio (T0.7b)' do # rubocop:disable RSpec/DescribeClass
   self.use_transactional_tests = false
 

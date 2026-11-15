@@ -34,27 +34,35 @@ module Connecta::Scope::FirstAgentAssignment
   class << self
     def assign_from(message)
       sender = message.sender
-      return unless Connecta::Runtime::Feature.enabled?
-      return unless assignable_shape?(message)
-      return unless sender.is_a?(User)
-      return if bot_or_relay?(message)
-      return if Connecta::Runtime::Feature.reception_sender_user_ids.include?(sender.id)
-      return unless Connecta::Scope::Projection.marked?(message.inbox_id)
+      return unless assignable?(message, sender)
 
       conversation = message.conversation
-      return if conversation.nil?
-      return if conversation.assignee_id.present? || conversation.assignee_agent_bot_id.present?
+      return if conversation.nil? || claimed?(conversation)
       return unless Connecta::Scope::Gate.new(sender).write?(conversation, access_path: ACCESS_PATH)
 
       conversation.with_lock do
         conversation.reload
-        if conversation.assignee_id.blank? && conversation.assignee_agent_bot_id.blank?
-          conversation.update!(assignee: sender)
-        end
+        conversation.update!(assignee: sender) if conversation.assignee_id.blank? && conversation.assignee_agent_bot_id.blank?
       end
     end
 
     private
+
+    # Assignee existente (humano ou bot) nunca é sobrescrito.
+    def claimed?(conversation)
+      conversation.assignee_id.present? || conversation.assignee_agent_bot_id.present?
+    end
+
+    # Mesma ordem e curto-circuito da cadeia original de guardas: só elegibilidade,
+    # sem tocar em conversa/assignee (a releitura sob lock continua em assign_from).
+    def assignable?(message, sender)
+      Connecta::Runtime::Feature.enabled? &&
+        assignable_shape?(message) &&
+        sender.is_a?(User) &&
+        !bot_or_relay?(message) &&
+        Connecta::Runtime::Feature.reception_sender_user_ids.exclude?(sender.id) &&
+        Connecta::Scope::Projection.marked?(message.inbox_id)
+    end
 
     def assignable_shape?(message)
       message.outgoing? && !message.private? && !message.activity? && !message.template? &&

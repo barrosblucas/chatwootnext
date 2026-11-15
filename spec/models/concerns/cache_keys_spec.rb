@@ -51,7 +51,7 @@ RSpec.describe CacheKeys do
       test_model.bump_cache_key('inbox')
 
       expect(Redis::Alfred).to have_received(:setex).with('idb-cache-key-account-1-inbox', kind_of(Integer),
-                                                         CacheKeys::CACHE_KEYS_EXPIRY)
+                                                          CacheKeys::CACHE_KEYS_EXPIRY)
       expect(Rails.configuration.dispatcher).not_to have_received(:dispatch)
     end
   end

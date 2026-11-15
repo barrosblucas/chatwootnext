@@ -320,10 +320,12 @@ class Connecta::Transfer::LocalTransaction # rubocop:disable Metrics/ClassLength
   # Dentro da mesma transação/lock do commit: sem escopo intermediário vazando antes do commit.
   def adopt_or_create_destination_scope!(origin, origin_conversation, destination_conversation)
     existing = Connecta::Scope::ConversationScope.find_by(conversation_id: destination_conversation.id)
-    return Connecta::Scope::ConversationScope.create!(
-      conversation_id: destination_conversation.id, inbox_id: origin.inbox_id, contact_id: origin.contact_id,
-      org_unit: @destination_org_unit, state: 'pending_activation', case_protocol: origin.case_protocol, case_version: 0
-    ) if existing.nil?
+    if existing.nil?
+      return Connecta::Scope::ConversationScope.create!(
+        conversation_id: destination_conversation.id, inbox_id: origin.inbox_id, contact_id: origin.contact_id,
+        org_unit: @destination_org_unit, state: 'pending_activation', case_protocol: origin.case_protocol, case_version: 0
+      )
+    end
 
     adopt_callback_scope!(existing, origin, origin_conversation, destination_conversation)
   end
@@ -335,20 +337,23 @@ class Connecta::Transfer::LocalTransaction # rubocop:disable Metrics/ClassLength
   # O alvo source+1 pertence ao transfer/activated, NÃO a este escopo (segue version0).
   # Compatível com G0 (sem transfer_id/session/activated_at/closed_at) e produto:
   # colunas ausentes são ignoradas via has_attribute?, nunca inventadas.
+  # Checagem pristine de 12 condições (nil?/blank? por coluna): precisa ficar numa
+  # cadeia única com curto-circuito; fatiar arriscaria divergência entre colunas.
+  # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity -- ver acima
   def adopt_callback_scope!(existing, origin, origin_conversation, destination_conversation)
     pristine = existing.state == 'reception' &&
-              existing.case_version.to_i.zero? &&
-              existing.case_protocol.blank? &&
-              (!existing.has_attribute?('transfer_id') || existing.transfer_id.nil?) &&
-              (!existing.has_attribute?('platform_session_ref') || existing.platform_session_ref.blank?) &&
-              (!existing.has_attribute?('activated_at') || existing.activated_at.nil?) &&
-              (!existing.has_attribute?('closed_at') || existing.closed_at.nil?) &&
-              existing.conversation_id == destination_conversation.id &&
-              existing.inbox_id == origin.inbox_id &&
-              existing.contact_id == origin.contact_id &&
-              destination_conversation.account_id == origin_conversation.account_id &&
-              destination_conversation.inbox_id == origin.inbox_id &&
-              destination_conversation.contact_id == origin.contact_id
+               existing.case_version.to_i.zero? &&
+               existing.case_protocol.blank? &&
+               (!existing.has_attribute?('transfer_id') || existing.transfer_id.nil?) &&
+               (!existing.has_attribute?('platform_session_ref') || existing.platform_session_ref.blank?) &&
+               (!existing.has_attribute?('activated_at') || existing.activated_at.nil?) &&
+               (!existing.has_attribute?('closed_at') || existing.closed_at.nil?) &&
+               existing.conversation_id == destination_conversation.id &&
+               existing.inbox_id == origin.inbox_id &&
+               existing.contact_id == origin.contact_id &&
+               destination_conversation.account_id == origin_conversation.account_id &&
+               destination_conversation.inbox_id == origin.inbox_id &&
+               destination_conversation.contact_id == origin.contact_id
     raise ActiveRecord::RecordNotFound, 'destino da transferência em uso' unless pristine
 
     existing.update!(
@@ -356,6 +361,7 @@ class Connecta::Transfer::LocalTransaction # rubocop:disable Metrics/ClassLength
       case_protocol: origin.case_protocol, case_version: 0
     )
   end
+  # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
 
   def destination_scope(record)
     Connecta::Scope::ConversationScope.find_by!(conversation_id: record.destination_conversation_id, state: 'pending_activation')

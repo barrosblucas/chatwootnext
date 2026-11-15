@@ -92,7 +92,7 @@ RSpec.describe 'Connecta · atribuição ao primeiro operador humano' do # ruboc
       stub_const('ENV', ENV.to_h.except('CONNECTA_HUMAN_NUMBER_ENABLED'))
       message = outgoing_from(agent_a, conv_a)
       stub_const('ENV', ENV.to_h.merge('CONNECTA_HUMAN_NUMBER_ENABLED' => 'true'))
-      conv_a.update_column(:assignee_id, agent_b.id)
+      conv_a.update_column(:assignee_id, agent_b.id) # rubocop:disable Rails/SkipsModelValidations -- estado sem callbacks
 
       expect { Connecta::Scope::FirstAgentAssignment.assign_from(message.reload) }.not_to raise_error
       expect(conv_a.reload.assignee).to eq(agent_b)
@@ -108,12 +108,12 @@ RSpec.describe 'Connecta · atribuição ao primeiro operador humano' do # ruboc
     it 'no-op quando a conversa está com o bot (assignee_agent_bot_id)' do
       bot = create(:agent_bot)
       begin
-        conv_a.update_column(:assignee_agent_bot_id, bot.id)
+        conv_a.update_column(:assignee_agent_bot_id, bot.id) # rubocop:disable Rails/SkipsModelValidations -- estado sem callbacks
 
         expect { outgoing_from(agent_a, conv_a) }.not_to(change { conv_a.reload.assignee })
         expect(conv_a.reload.assignee).to be_nil
       ensure
-        conv_a.update_column(:assignee_agent_bot_id, nil)
+        conv_a.update_column(:assignee_agent_bot_id, nil) # rubocop:disable Rails/SkipsModelValidations -- estado sem callbacks
         bot.destroy!
       end
     end

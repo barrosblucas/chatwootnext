@@ -5,7 +5,7 @@ require 'rails_helper'
 # resolucao por viewer via GET autenticado. Modulo puro (sem DB/boot): cobre aqui
 # o comportamento; a prova de dois viewers sem token compartilhado vive na
 # `attachment_download_scope_spec` (download exige token proprio por viewer).
-RSpec.describe Connecta::Scope::MediaBroadcastSanitizer do
+RSpec.describe Connecta::Scope::MediaBroadcastSanitizer do # rubocop:disable RSpec/SpecFilePathFormat -- path fixado no teste de partição CI
   def message_with(attachments, extra = {})
     { id: 9, conversation_id: 3, account_id: 1, content: 'oi', attachments: attachments }.merge(extra)
   end
@@ -90,14 +90,13 @@ RSpec.describe Connecta::Scope::MediaBroadcastSanitizer do
 
   describe 'BroadcastJobGuard fail-closed (barreira final, cobre message.created e first_reply_created)' do
     let(:recorder) do
+      sent = []
       Module.new do
-        def broadcast_to_members(members, event_name, data)
-          (@sent ||= []) << [members, event_name, data]
+        define_method(:broadcast_to_members) do |members, event_name, data|
+          sent << [members, event_name, data]
         end
 
-        def sent
-          @sent || []
-        end
+        define_method(:sent) { sent }
       end
     end
     let(:job) do
@@ -107,11 +106,13 @@ RSpec.describe Connecta::Scope::MediaBroadcastSanitizer do
         include Connecta::Scope::BroadcastJobGuard
       end.new
     end
+    # rubocop:disable RSpec/VerifiedDoubles -- duplos de proxy/cadeia sem classe verificável
     let(:live_link) { double('conversations', find_by: double('conversation', inbox_id: 11)) }
 
     before do
       allow(Account).to receive(:find_by).and_return(double('account', conversations: live_link))
     end
+    # rubocop:enable RSpec/VerifiedDoubles
 
     it 'descarta (nil) em erro de lookup para message.created, sem transmitir original' do
       allow(Connecta::Scope::Projection).to receive(:marked?).and_raise(IOError, 'db down (injetado)')

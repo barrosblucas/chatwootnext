@@ -9,7 +9,7 @@ require_relative 'support/g0_scope_schema'
 # O fail-closed continua em ReceptionScopeCreator.call (conversa nova sem unidade).
 Connecta::G0ScopeSchema.ensure!
 
-RSpec.describe Connecta::Runtime::Installer do
+RSpec.describe Connecta::Runtime::Installer do # rubocop:disable RSpec/SpecFilePathFormat -- boot C7 coeso neste arquivo
   describe '.install! with a marked inbox but no reception unit' do
     around do |example|
       previous = ENV.delete('CONNECTA_RECEPTION_ORG_UNIT_ID')

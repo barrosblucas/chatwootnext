@@ -7,7 +7,7 @@ class Connecta::Runtime::TransferCommitJob < ApplicationJob
   retry_on Connecta::Runtime::PlatformClient::Error, wait: 10.seconds, attempts: 24
 
   # Commit e ativação em sequência com tratamento de falha por etapa; dividir mudaria o retry por estado.
-  def perform(transfer_id) # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
+  def perform(transfer_id) # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity -- ver acima
     transfer = Connecta::TransferRecord.find(transfer_id)
     account_id = Connecta::Runtime::Feature.current_account_id!
     destination_conversation = Conversation.find(transfer.destination_conversation_id)
@@ -25,9 +25,8 @@ class Connecta::Runtime::TransferCommitJob < ApplicationJob
       # devolve a mesma referência: nunca recobre ref gravada (nem com nil) e
       # resposta sem o campo falha fechado em vez de gravar nil silencioso.
       to_session_ref = response.is_a?(Hash) ? response['to_session_ref'] : nil
-      if to_session_ref.blank?
-        raise InvalidCommitResponse, "Platform commit response is missing to_session_ref (transfer_id=#{transfer.id})"
-      end
+      raise InvalidCommitResponse, "Platform commit response is missing to_session_ref (transfer_id=#{transfer.id})" if to_session_ref.blank?
+
       transfer.update!(platform_session_ref: to_session_ref.to_s) if transfer.platform_session_ref.blank?
       origin = Connecta::Scope::ConversationScope.find_by!(conversation_id: transfer.source_conversation_id)
       local = Connecta::Transfer::LocalTransaction.new(

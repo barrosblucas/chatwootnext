@@ -34,7 +34,7 @@ RSpec.describe 'Connecta scoped_inboxes upsert', type: :request do
   it 'atualiza a marca existente sem duplicar' do
     expect do
       patch scoped_path_for.call(whatsapp_inbox.id), params: { enforcement: 'admin_only' },
-                                                      headers: admin_nominal.create_new_auth_token
+                                                     headers: admin_nominal.create_new_auth_token
     end.not_to change(Connecta::Scope::ScopedInbox, :count)
 
     expect(response).to have_http_status(:success)
@@ -47,7 +47,7 @@ RSpec.describe 'Connecta scoped_inboxes upsert', type: :request do
 
     expect do
       patch scoped_path_for.call(foreign_inbox.id), params: { enforcement: 'enforce' },
-                                                     headers: admin_nominal.create_new_auth_token
+                                                    headers: admin_nominal.create_new_auth_token
     end.not_to change(Connecta::Scope::ScopedInbox, :count)
 
     expect(response).to have_http_status(:not_found)
@@ -56,7 +56,7 @@ RSpec.describe 'Connecta scoped_inboxes upsert', type: :request do
   it 'não-nominal recebe 403 sem tocar nas marcas' do
     expect do
       patch scoped_path_for.call(control_inbox.id), params: { enforcement: 'enforce' },
-                                                     headers: agent_a.create_new_auth_token
+                                                    headers: agent_a.create_new_auth_token
     end.not_to change(Connecta::Scope::ScopedInbox, :count)
 
     expect(response).to have_http_status(:forbidden)

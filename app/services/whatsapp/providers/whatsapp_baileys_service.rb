@@ -677,6 +677,15 @@ class Whatsapp::Providers::WhatsappBaileysService < Whatsapp::Providers::BaseSer
     return nil unless process_response(response)
 
     data = response.parsed_response&.deep_symbolize_keys&.dig(:data) || {}
+    send_health_from_data(data)
+  rescue StandardError => e
+    Rails.logger.warn("[WHATSAPP][BAILEYS] fetch_send_health failed: #{e.class}: #{e.message}")
+    nil
+  end
+
+  # Monta o retrato de saúde a partir do `data` do provedor (nil = desconhecido,
+  # nunca saudável nem ausente: o chamador mantém o estado existente).
+  def send_health_from_data(data)
     {
       present: true,
       connected: data[:connected],
@@ -685,9 +694,6 @@ class Whatsapp::Providers::WhatsappBaileysService < Whatsapp::Providers::BaseSer
       last_send_completed_ago_ms: data[:lastSendCompletedAgoMs],
       last_outgoing_ack_ago_ms: data[:lastOutgoingAckAgoMs]
     }.compact
-  rescue StandardError => e
-    Rails.logger.warn("[WHATSAPP][BAILEYS] fetch_send_health failed: #{e.class}: #{e.message}")
-    nil
   end
 
   # New-chat message cap (quota) for this connection. Read-only MEX query with the same 404

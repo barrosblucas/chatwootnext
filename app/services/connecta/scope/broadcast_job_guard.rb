@@ -73,6 +73,8 @@ module Connecta::Scope::BroadcastJobGuard
   end
 
   # Log operacional sem segredo: so IDs e classe do erro. Nunca payload, token ou URL.
+  # As buscas por chave symbol/string são o formato do payload; unificar mudaria o log.
+  # rubocop:disable Metrics/CyclomaticComplexity -- ver acima
   def connecta_scope_report_media_discard(payload, event_name:, error:)
     account_id = payload[:account_id] || payload['account_id']
     display_id = payload[:conversation_id] || payload['conversation_id'] || payload[:id] || payload['id']
@@ -82,6 +84,7 @@ module Connecta::Scope::BroadcastJobGuard
       "account_id=#{account_id} conversation_id=#{display_id} message_id=#{message_id} error=#{error.class}"
     )
   end
+  # rubocop:enable Metrics/CyclomaticComplexity
 
   def connecta_scope_message_payload?(payload)
     attachments = payload[:attachments] || payload['attachments']
@@ -95,6 +98,10 @@ module Connecta::Scope::BroadcastJobGuard
     account_id = payload[:account_id] || payload['account_id']
     return if conversation_id.nil? || account_id.nil?
 
+    connecta_scope_lookup_inbox_id(account_id, conversation_id)
+  end
+
+  def connecta_scope_lookup_inbox_id(account_id, conversation_id)
     account = Account.find_by(id: account_id)
     account&.conversations&.find_by(display_id: conversation_id)&.inbox_id
   end

@@ -1,4 +1,4 @@
-class Connecta::Runtime::TransferTransaction
+class Connecta::Runtime::TransferTransaction # rubocop:disable Metrics/ClassLength -- ramos de erro do contrato §4
   SUMMARY_LIMITS = { subject: 160, completed: 2000, next_action: 2000 }.freeze
   # F2: único valor de claim aceito pelo WP (contrato de fio v1, extensão opcional).
   NATIVE_AUTHORITY = 'chatwoot_account_admin'.freeze
@@ -25,6 +25,9 @@ class Connecta::Runtime::TransferTransaction
     raise Error.new('account_id is invalid', status: :service_unavailable)
   end
 
+  # Escada de rescue do contrato §4 (cada classe de erro tem compensação própria);
+  # extrair ramos mudaria o mapeamento erro→status.
+  # rubocop:disable Metrics/AbcSize -- ver acima
   def call
     source = Connecta::Runtime::TransferPolicy.new(conversation: @conversation, actor: @actor).authorize!
     local = build_local_transaction(source)
@@ -45,13 +48,14 @@ class Connecta::Runtime::TransferTransaction
   rescue KeyError, ArgumentError, TypeError => e
     abort_local_prepare!(local, notify_remote: prepared&.dig(:remote), reason: local_reason(prepared, 'prepare_payload_invalid'))
     raise Error.new(e.message, status: :unprocessable_entity)
-  rescue Error => e
+  rescue Error
     # Erro de domínio após HTTP 200 (ex.: versão inválida do prepare) ou após
     # reconciliação: compensa a reserva remota quando ela pode existir e relança
     # sem mascarar o status (502 para upstream inválido permanece 502).
     abort_local_prepare!(local, notify_remote: prepared&.dig(:remote) || false, reason: local_reason(prepared, 'prepare_payload_invalid'))
     raise
   end
+  # rubocop:enable Metrics/AbcSize
 
   private
 
@@ -132,20 +136,22 @@ class Connecta::Runtime::TransferTransaction
     response = @client.post('/attendance/v1/transfers/prepare', payload)
     # HTTP 200 ⇒ reserva potencial no WP mesmo com corpo inválido: marca ANTES de validar.
     prepared[:remote] = true if prepared
-    begin
-      raise Error.new('Platform returned an invalid case version', status: :bad_gateway) unless response.is_a?(Hash)
-
-      response_version = Integer(response.fetch('case_version'))
-    rescue KeyError, TypeError, ArgumentError
-      raise Error.new('Platform returned an invalid case version', status: :bad_gateway)
-    end
-    unless response_version == source.case_version
-      raise Error.new('Platform returned an invalid case version', status: :bad_gateway)
-    end
+    response_version = fetch_prepare_version!(response)
+    raise Error.new('Platform returned an invalid case version', status: :bad_gateway) unless response_version == source.case_version
 
     target_version = source.case_version + 1
     transfer.update!(state: 'prepared', target_case_version: target_version, platform_session_ref: response['to_session_ref'])
     target_version
+  end
+
+  # Extração de prepare_remote!: valida o corpo do prepare (eco da versão de origem).
+  # Resposta ausente, não-numérica ou divergente é erro controlado 502 sem expor o payload.
+  def fetch_prepare_version!(response)
+    raise Error.new('Platform returned an invalid case version', status: :bad_gateway) unless response.is_a?(Hash)
+
+    Integer(response.fetch('case_version'))
+  rescue KeyError, TypeError, ArgumentError
+    raise Error.new('Platform returned an invalid case version', status: :bad_gateway)
   end
 
   def commit_local_destination!(local, transfer, source, target_version)

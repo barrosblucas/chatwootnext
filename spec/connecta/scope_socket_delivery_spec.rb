@@ -41,9 +41,7 @@ RSpec.describe 'Connecta G0 · socket pendente apos perda de acesso (RF5/F1)', t
   # seleciona o job certo; `first` escolhe o de membros, que antecede o do contato.
   def serialized_broadcast_hash(event_name: nil, first: false)
     jobs = enqueued_jobs.select { |entry| entry[:job] == ActionCableBroadcastJob }
-    if event_name
-      jobs = jobs.select { |entry| ActiveJob::Arguments.deserialize(entry[:args])[1] == event_name }
-    end
+    jobs = jobs.select { |entry| ActiveJob::Arguments.deserialize(entry[:args])[1] == event_name } if event_name
     job_entry = first ? jobs.first : jobs.last
     expect(job_entry).not_to be_nil
     JSON.parse(job_entry.except(:job, :args, :queue, :priority, :at).to_json)

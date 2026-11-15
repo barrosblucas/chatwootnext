@@ -1,6 +1,6 @@
 require 'rails_helper'
 
-RSpec.describe ActiveSupport::Inflector do
+RSpec.describe ActiveSupport::Inflector do # rubocop:disable RSpec/SpecFilePathFormat -- espelha o initializer do backport
   describe '.safe_constantize' do
     it 'matches autoload errors literally when the requested name contains regexp syntax' do
       requested_name = 'Example.Channel::Nested'

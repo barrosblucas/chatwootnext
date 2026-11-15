@@ -49,6 +49,12 @@ module Connecta::Scope::MediaBroadcastSanitizer
     attachments = message[:attachments] || message['attachments']
     return message unless attachments.is_a?(Array) && attachments.any? { |attachment| file_urls?(attachment) }
 
+    build_sanitized_message(message, attachments)
+  end
+
+  # Monta a cópia com o marcador de resolução, preservando o estilo de chave
+  # dominante (symbol no listener, string após a serialização do job).
+  def build_sanitized_message(message, attachments)
     copy = message.dup
     copy[marker_key_for(message)] = true
     if message.key?(:attachments)
@@ -78,6 +84,9 @@ module Connecta::Scope::MediaBroadcastSanitizer
   # `last_non_activity_message` (preview da lista). Devolve o mesmo objeto quando
   # nada precisa sair. `UPDATE_CONVERSATION` do store ignora `messages`, mas
   # `ADD_CONVERSATION` usa o seed e o preview le `last_non_activity_message`.
+  # Ramificações espelham a dualidade symbol/string de chave (listener vs job);
+  # fatiar a redação arriscaria divergência entre os dois estilos (fail-open).
+  # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity -- ver acima
   def sanitize_conversation(payload)
     return payload unless payload.is_a?(Hash)
 
@@ -102,6 +111,7 @@ module Connecta::Scope::MediaBroadcastSanitizer
     end
     copy
   end
+  # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
 
   def file_urls?(attachment)
     return false unless attachment.is_a?(Hash)
@@ -123,16 +133,25 @@ module Connecta::Scope::MediaBroadcastSanitizer
   def payload_may_carry_file_urls?(payload)
     return false unless payload.is_a?(Hash)
 
+    return true if attachments_carry_file_urls?(payload)
+    return true if messages_carry_file_urls?(payload)
+
+    last_message_carries_file_urls?(payload)
+  end
+
+  def attachments_carry_file_urls?(payload)
     attachments = payload[:attachments] || payload['attachments']
-    return true if attachments.is_a?(Array) && attachments.any? { |attachment| file_urls?(attachment) }
+    attachments.is_a?(Array) && attachments.any? { |attachment| file_urls?(attachment) }
+  end
 
+  def messages_carry_file_urls?(payload)
     messages = payload[:messages] || payload['messages']
-    return true if messages.is_a?(Array) && messages.any? { |message| payload_may_carry_file_urls?(message) }
+    messages.is_a?(Array) && messages.any? { |message| payload_may_carry_file_urls?(message) }
+  end
 
+  def last_message_carries_file_urls?(payload)
     last_message = payload[:last_non_activity_message] || payload['last_non_activity_message']
-    return true if last_message.is_a?(Hash) && payload_may_carry_file_urls?(last_message)
-
-    false
+    last_message.is_a?(Hash) && payload_may_carry_file_urls?(last_message)
   end
 
   # `Array#map` sempre devolve array novo: compara elemento a elemento para nao

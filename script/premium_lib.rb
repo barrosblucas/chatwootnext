@@ -86,21 +86,25 @@ module PremiumLib
     available = PREMIUM_FEATURES.select { |name| feature_names.include?(name) }
 
     Account.find_each do |account|
-      enabled_before = account.enabled_features.keys
-      account.enable_features!(*available)
-      account.custom_attributes['plan_name'] = 'Enterprise'
-      account.save!
-      enabled = account.enabled_features.keys.sort
-      new_features = enabled - enabled_before
-
-      next if new_features.empty? && !verbose
-
-      puts "    conta #{account.id} (#{account.name}): #{enabled.join(', ')}"
+      liberar_features_conta!(account, available, verbose: verbose)
     end
   rescue StandardError => e
     puts "    ERRO ao liberar features: #{e.class}: #{e.message}"
     raise e if defined?(Rails) && Rails.env.test?
 
     nil
+  end
+
+  def liberar_features_conta!(account, available, verbose: false)
+    enabled_before = account.enabled_features.keys
+    account.enable_features!(*available)
+    account.custom_attributes['plan_name'] = 'Enterprise'
+    account.save!
+    enabled = account.enabled_features.keys.sort
+    new_features = enabled - enabled_before
+
+    return if new_features.empty? && !verbose
+
+    puts "    conta #{account.id} (#{account.name}): #{enabled.join(', ')}"
   end
 end

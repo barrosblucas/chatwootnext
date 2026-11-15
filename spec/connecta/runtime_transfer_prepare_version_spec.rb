@@ -188,6 +188,7 @@ RSpec.describe 'Connecta runtime · versão de prepare ecoa origem, alvo=origem+
     end
     expect(error).not_to be_nil
     expect(error.status).to eq(:bad_gateway)
-    expect([:bad_gateway, :conflict, :unprocessable_entity, :service_unavailable, :forbidden, :not_found]).to include(error.status)
+    controlled = %i[bad_gateway conflict unprocessable_entity service_unavailable forbidden not_found]
+    expect(error.status).to satisfy('be a controlled contract status') { |status| controlled.include?(status) }
   end
 end

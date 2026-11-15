@@ -8,9 +8,14 @@ require 'active_support/inflector'
 # resolving a channel. Keep the existing anonymous and authenticated connection
 # flows; fix the vulnerable LoadError matching at the shared Active Support entry point.
 # Remove this backport after upgrading to Rails 8.0.5.2+ or 8.1.4.1+.
+# Mantido no estilo aninhado do upstream; a lógica de match precisa ficar byte-próxima do Rails.
+# rubocop:disable Style/ClassAndModuleChildren -- backport espelha o aninhamento do commit upstream
 module ActiveSupport
   module Inflector
     module SafeConstantizeLiteralLoadErrorMatch
+      # Complexidade é a do próprio fix upstream (match literal do primeiro segmento);
+      # simplificar mudaria a semântica da correção de segurança.
+      # rubocop:disable Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity -- ver acima
       def safe_constantize(camel_cased_word)
         constantize(camel_cased_word)
       rescue NameError => e
@@ -21,8 +26,10 @@ module ActiveSupport
         constant_name = camel_cased_word.split('::').find { |part| !part.empty? } || camel_cased_word
         raise unless message.include?("Unable to autoload constant #{constant_name}")
       end
+      # rubocop:enable Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
     end
 
     singleton_class.prepend(SafeConstantizeLiteralLoadErrorMatch)
   end
 end
+# rubocop:enable Style/ClassAndModuleChildren

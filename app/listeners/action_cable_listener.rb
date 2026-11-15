@@ -346,7 +346,7 @@ class ActionCableListener < BaseListener # rubocop:disable Metrics/ClassLength
   # Log operacional sem segredo: so IDs e classe do erro. Nunca payload, token ou URL.
   def connecta_scope_report_media_discard(message:, error:)
     Rails.logger.warn(
-      "[connecta_scope] realtime media broadcast descartado event=message " \
+      '[connecta_scope] realtime media broadcast descartado event=message ' \
       "account_id=#{message.account_id} message_id=#{message.id} error=#{error.class}"
     )
   end

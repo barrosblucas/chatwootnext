@@ -1,4 +1,5 @@
-# Liga os hooks de escopo. install! só roda em teste (guard Rails.env.test? abaixo); em produção o opt-in runtime (Connecta::Runtime::Installer, via CONNECTA_HUMAN_NUMBER_ENABLED) chama os install_* individuais.
+# Liga os hooks de escopo. install! só roda em teste (guard Rails.env.test? abaixo); em produção
+# o opt-in runtime (Connecta::Runtime::Installer, via CONNECTA_HUMAN_NUMBER_ENABLED) chama os install_* individuais.
 # Bootstrap coeso e idempotente dos hooks (registros por área + rota de download desenhada uma vez):
 # fatiar o módulo espalharia install!/guards de segurança e pioraria a clareza sem reduzir acoplamento real.
 # rubocop:disable Metrics/ModuleLength
@@ -32,6 +33,11 @@ module Connecta::Scope::Installer
     Api::V1::Accounts::NotificationsController.prepend(Connecta::Scope::NotificationsControllerHook)
   end
 
+  def self.install_conversation_builder_reuse!
+    ConversationBuilder.prepend(Connecta::Scope::ConversationReuse::BuilderInterceptor) unless
+      ConversationBuilder <= Connecta::Scope::ConversationReuse::BuilderInterceptor
+  end
+
   def self.install_conversations!
     [Api::V1::Accounts::ConversationsController, Api::V1::Accounts::Conversations::BaseController].each do |controller|
       controller.prepend(Connecta::Scope::ConversationHttpHook)
@@ -48,14 +54,12 @@ module Connecta::Scope::Installer
     # Reuso "abrir existente" no ConversationBuilder (micro passo 1b): roda
     # depois dos before_actions nativos (conta/inbox/contact/contact_inbox
     # resolvidos e inbox show? autorizada) e antes do create/after_create.
-    ConversationBuilder.prepend(Connecta::Scope::ConversationReuse::BuilderInterceptor) unless
-      ConversationBuilder <= Connecta::Scope::ConversationReuse::BuilderInterceptor
+    install_conversation_builder_reuse!
     Api::V1::Accounts::ConversationsController.before_action(:connecta_scope_transcript_guard!, only: :transcript)
     Api::V1::Accounts::Conversations::ConnectaTransfersController.before_action(:connecta_scope_transfer_guard!)
     # Reuso "abrir existente" fora do teste G0: o opt-in de produção (runtime)
     # instala os mesmos hooks do spike, incluindo o interceptor do builder.
-    ConversationBuilder.prepend(Connecta::Scope::ConversationReuse::BuilderInterceptor) unless
-      ConversationBuilder <= Connecta::Scope::ConversationReuse::BuilderInterceptor
+    install_conversation_builder_reuse!
     Api::V1::Accounts::Conversations::DirectUploadsController.prepend(Connecta::Scope::DirectUploadsHook)
     Api::V1::Accounts::Conversations::MessagesController.prepend(Connecta::Scope::FollowUpDedupeHook)
     Api::V1::Accounts::BulkActionsController.prepend(Connecta::Scope::BulkHook)
