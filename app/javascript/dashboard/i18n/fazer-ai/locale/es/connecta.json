@@ -48,6 +48,18 @@
       "REUSED": "Una atención existente se reabrirá en su sector.",
       "CONFIRM": "Iniciar"
     },
+    "BOT_OPTOUT": {
+      "DISABLE": "Desactivar el bot para este número",
+      "ENABLE": "Reactivar el bot para este número",
+      "DISABLED_NOTICE": "Bot desactivado para este número — atención humana.",
+      "CONFIRM_TITLE": "¿Desactivar el bot para este número?",
+      "CONFIRM_DESCRIPTION": "El bot dejará de responder automáticamente a este número. Los mensajes seguirán llegando aquí para la atención humana.",
+      "CONFIRM_BUTTON": "Desactivar bot",
+      "CANCEL_BUTTON": "Cancelar",
+      "SUCCESS_DISABLED": "Bot desactivado para este número.",
+      "SUCCESS_ENABLED": "Bot reactivado para este número.",
+      "ERROR": "No se pudo cambiar el bot para este número. Inténtalo de nuevo."
+    },
     "SETTINGS": {
       "TITLE": "Cuenta municipal",
       "LINK_TITLE": "Vincular cuenta municipal",

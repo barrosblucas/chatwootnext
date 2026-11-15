@@ -12,3 +12,7 @@
 ## CI
 
 - `ci: pin ubuntu-24.04 runners so ruby 3.4.4 is available`: `run_foss_spec.yml` jobs `lint-backend`, `security-scan`, `backend-tests` pinned `runs-on: ubuntu-latest` → `ubuntu-24.04`. Root cause: `ubuntu-latest` now resolves to 26.04 and ruby-builder ships 3.4.4 only for 22.04/24.04 (verified via `releases/tags/ruby-3.4.4`: 22.04 + 24.04 x64/arm64, no 26.04 asset), so `ruby/setup-ruby@v1` failed with "Unavailable version 3.4.4 for ruby on ubuntu-26.04". App Ruby untouched (`.ruby-version` still 3.4.4). Non-Ruby jobs (`plan`, `lint-frontend`, `frontend-tests`) stay on `ubuntu-latest`. Base: `61fab368e` (local HEAD == `origin/main` == `ls-remote` before edit).
+
+## i18n
+
+- `fix(i18n): add missing es translations for CONNECTA.BOT_OPTOUT`: `app/javascript/dashboard/i18n/fazer-ai/locale/es/connecta.json` gained the 10 `CONNECTA.BOT_OPTOUT.*` keys (DISABLE, ENABLE, DISABLED_NOTICE, CONFIRM_TITLE, CONFIRM_DESCRIPTION, CONFIRM_BUTTON, CANCEL_BUTTON, SUCCESS_DISABLED, SUCCESS_ENABLED, ERROR) with Spanish translations, mirroring `en` order/placeholders (no interpolations in these strings). `pt_BR` already complete; no other locale required by `fork_translations.rb check` was missing keys (verified: es/pt missing NONE, orphans NONE after the fix).
