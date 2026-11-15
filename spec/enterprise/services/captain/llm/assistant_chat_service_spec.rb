@@ -18,13 +18,13 @@ RSpec.describe Captain::Llm::AssistantChatService do
 
     allow(RubyLLM).to receive(:chat).and_return(mock_chat)
     allow(mock_chat).to receive(:with_temperature).and_return(mock_chat)
-    allow(mock_chat).to receive(:with_params).and_return(mock_chat)
-    allow(mock_chat).to receive(:with_tool).and_return(mock_chat)
+    allow(mock_chat).to receive(:with_provider_options).and_return(mock_chat)
+    allow(mock_chat).to receive(:with_tools).and_return(mock_chat)
     allow(mock_chat).to receive(:with_instructions).and_return(mock_chat)
     allow(mock_chat).to receive(:add_message).and_return(mock_chat)
-    allow(mock_chat).to receive(:on_end_message).and_return(mock_chat)
-    allow(mock_chat).to receive(:on_tool_call).and_return(mock_chat)
-    allow(mock_chat).to receive(:on_tool_result).and_return(mock_chat)
+    allow(mock_chat).to receive(:after_message).and_return(mock_chat)
+    allow(mock_chat).to receive(:before_tool_call).and_return(mock_chat)
+    allow(mock_chat).to receive(:after_tool_result).and_return(mock_chat)
     allow(mock_chat).to receive(:messages).and_return([])
   end
 
@@ -174,18 +174,18 @@ RSpec.describe Captain::Llm::AssistantChatService do
       end
 
       it 'includes images from conversation history in context' do
-        # First historical message should include the image via RubyLLM::Content
-        expect(mock_chat).to receive(:add_message) do |args|
-          expect(args[:role]).to eq(:user)
-          expect(args[:content]).to be_a(RubyLLM::Content)
-          expect(args[:content].text).to eq('Here is my error screenshot')
-          expect(args[:content].attachments.first.source.to_s).to eq('https://example.com/error.png')
-        end.ordered
+        # First historical message passes text + image attachments as kwargs
+        expect(mock_chat).to receive(:add_message).with(
+          role: :user,
+          content: 'Here is my error screenshot',
+          attachments: ['https://example.com/error.png']
+        ).ordered
 
-        # Second historical message is plain text
+        # Second historical message is plain text with no attachments
         expect(mock_chat).to receive(:add_message).with(
           role: :assistant,
-          content: 'I see the error. Try restarting.'
+          content: 'I see the error. Try restarting.',
+          attachments: []
         ).ordered
 
         # Current message asked via chat.ask

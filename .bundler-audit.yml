@@ -1,26 +1,39 @@
 ---
 ignore:
-  - CVE-2021-41098 # https://github.com/chatwoot/chatwoot/issues/3097 (update once azure blob storage is updated)
   - GHSA-57hq-95w6-v4fc # Devise confirmable race condition — patched locally in User model (remove once on Devise 5+)
   # Devise 5 is currently blocked by devise-secure_password/devise_token_auth/devise-two-factor.
   # Chatwoot does not enable Timeoutable, so the timeout redirect path is not reachable.
   - GHSA-jp94-3292-c3xv
-  # Rails 7.1 has no patched release for the Active Storage proxy range
-  # advisories. Chatwoot limits proxy range requests locally.
-  - CVE-2026-33658
-  # Rails 7.1 has no patched release for this Active Storage direct-upload
-  # advisory. Chatwoot filters internal metadata keys locally.
-  - CVE-2026-33173
-  - CVE-2026-33174
-  # Rails 7.1 has no patched release for these Rails advisories. These are not
-  # reachable through Chatwoot's current usage patterns and should be removed
-  # once we upgrade to Rails 7.2.3.1+.
-  - CVE-2026-33168
-  - CVE-2026-33169
-  - CVE-2026-33170
-  - CVE-2026-33176
-  - CVE-2026-33195
-  - CVE-2026-33202
-  # No Rails 7.1 patch for this Active Storage advisory; mitigated locally.
-  # Remove once on Rails 7.2.3.1+.
+  # Still unpatched on Rails 7.2.3.1 (also listed as GHSA-xr9x-r78c-5hrm);
+  # mitigated locally. Reassess with the Rails 8 migration, review by 2026-12-15.
   - CVE-2026-66066
+  # TEMPORARY ACCEPTANCE (accepted 2026-11-15, review by 2026-12-15):
+  # The 18 Rails 7.2.3.1 advisories below are fixed only in Rails 8
+  # (8.0.5.2 / 8.1.4.1, no 7.2 backport). Upstream fazer-ai is still on
+  # 7.2.3.1, so no fixed version can be pulled in. Rails 8 migration is
+  # tracked as a separate project. Reassess on 2026-12-15 at the latest.
+  # Top risks called out explicitly:
+  #  - GHSA-f3w6-w445-fwh9 (CRITICAL): arbitrary file write/read in Active
+  #    Storage image analysis (vips/ffprobe decoders on uploaded images).
+  #  - GHSA-v924-7rp8-4mxh: arbitrary file read / RCE in Active Storage
+  #    video previews and analysis.
+  #  - GHSA-wm3x-v3qw-4jh3: Strong Parameters bypass in Parameters#each_key.
+  #  - GHSA-8474-xrp6-wh69: DoS in Active Support safe_constantize.
+  - GHSA-5957-c7qm-m469 # Action Mailbox Mailgun ingress signature replay
+  - GHSA-2586-8ghr-69fj # Action Dispatch CacheStore destroyed-session restoration
+  - GHSA-gmj8-hvj3-49mw # Missing SameSite on Action Pack session cookies
+  - GHSA-r9jg-fmfx-2gv6 # Action Pack content-negotiation cache poisoning
+  - GHSA-rwvh-fw6r-pwvp # Action Controller Live streaming DoS
+  - GHSA-wm3x-v3qw-4jh3 # Strong Parameters bypass in Parameters#each_key
+  - GHSA-x6mj-8jx9-qhqv # Sensitive session leak in Active Storage proxy mode
+  - GHSA-2p2f-4rq4-gjwc # Action View XSS in text helpers
+  - GHSA-68p9-83h6-5wpj # Action View XSS in tag helpers
+  - GHSA-rq8q-p985-fjq7 # Action View XSS in strip_tags
+  - GHSA-v6rj-xm57-3p59 # Action View XSS in highlight helper
+  - GHSA-3f4q-8x5m-76v8 # Active Storage local file disclosure in video previews/analysis
+  - GHSA-3w93-6hmw-whh4 # Active Storage GCS direct uploads unsigned Content-Type
+  - GHSA-f3w6-w445-fwh9 # CRITICAL: Active Storage image analysis arbitrary file write/read
+  - GHSA-hfr4-8rjc-97m2 # Active Storage GCS direct-upload file size limit circumvention
+  - GHSA-p2pm-g2h6-7j5j # Active Storage filename handling DoS
+  - GHSA-v924-7rp8-4mxh # Active Storage video preview/analysis file read / RCE
+  - GHSA-8474-xrp6-wh69 # Active Support safe_constantize DoS

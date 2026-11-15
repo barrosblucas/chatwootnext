@@ -77,8 +77,11 @@ gem 'faraday_middleware-aws-sigv4'
 ##--- gems for server & infra configuration ---##
 gem 'dotenv-rails', '>= 3.0.0'
 gem 'foreman'
-gem 'puma', '~> 7.2', '>= 7.2.1'
+gem 'puma', '~> 7.2', '>= 7.2.2'
 gem 'vite_rails'
+# Pinned to the version fixing GHSA-42qh-8mx8-7wqm; vite_ruby >= 3.11 allows it
+# (3.10.x constrains rack-proxy to ~> 0.6, which is why vite_ruby floated).
+gem 'rack-proxy', '~> 1.0.3'
 # metrics on heroku
 gem 'barnes'
 
@@ -125,7 +128,8 @@ gem 'google-cloud-translate-v3', '>= 0.7.0'
 ##-- apm and error monitoring ---#
 # loaded only when environment variables are set.
 # ref application.rb
-gem 'datadog', '~> 2.0', require: false
+# Pinned to the version fixing GHSA-p7cx-x3jr-jj6w (security-scan 2026-11-15).
+gem 'datadog', '~> 2.47.0', require: false
 gem 'elastic-apm', require: false
 gem 'newrelic_rpm', require: false
 gem 'newrelic-sidekiq-metrics', '>= 1.6.2', require: false
@@ -184,8 +188,8 @@ gem 'omniauth-oauth2'
 
 gem 'audited', '~> 5.4', '>= 5.4.1'
 
-# need for google auth
-gem 'omniauth', '>= 2.1.2'
+# need for google auth (pinned to the version fixing GHSA-m27g-v28p-f9fx; 2.4.x changes session behavior, out of scope)
+gem 'omniauth', '~> 2.3.1'
 gem 'omniauth-saml'
 gem 'omniauth-google-oauth2', '>= 1.1.3'
 gem 'omniauth-rails_csrf_protection', '~> 1.0', '>= 1.0.2'
@@ -199,11 +203,9 @@ gem 'reverse_markdown'
 
 gem 'iso-639'
 gem 'ruby-openai'
-gem 'ai-agents', '>= 0.12.0'
+gem 'ai-agents', '~> 0.13.0'
 
-# TODO: Move this gem as a dependency of ai-agents
-gem 'ruby_llm', '>= 1.14.1'
-gem 'ruby_llm-schema'
+gem 'ruby_llm', '~> 2.0.0'
 
 gem 'cld3', '~> 3.7'
 
