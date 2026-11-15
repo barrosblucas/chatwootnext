@@ -16,3 +16,7 @@
 ## i18n
 
 - `fix(i18n): add missing es translations for CONNECTA.BOT_OPTOUT`: `app/javascript/dashboard/i18n/fazer-ai/locale/es/connecta.json` gained the 10 `CONNECTA.BOT_OPTOUT.*` keys (DISABLE, ENABLE, DISABLED_NOTICE, CONFIRM_TITLE, CONFIRM_DESCRIPTION, CONFIRM_BUTTON, CANCEL_BUTTON, SUCCESS_DISABLED, SUCCESS_ENABLED, ERROR) with Spanish translations, mirroring `en` order/placeholders (no interpolations in these strings). `pt_BR` already complete; no other locale required by `fork_translations.rb check` was missing keys (verified: es/pt missing NONE, orphans NONE after the fix).
+
+## Context
+
+- `docs(context): verify G0 pendencies (2 resolved, 4 open)`: `.context/PROJECT_STATE.md` "Decisões abertas" updated from the stale 2026-10-22 summary (verification read-only by Explorer, 2026-11-15). Resolved and removed from the list: item 6 (frontend deps installed separately when needed; watch the `prepare` script — `CHANGELOG_2026_10_22.md:51-56`, `CHANGELOG_2026_10_28.md:83`) and item 12 (token+Gate authorized attachment route, legacy route protected — `CHANGELOG_2026_10_24.md:5`, `CHANGELOG_2026_10_25.md:79`). Kept OPEN with owner "responsável humano": items 8, 9, 10, 11 (evidence pointers in PROJECT_STATE). "Homologação humana de mídia protegida" already present in "Pendências atuais", no new line needed. Header now points at HEAD `819d76a4f` (2026-11-15). Base: `819d76a4f` (local HEAD == `origin/main` == `ls-remote` before edit).

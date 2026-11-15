@@ -4,7 +4,7 @@ Estado atual verificado no código em 2026-11-14. Histórico vive em `.context/c
 
 ## Referência e data da verificação
 
-- HEAD verificado: `a8b7a0eafb96e1c4c5ac65509818477bf5e8edcf` (2026-11-11, `feat(connecta): atribui protocolo ao primeiro operador que responder`), confirmado em 2026-11-14. `script/criar_admin.rb` segue untracked, nunca commitado.
+- HEAD verificado: `819d76a4fbb1a765173180e2214b20c2c831e571` (2026-11-15, `fix(i18n): add missing es translations for CONNECTA.BOT_OPTOUT`), confirmado em 2026-11-15. `script/criar_admin.rb` segue untracked, nunca commitado.
 - Regra: produção/CI só com fonte citada (changelog/evidência); sem fonte, "não verificado". Sem segredos, IPs ou dados pessoais aqui.
 
 ## Capacidades presentes no código
@@ -35,13 +35,17 @@ Estado atual verificado no código em 2026-11-14. Histórico vive em `.context/c
 
 - CI GitHub Actions das frentes "código; CI pendente" (protocolo 08/11, primeiro-operador 11/11).
 - Homologação UI/E2E humano dos ensaios LAN e da mídia protegida.
-- Itens G0 de 2026-10-22 sem decisão registrada em `decisions/` (ver "Decisões abertas"): aplicabilidade atual não verificada.
+- Pendências G0 de 2026-10-22 verificadas em 2026-11-15: 2 resolvidas, 4 abertas com responsável humano (ver "Decisões abertas").
 - Runner G0 reexecutável: superado via prova de posse — `gotchas.md` (sem ação).
 
 ## Decisões abertas
 
 - Nenhuma além das ADR 001–007 (todas Aceitas) — ver `decisions/README.md`.
-- Herdadas do G0 (2026-10-22, sem registro em `decisions/`, reabrir só com instrução humana): pnpm do frontend; rotas Devise do super admin; `/auth/:provider` sem whitelist; teardown+preparo (recomendado: manter recusa); retry de erro genérico do AgentBot (recomendado: 1 tentativa); anexos Baileys sem ACL (recomendado: autorizar na T0.2).
+- Herdadas do G0 (2026-10-22, sem registro em `decisions/`, reabrir só com instrução humana) — verificadas em 2026-11-15, itens 6 e 12 resolvidos (ver changelog do dia); abertas:
+  - G0 item 8 (OPEN, responsável humano): Super admin — verificar por requests sintéticos as rotas Devise públicas (cadastro, recuperação, confirmação) e decidir correção — `evidence/g0/02-inventario-t0-1.md:64-66`.
+  - G0 item 9 (OPEN, responsável humano): OAuth — confirmar se a ausência de `redirect_whitelist` é intencional e avaliar o efeito no callback — `evidence/g0/02-inventario-t0-1.md:53,67`.
+  - G0 item 10 (OPEN, responsável humano): G0 runner — decidir se mantém a recusa de volume órfão após teardown (recomendação anterior: manter) — `scripts/connecta/g0_test_env.sh:127`, `gotchas.md:37`.
+  - G0 item 11 (OPEN, responsável humano): AgentBot — decidir política de retry para erros genéricos (`discard_on` do pai prevalece) após confirmar deduplicação no receptor — `gotchas.md:40`.
 
 ## Links
 
