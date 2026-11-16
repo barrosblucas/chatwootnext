@@ -155,7 +155,7 @@ class Connecta::Runtime::TransferTransaction # rubocop:disable Metrics/ClassLeng
   end
 
   def commit_local_destination!(local, transfer, source, target_version)
-    destination = local.commit_local!(target_case_version: target_version, summary: @summary.values.join("\n\n"))
+    destination = local.commit_local!(target_case_version: target_version, summary: format_summary)
     if destination == Connecta::Transfer::LocalTransaction::WAIT || destination == Connecta::Transfer::LocalTransaction::HELD
       raise Error.new('Outbound message is still being reconciled', status: :conflict)
     end
@@ -180,6 +180,16 @@ class Connecta::Runtime::TransferTransaction # rubocop:disable Metrics/ClassLeng
     Connecta::Runtime::CacheRevocation.scope!(source)
   rescue StandardError => e
     Rails.logger.warn("[connecta] scope.revoked announce failed transfer_id=#{transfer.id}: #{e.class}")
+  end
+
+  # Nota privada do destino: cada campo rotulado (mesmos rótulos do modal,
+  # locale pt_BR conversation.json SUMMARY_*). O fingerprint do contrato é
+  # sobre o JSON (@summary.to_json), não sobre este texto: o sha/length
+  # enviados ao WP não mudam.
+  def format_summary
+    "Qual é o assunto?\n#{@summary[:subject]}\n\n" \
+      "O que já foi feito?\n#{@summary[:completed]}\n\n" \
+      "O que falta ou deve acontecer em seguida?\n#{@summary[:next_action]}"
   end
 
   def normalize_summary(input)

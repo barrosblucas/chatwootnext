@@ -52,6 +52,25 @@ RSpec.describe 'Connecta runtime · transação prepare→commit→activated' do
     expect(Connecta::Transfer::TransferRecord.where(source_conversation_id: conv_a.id).count).to eq(1)
   end
 
+  it 'nota do destino usa horário de MS (UTC-4) e resumo rotulado' do
+    travel_to Time.utc(2026, 11, 15, 21, 8) do
+      Connecta::Runtime::TransferTransaction.new(
+        account_id: account.id, conversation: conv_a, actor: agent_a,
+        destination_org_unit_id: org_b.id, summary: summary
+      ).call
+    end
+
+    record = Connecta::Transfer::TransferRecord.find_by!(source_conversation_id: conv_a.id)
+    note = Message.where(conversation_id: record.destination_conversation_id, private: true).order(:id).last
+    expect(note.content).to include('15/11/2026 17:08')
+    expect(note.content).to include(
+      "Resumo:\nQual é o assunto?\nSegunda via\n\n" \
+      "O que já foi feito?\nDados conferidos\n\n" \
+      'O que falta ou deve acontecer em seguida?' \
+      "\nRetorno do setor B"
+    )
+  end
+
   it 'falha local apos prepare bem-sucedido enfileira abort e desfaz o preparo' do
     transaction = Connecta::Runtime::TransferTransaction.new(
       account_id: account.id, conversation: conv_a, actor: agent_a,

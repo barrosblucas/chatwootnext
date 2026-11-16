@@ -312,7 +312,7 @@ class Connecta::Transfer::LocalTransaction # rubocop:disable Metrics/ClassLength
       account_id: destination_conversation.account_id, inbox_id: destination_conversation.inbox_id,
       conversation: destination_conversation, message_type: :outgoing, private: true,
       content: "Atendimento transferido · protocolo #{origin.case_protocol} · " \
-               "#{Time.current.strftime('%d/%m/%Y %H:%M')}\n\nResumo: #{summary}"
+               "#{Time.current.in_time_zone('America/Campo_Grande').strftime('%d/%m/%Y %H:%M')}\n\nResumo:\n#{summary}"
     )
     destination_conversation
   end
