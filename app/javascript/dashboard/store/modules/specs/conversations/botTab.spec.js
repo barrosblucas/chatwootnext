@@ -153,7 +153,10 @@ describe('#Bot tab store', () => {
     it('drops a stale answer that arrives after a newer Bot request', async () => {
       let resolveFirst;
       axios.get.mockImplementationOnce(
-        () => new Promise(resolve => (resolveFirst = resolve))
+        () =>
+          new Promise(resolve => {
+            resolveFirst = resolve;
+          })
       );
       const first = actions.fetchBotConversations(
         { commit, dispatch },

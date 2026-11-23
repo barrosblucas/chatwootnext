@@ -11,7 +11,6 @@ Connecta::G0ScopeSchema.ensure!
 Connecta::Scope::Installer.install!
 
 RSpec.describe 'Connecta · exclusão opt-in do Bot na fila humana', type: :request do
-  let(:json) { JSON.parse(response.body) }
   let(:account) { create(:account) }
   let(:marked_inbox) { create(:inbox, account: account) }
   let(:control_inbox) { create(:inbox, account: account) }
@@ -20,8 +19,17 @@ RSpec.describe 'Connecta · exclusão opt-in do Bot na fila humana', type: :requ
   let(:bot_path) { "/api/v1/accounts/#{account.id}/conversations" }
   let(:meta_path) { "#{bot_path}/meta" }
   let(:client) { instance_double(Connecta::Runtime::PlatformClient) }
-
   let!(:org) { Connecta::Scope::OrgUnit.create!(name: 'Recepcao', path: '/recepcao/') }
+  let!(:bot_confirmed) { human_conversation!(marked_inbox) }
+  let!(:bot_open) { human_conversation!(marked_inbox) }
+  let!(:with_protocol) { human_conversation!(marked_inbox) }
+  let!(:resolved) { human_conversation!(marked_inbox, status: :resolved) }
+  let!(:generic) { human_conversation!(control_inbox) }
+
+  # Sem memoização: cada leitura reflete a resposta atual, nunca um corpo em cache.
+  def json
+    JSON.parse(response.body)
+  end
 
   def human_conversation!(target_inbox, status: :open)
     contact = create(:contact, account: account)
@@ -34,12 +42,6 @@ RSpec.describe 'Connecta · exclusão opt-in do Bot na fila humana', type: :requ
       org_unit: org, state: 'reception', case_protocol: protocol, case_version: version
     )
   end
-
-  let!(:bot_confirmed) { human_conversation!(marked_inbox) }
-  let!(:bot_open) { human_conversation!(marked_inbox) }
-  let!(:with_protocol) { human_conversation!(marked_inbox) }
-  let!(:resolved) { human_conversation!(marked_inbox, status: :resolved) }
-  let!(:generic) { human_conversation!(control_inbox) }
 
   before do
     create(:inbox_member, inbox: marked_inbox, user: agent)
@@ -157,7 +159,9 @@ RSpec.describe 'Connecta · exclusão opt-in do Bot na fila humana', type: :requ
           org_unit_id: org.id, state: 'reception', case_protocol: nil, case_version: 0,
           created_at: Time.current, updated_at: Time.current }
       end
+      # rubocop:disable Rails/SkipsModelValidations -- estouro conta 101 linhas idênticas ao shape validado de reception_scope! (create! nos demais exemplos); 101 factory creates só atrasariam o gate sem cobrir validação nova
       Connecta::Scope::ConversationScope.insert_all!(rows)
+      # rubocop:enable Rails/SkipsModelValidations
 
       get bot_path, params: { exclude_active_bot: 'true' }, headers: agent.create_new_auth_token, as: :json
 

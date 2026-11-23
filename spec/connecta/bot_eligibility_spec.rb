@@ -10,17 +10,30 @@ Connecta::G0ScopeSchema.ensure!
 Connecta::Scope::Installer.install!
 
 RSpec.describe 'Connecta · fila Bot (bot-eligibility)', type: :request do
-  let(:json) { JSON.parse(response.body) }
   let(:account) { create(:account) }
   let(:marked_inbox) { create(:inbox, account: account) }
   let(:control_inbox) { create(:inbox, account: account) }
   let(:agent) { create(:user, account: account, role: :agent) }
   let(:outsider) { create(:user, account: account, role: :agent) }
   let(:other_account) { create(:account) }
-  let(:bot_path) { "/api/v1/accounts/#{account.id}/conversations" }
   let(:client) { instance_double(Connecta::Runtime::PlatformClient) }
-
   let!(:org) { Connecta::Scope::OrgUnit.create!(name: 'Recepcao', path: '/recepcao/') }
+  let!(:bot_eligible) { bot_conversation!(account, marked_inbox) }
+  let!(:bot_expired) { bot_conversation!(account, marked_inbox) }
+  let!(:with_protocol) { bot_conversation!(account, marked_inbox) }
+  let!(:resolved) { bot_conversation!(account, marked_inbox, status: :resolved) }
+  let!(:generic) { bot_conversation!(account, control_inbox) }
+  let!(:other_conv) { bot_conversation!(other_account, create(:inbox, account: other_account)) }
+
+  # Sem memoização: cada leitura reflete a resposta atual (exemplos com dois
+  # GETs precisam da segunda resposta, nunca da primeira em cache).
+  def json
+    JSON.parse(response.body)
+  end
+
+  def bot_path
+    "/api/v1/accounts/#{account.id}/conversations"
+  end
 
   def bot_conversation!(target_account, target_inbox, status: :open)
     contact = create(:contact, account: target_account)
@@ -33,13 +46,6 @@ RSpec.describe 'Connecta · fila Bot (bot-eligibility)', type: :request do
       org_unit: org, state: 'reception', case_protocol: protocol, case_version: version
     )
   end
-
-  let!(:bot_eligible) { bot_conversation!(account, marked_inbox) }
-  let!(:bot_expired) { bot_conversation!(account, marked_inbox) }
-  let!(:with_protocol) { bot_conversation!(account, marked_inbox) }
-  let!(:resolved) { bot_conversation!(account, marked_inbox, status: :resolved) }
-  let!(:generic) { bot_conversation!(account, control_inbox) }
-  let!(:other_conv) { bot_conversation!(other_account, create(:inbox, account: other_account)) }
 
   before do
     create(:inbox_member, inbox: marked_inbox, user: agent)
@@ -118,6 +124,7 @@ RSpec.describe 'Connecta · fila Bot (bot-eligibility)', type: :request do
 
     it 'handoff atualiza na próxima observação (ponto no tempo, sem atomicidade)' do
       get bot_path, params: { conversation_type: 'bot' }, headers: agent.create_new_auth_token, as: :json
+      expect(response).to have_http_status(:ok)
       expect(bot_ids).to contain_exactly(bot_eligible.display_id)
 
       allow(client).to receive(:bot_eligibility).and_return(
@@ -187,7 +194,9 @@ RSpec.describe 'Connecta · fila Bot (bot-eligibility)', type: :request do
           org_unit_id: org.id, state: 'reception', case_protocol: nil, case_version: 0,
           created_at: Time.current, updated_at: Time.current }
       end
+      # rubocop:disable Rails/SkipsModelValidations -- estouro conta 301 linhas idênticas ao shape validado de reception_scope! (create! nos demais exemplos); 301 factory creates só atrasariam o gate sem cobrir validação nova
       Connecta::Scope::ConversationScope.insert_all!(rows)
+      # rubocop:enable Rails/SkipsModelValidations
 
       get bot_path, params: { conversation_type: 'bot' }, headers: agent.create_new_auth_token, as: :json
 

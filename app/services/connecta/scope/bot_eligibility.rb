@@ -69,9 +69,9 @@ class Connecta::Scope::BotEligibility
       .where(status: :open)
       .joins("INNER JOIN #{quoted} bot_scope ON bot_scope.conversation_id = conversations.id " \
              'AND bot_scope.inbox_id = conversations.inbox_id')
-      .where('bot_scope.state = ?', 'reception')
-      .where('bot_scope.case_protocol IS NULL')
-      .where('bot_scope.case_version = ?', 0)
+      .where(bot_scope: { state: 'reception' })
+      .where(bot_scope: { case_protocol: nil })
+      .where(bot_scope: { case_version: 0 })
       .reorder('conversations.id ASC')
       .limit(limit)
       .pluck('conversations.inbox_id', 'conversations.id')
@@ -93,21 +93,31 @@ class Connecta::Scope::BotEligibility
   # e ausência de duplicatas (inclusive entre lotes). Qualquer desvio invalida a
   # observação inteira — nunca resultado parcial.
   def self.validate_batch!(parsed, batch, eligible)
+    sent = batch.to_set { |(inbox_id, id)| "#{inbox_id}:#{id}" }
+    eligible_entries!(parsed).each do |entry|
+      key = strict_key!(entry)
+      raise Unavailable, UNAVAILABLE_CODE unless sent.include?(key) && eligible.add?(key)
+    end
+  end
+
+  # Envelope: só Array em eligible (string ou símbolo); resto é indisponível.
+  def self.eligible_entries!(parsed)
     entries = parsed.is_a?(Hash) ? (parsed['eligible'] || parsed[:eligible]) : nil
     raise Unavailable, UNAVAILABLE_CODE unless entries.is_a?(Array)
 
-    sent = batch.map { |(inbox_id, id)| "#{inbox_id}:#{id}" }.to_set
-    entries.each do |entry|
-      inbox_id = entry.is_a?(Hash) ? (entry['inbox_id'] || entry[:inbox_id]) : nil
-      conversation_id = entry.is_a?(Hash) ? (entry['conversation_id'] || entry[:conversation_id]) : nil
-      unless inbox_id.is_a?(Integer) && inbox_id.positive? && conversation_id.is_a?(Integer) &&
-             conversation_id.positive?
-        raise Unavailable, UNAVAILABLE_CODE
-      end
+    entries
+  end
 
-      key = "#{inbox_id}:#{conversation_id}"
-      raise Unavailable, UNAVAILABLE_CODE unless sent.include?(key) && eligible.add?(key)
+  # Par estrito: ids inteiros positivos; forma ou tipo errado é indisponível.
+  def self.strict_key!(entry)
+    inbox_id = entry.is_a?(Hash) ? (entry['inbox_id'] || entry[:inbox_id]) : nil
+    conversation_id = entry.is_a?(Hash) ? (entry['conversation_id'] || entry[:conversation_id]) : nil
+    unless inbox_id.is_a?(Integer) && inbox_id.positive? && conversation_id.is_a?(Integer) &&
+           conversation_id.positive?
+      raise Unavailable, UNAVAILABLE_CODE
     end
+
+    "#{inbox_id}:#{conversation_id}"
   end
 
   def initialize(relation)
