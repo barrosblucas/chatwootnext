@@ -24,6 +24,11 @@ const state = {
   syncConversationsMessages: {},
   conversationFilters: {},
   copilotAssistant: {},
+  // Bot tab membership is server authority: ids from Bot answers (replaced on
+  // page 1, unioned on later pages), cleared with the cache. Status drives the
+  // tab states: loading, ready, empty, unavailable (503, retry), error.
+  botConversationIds: [],
+  botListStatus: 'idle',
 };
 
 const getConversationById = _state => conversationId => {
@@ -63,6 +68,17 @@ export const mutations = {
   [types.EMPTY_ALL_CONVERSATION](_state) {
     _state.allConversations = [];
     _state.selectedChatId = null;
+    _state.botConversationIds = [];
+    _state.botListStatus = 'idle';
+  },
+  [types.SET_BOT_LIST_STATUS](_state, status) {
+    _state.botListStatus = status;
+  },
+  [types.SET_BOT_CONVERSATIONS](_state, { ids = [], page = 1 } = {}) {
+    _state.botConversationIds =
+      page > 1
+        ? [...new Set([..._state.botConversationIds, ...ids])]
+        : [...ids];
   },
   [types.SET_ALL_MESSAGES_LOADED](_state, conversationId) {
     const chat = getConversationById(_state)(conversationId);

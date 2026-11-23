@@ -70,6 +70,11 @@ import {
 } from 'dashboard/helper/permissionsHelper.js';
 import { matchesFilters } from '../store/modules/conversations/helpers/filterHelpers';
 import { humanAssignee } from '../store/modules/conversations/helpers';
+import {
+  BOT_TAB_KEY,
+  isBotTabVisible,
+  shouldExcludeActiveBot,
+} from 'dashboard/helper/connectaBotTab';
 import { CONVERSATION_EVENTS } from '../helper/AnalyticsHelper/events';
 
 const props = defineProps({
@@ -116,6 +121,8 @@ const chatLists = useMapGetter('getFilteredConversations');
 const mineChatsList = useMapGetter('getMineChats');
 const allChatList = useMapGetter('getAllStatusChats');
 const unAssignedChatsList = useMapGetter('getUnAssignedChats');
+const botChatsList = useMapGetter('getBotChats');
+const botListStatus = useMapGetter('getBotListStatus');
 const participatingChatsList = useMapGetter('getParticipatingChats');
 const chatListLoading = useMapGetter('getChatListLoadingStatus');
 const pinnedAtById = useMapGetter('conversationPins/getRecords');
@@ -223,7 +230,7 @@ const assigneeTabPermissions = computed(() => {
 });
 
 const assigneeTabItems = computed(() => {
-  return filterItemsByPermission(
+  const baseItems = filterItemsByPermission(
     assigneeTabPermissions.value,
     userPermissions.value,
     item => item.permissions
@@ -232,6 +239,48 @@ const assigneeTabItems = computed(() => {
     name: t(`CHAT_LIST.ASSIGNEE_TYPE_TABS.${key}`),
     count: conversationStats.value[countKey] || 0,
   }));
+  // The Bot tab is appended, never permission-filtered: triage rows are only
+  // reachable here once the human tabs exclude them, so hiding the tab would
+  // strand them. The server still enforces every row it serves.
+  if (!botTabVisible.value) return baseItems;
+  return [
+    ...baseItems,
+    {
+      key: BOT_TAB_KEY,
+      name: t('CHAT_LIST.ASSIGNEE_TYPE_TABS.bot'),
+      count: conversationStats.value.botCount || 0,
+    },
+  ];
+});
+
+const isBotTab = computed(() => activeAssigneeTab.value === BOT_TAB_KEY);
+
+const botTabVisible = computed(() => {
+  return isBotTabVisible({
+    connectaEnabled: connectaHumanNumberEnabled,
+    conversationType: props.conversationType,
+    status: activeStatus.value,
+  });
+});
+
+const shouldExcludeBots = computed(() => {
+  return shouldExcludeActiveBot({
+    connectaEnabled: connectaHumanNumberEnabled,
+    conversationType: props.conversationType,
+    status: activeStatus.value,
+    hasFiltersOrFolders: hasAppliedFiltersOrActiveFolders.value,
+  });
+});
+
+// Degraded human classification: the server kept the original list because it
+// could not prove the Bot exclusion. The queue stays usable; the banner says
+// it may still contain Bot rows, with a retry that refetches the same view.
+const showBotDegradedWarning = computed(() => {
+  return (
+    !isBotTab.value &&
+    shouldExcludeBots.value &&
+    conversationStats.value.botClassificationUnavailable === true
+  );
 });
 
 const showAssigneeInConversationCard = computed(() => {
@@ -296,13 +345,19 @@ const conversationListPagination = computed(() => {
 const conversationFilters = computed(() => {
   return {
     inboxId: props.conversationInbox ? props.conversationInbox : undefined,
-    assigneeType: activeAssigneeTab.value,
+    // The Bot tab asks by server conversation type; any assigneeType would be
+    // ignored by the finder, so none travels instead of a misleading one.
+    assigneeType: isBotTab.value ? undefined : activeAssigneeTab.value,
     status: activeStatus.value,
     sortBy: activeSortBy.value,
     page: conversationListPagination.value,
     labels: props.label ? [props.label] : undefined,
     teamId: props.teamId || undefined,
-    conversationType: props.conversationType || undefined,
+    conversationType: isBotTab.value
+      ? BOT_TAB_KEY
+      : props.conversationType || undefined,
+    excludeActiveBot:
+      !isBotTab.value && shouldExcludeBots.value ? 'true' : undefined,
     groupType: activeGroupType.value || undefined,
   };
 });
@@ -337,6 +392,9 @@ const pageTitle = computed(() => {
   }
   if (props.conversationType === wootConstants.CONVERSATION_TYPE.UNATTENDED) {
     return t('CHAT_LIST.UNATTENDED_HEADING');
+  }
+  if (isBotTab.value) {
+    return t('CHAT_LIST.BOT_HEADING');
   }
   if (hasActiveFolders.value) {
     return activeFolder.value.name;
@@ -390,6 +448,10 @@ const conversationList = computed(() => {
       localConversationList = [...mineChatsList.value(filters)];
     } else if (activeAssigneeTab.value === 'unassigned') {
       localConversationList = [...unAssignedChatsList.value(filters)];
+    } else if (isBotTab.value) {
+      // Server authority, no client assignee predicate: membership is whatever
+      // the Bot endpoint returned, narrowed only by page/inbox/status here.
+      localConversationList = [...botChatsList.value(filters)];
     } else {
       localConversationList = [...allChatList.value(filters)];
     }
@@ -644,7 +706,13 @@ function onToggleAdvanceFiltersModal() {
 
 function fetchConversations() {
   store.dispatch('updateChatListFilters', conversationFilters.value);
-  store.dispatch('fetchAllConversations').then(emitConversationLoaded);
+  if (isBotTab.value) {
+    store
+      .dispatch('fetchBotConversations', conversationFilters.value)
+      .then(emitConversationLoaded);
+  } else {
+    store.dispatch('fetchAllConversations').then(emitConversationLoaded);
+  }
 }
 
 function resetAndFetchData() {
@@ -959,9 +1027,29 @@ useEmitter(BUS_EVENTS.OPEN_CONVERSATION_GONE, () =>
   redirectToConversationList()
 );
 
+// Cable traffic (handoffs, resolutions, new triage) is what moves rows out of
+// the Bot tab, and the store never evicts them on its own. While the Bot tab is
+// open, re-ask page 1 on the same debounced signal that refreshes the badges:
+// the answer replaces membership instead of polling, and the request token in
+// the store drops any older answer that arrives late.
+const refreshBotTab = debounce(
+  () => {
+    if (activeAssigneeTab.value !== BOT_TAB_KEY || chatListLoading.value) {
+      return;
+    }
+    store.dispatch('fetchBotConversations', {
+      ...conversationFilters.value,
+      page: 1,
+    });
+  },
+  2000,
+  false
+);
+
 useEmitter('fetch_conversation_stats', () => {
   if (hasAppliedFiltersOrActiveFolders.value) return;
   store.dispatch('conversationStats/get', conversationFilters.value);
+  refreshBotTab();
 });
 
 // The list can only ever be a subset of what the server counts for the tab, so a list longer than
@@ -1159,11 +1247,52 @@ watch(conversationFilters, (newVal, oldVal) => {
       @chat-tab-change="updateAssigneeTab"
     />
 
+    <div
+      v-if="showBotDegradedWarning"
+      class="flex items-center justify-between gap-2 px-4 py-2 text-xs bg-n-surface-2"
+    >
+      <span>{{ $t('CHAT_LIST.BOT_CLASSIFICATION_UNAVAILABLE') }}</span>
+      <button
+        class="underline underline-offset-2 cursor-pointer"
+        @click="fetchConversations"
+      >
+        {{ $t('CHAT_LIST.BOT_RETRY') }}
+      </button>
+    </div>
+
+    <div
+      v-if="
+        isBotTab &&
+        (botListStatus === 'unavailable' || botListStatus === 'error')
+      "
+      class="flex flex-col items-center justify-center gap-2 p-4 text-center"
+    >
+      <p class="text-sm">
+        {{
+          botListStatus === 'unavailable'
+            ? $t('CHAT_LIST.BOT_LIST_UNAVAILABLE')
+            : $t('CHAT_LIST.FETCH_ERROR')
+        }}
+      </p>
+      <button
+        class="text-sm underline underline-offset-2 cursor-pointer"
+        @click="fetchConversations"
+      >
+        {{ $t('CHAT_LIST.BOT_RETRY') }}
+      </button>
+    </div>
+
     <p
-      v-if="!chatListLoading && !conversationList.length"
+      v-if="!chatListLoading && !conversationList.length && !isBotTab"
       class="flex overflow-auto justify-center items-center p-4"
     >
       {{ $t('CHAT_LIST.LIST.404') }}
+    </p>
+    <p
+      v-if="isBotTab && botListStatus === 'empty'"
+      class="flex overflow-auto justify-center items-center p-4"
+    >
+      {{ $t('CHAT_LIST.BOT_LIST_EMPTY') }}
     </p>
     <ConversationBulkActions
       :conversations="selectedConversations"

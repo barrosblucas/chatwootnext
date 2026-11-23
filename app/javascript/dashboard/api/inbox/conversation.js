@@ -20,6 +20,7 @@ class ConversationApi extends ApiClient {
     sortBy,
     updatedWithin,
     groupType,
+    excludeActiveBot,
   }) {
     return axios.get(this.url, {
       params: {
@@ -33,6 +34,7 @@ class ConversationApi extends ApiClient {
         sort_by: sortBy,
         updated_within: updatedWithin,
         group_type: groupType,
+        exclude_active_bot: excludeActiveBot,
       },
     });
   }
@@ -138,6 +140,7 @@ class ConversationApi extends ApiClient {
     teamId,
     conversationType,
     groupType,
+    excludeActiveBot,
   }) {
     return axios.get(`${this.url}/meta`, {
       params: {
@@ -148,6 +151,7 @@ class ConversationApi extends ApiClient {
         team_id: teamId,
         conversation_type: conversationType,
         group_type: groupType,
+        exclude_active_bot: excludeActiveBot,
       },
     });
   }

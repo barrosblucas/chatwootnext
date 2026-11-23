@@ -7,6 +7,13 @@ class Api::V1::Accounts::ConversationsController < Api::V1::Accounts::BaseContro
   before_action :conversation, except: [:index, :meta, :sync, :search, :create, :filter, :presence_subscribe_bulk, :pins, :unpin]
   before_action :inbox, :contact, :contact_inbox, only: [:create]
 
+  # Fila Bot indisponível (estouro, plataforma fora, resposta inválida): 503
+  # explícito para o dashboard tratar como "tentar de novo", nunca como vazia.
+  rescue_from Connecta::Scope::BotEligibility::Unavailable, with: :render_bot_unavailable
+
+  # Guarda no ponto de entrada nativo (roda mesmo com o hook desinstalado).
+  before_action :guard_bot_runtime!, only: [:index, :meta]
+
   ATTACHMENT_RESULTS_PER_PAGE = 100
   # One page of conversations, the same unit the index endpoint serializes at. The partial does
   # per-row work (unread counts, the last non-activity message), so an uncapped list would let any
@@ -28,11 +35,13 @@ class Api::V1::Accounts::ConversationsController < Api::V1::Accounts::BaseContro
     result = conversation_finder.perform
     @conversations = result[:conversations]
     @conversations_count = result[:count]
+    @bot_classification_unavailable = conversation_finder.bot_classification_unavailable
   end
 
   def meta
     result = conversation_finder.perform_meta_only
     @conversations_count = result[:count]
+    @bot_classification_unavailable = conversation_finder.bot_classification_unavailable
   end
 
   # The current state of the conversations the caller names, and nothing else. The dashboard asks
@@ -388,6 +397,21 @@ class Api::V1::Accounts::ConversationsController < Api::V1::Accounts::BaseContro
 
   def permitted_conversation_ids
     Array(params[:ids]).map(&:to_i)
+  end
+
+  # Ponto de entrada nativo (roda mesmo com o hook desinstalado): sem prova de
+  # filtragem segura, o caminho dedicado nunca devolve a fila geral como Bot.
+  def guard_bot_runtime!
+    return unless params[:conversation_type] == 'bot'
+    return if Connecta::Scope::BotEligibility.available?
+
+    raise Connecta::Scope::BotEligibility::Unavailable, Connecta::Scope::BotEligibility::UNAVAILABLE_CODE
+  end
+
+  # Fila Bot indisponível: código estável ({ error: 'bot_eligibility_*' }), sem
+  # vazar ids, endpoints, resposta da plataforma ou segredos.
+  def render_bot_unavailable(exception)
+    render json: { error: exception.code }, status: :service_unavailable
   end
 
   # nil when the caller said nothing, which is what asks for the default window. An empty

@@ -179,6 +179,34 @@ const getters = {
 
     return sortConversations(chats, _state, rootGetters);
   },
+  // Bot tab membership is whatever the server returned, nothing else: no
+  // assignee predicate on the client, so a handoff or expiry only converges
+  // through a new server answer, never through local classification.
+  getBotChats: (_state, _, __, rootGetters) => activeFilters => {
+    const currentUser = rootGetters.getCurrentUser;
+    const currentUserId = rootGetters.getCurrentUser.id;
+    const currentAccountId = rootGetters.getCurrentAccountId;
+
+    const permissions = getUserPermissions(currentUser, currentAccountId);
+    const userRole = getUserRole(currentUser, currentAccountId);
+    const botIds = new Set(_state.botConversationIds);
+
+    const chats = _state.allConversations.filter(conversation => {
+      if (!botIds.has(conversation.id)) return false;
+      const shouldFilter = applyPageFilters(conversation, activeFilters);
+      const allowedForRole = applyRoleFilter(
+        conversation,
+        userRole,
+        permissions,
+        currentUserId
+      );
+
+      return shouldFilter && allowedForRole;
+    });
+
+    return sortConversations(chats, _state, rootGetters);
+  },
+  getBotListStatus: ({ botListStatus }) => botListStatus,
   getChatListLoadingStatus: ({ listLoadingStatus }) => listLoadingStatus,
   getAllMessagesLoaded(_state) {
     const [chat] = getSelectedChatConversation(_state);

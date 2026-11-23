@@ -189,6 +189,58 @@ describe('#ConversationAPI', () => {
       });
     });
 
+    it('#get bot tab uses dedicated conversation_type without assignee predicate', () => {
+      conversationAPI.get({
+        status: 'open',
+        page: 1,
+        conversationType: 'bot',
+      });
+      expect(axiosMock.get).toHaveBeenCalledWith('/api/v1/conversations', {
+        params: {
+          inbox_id: undefined,
+          team_id: undefined,
+          status: 'open',
+          assignee_type: undefined,
+          page: 1,
+          labels: undefined,
+          conversation_type: 'bot',
+          sort_by: undefined,
+          updated_within: undefined,
+          group_type: undefined,
+          exclude_active_bot: undefined,
+        },
+      });
+    });
+
+    it('#get human list opts into server Bot exclusion', () => {
+      conversationAPI.get({
+        status: 'open',
+        assigneeType: 'unassigned',
+        page: 1,
+        excludeActiveBot: 'true',
+      });
+      expect(axiosMock.get).toHaveBeenCalledWith('/api/v1/conversations', {
+        params: expect.objectContaining({
+          assignee_type: 'unassigned',
+          conversation_type: undefined,
+          exclude_active_bot: 'true',
+        }),
+      });
+    });
+
+    it('#meta human list opts into server Bot exclusion', () => {
+      conversationAPI.meta({
+        status: 'open',
+        assigneeType: 'all',
+        excludeActiveBot: 'true',
+      });
+      expect(axiosMock.get).toHaveBeenCalledWith('/api/v1/conversations/meta', {
+        params: expect.objectContaining({
+          exclude_active_bot: 'true',
+        }),
+      });
+    });
+
     it('#sendEmailTranscript', () => {
       conversationAPI.sendEmailTranscript({
         conversationId: 45,

@@ -1,5 +1,9 @@
 class ConversationFinder # rubocop:disable Metrics/ClassLength
   attr_reader :current_user, :current_account, :params
+  # Sinalizado pelo hook Connecta quando a exclusão opt-in do Bot roda (ou
+  # falha): true = classificação indisponível (lista original preservada),
+  # false = exclusão aplicada, nil = caminho não solicitado. Só leitura aqui.
+  attr_reader :bot_classification_unavailable
 
   DEFAULT_STATUS = 'open'.freeze
   SORT_OPTIONS = {

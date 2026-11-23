@@ -51,11 +51,13 @@ export const hasMessageFailedWithExternalError = pendingMessage => {
 
 // The getter behind each assignee tab is the same predicate the list on screen uses, so what it
 // returns is exactly what the agent is looking at. Saved filters and folders narrow the list with
-// a rule of their own and have no assigneeType, so they fall out here.
+// a rule of their own and have no assigneeType, so they fall out here. The Bot tab is server
+// membership (getBotChats), not a client predicate: the store cannot reproduce it.
 const TAB_GETTERS = {
   me: 'getMineChats',
   unassigned: 'getUnAssignedChats',
   all: 'getAllStatusChats',
+  bot: 'getBotChats',
 };
 
 // Mentions and participating do carry an assigneeType, but the server narrows those lists by a
@@ -68,6 +70,11 @@ const UNRECONCILABLE_VIEWS = [
 
 // The trigger fires from a watcher, which can fire again while the request is still out.
 const tabsBeingReconciled = new Set();
+
+// Bot list requests carry no cancellation token, so a newer Bot request going
+// out while an older one is still in flight is the only staleness signal: the
+// older answer is dropped instead of reintroducing rows a newer one removed.
+let botRequestSeq = 0;
 
 // actions
 const actions = {
@@ -112,6 +119,50 @@ const actions = {
     } catch (error) {
       commit(types.CLEAR_LIST_LOADING_STATUS);
       throw error;
+    }
+  },
+
+  // Dedicated Bot tab fetch: same paging/serialization as the normal list, but
+  // the server is the authority on membership, so rows land in the shared cache
+  // while tab membership stays in botConversationIds (replaced on page 1,
+  // unioned on later pages). 503 means unavailable with retry, never an empty
+  // tab; a stale answer arriving after a newer request is dropped entirely.
+  fetchBotConversations: async ({ commit, dispatch }, params) => {
+    const requestId = ++botRequestSeq;
+    commit(types.SET_LIST_LOADING_STATUS);
+    commit(types.SET_BOT_LIST_STATUS, 'loading');
+    try {
+      const {
+        data: { data },
+      } = await ConversationApi.get(params);
+      if (requestId !== botRequestSeq) return;
+      buildConversationList(
+        { commit, dispatch },
+        params,
+        data,
+        'bot',
+        { skipStatsUpdate: true }
+      );
+      dispatch(
+        'conversationStats/setBotMeta',
+        { count: data.meta.all_count },
+        { root: true }
+      );
+      commit(types.SET_BOT_CONVERSATIONS, {
+        ids: data.payload.map(conversation => conversation.id),
+        page: params.page,
+      });
+      commit(
+        types.SET_BOT_LIST_STATUS,
+        data.payload.length ? 'ready' : 'empty'
+      );
+    } catch (error) {
+      if (requestId !== botRequestSeq) return;
+      commit(types.CLEAR_LIST_LOADING_STATUS);
+      commit(
+        types.SET_BOT_LIST_STATUS,
+        error?.response?.status === 503 ? 'unavailable' : 'error'
+      );
     }
   },
 

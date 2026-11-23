@@ -50,11 +50,14 @@ export const buildConversationList = (
   context,
   requestPayload,
   responseData,
-  filterType
+  filterType,
+  { skipStatsUpdate = false } = {}
 ) => {
   const { payload: conversationList, meta: metaData } = responseData;
   context.commit(types.SET_ALL_CONVERSATION, conversationList);
-  context.dispatch('conversationStats/set', metaData);
+  // The Bot tab carries its own badge (eligible count would corrupt the human
+  // tab badges sharing this state); its caller commits the dedicated meta.
+  if (!skipStatsUpdate) context.dispatch('conversationStats/set', metaData);
   context.dispatch(
     'conversationLabels/setBulkConversationLabels',
     conversationList

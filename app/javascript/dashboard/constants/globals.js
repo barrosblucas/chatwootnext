@@ -4,6 +4,7 @@ export default {
     ME: 'me',
     UNASSIGNED: 'unassigned',
     ALL: 'all',
+    BOT: 'bot',
   },
   STATUS_TYPE: {
     OPEN: 'open',

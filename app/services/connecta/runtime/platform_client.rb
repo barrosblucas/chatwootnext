@@ -10,13 +10,22 @@ class Connecta::Runtime::PlatformClient
     end
   end
 
-  def initialize(base_url: ENV.fetch('CONNECTA_PLATFORM_URL', nil), secret: ENV.fetch('CONNECTA_FORK_TO_PLATFORM_SECRET', nil))
+  def initialize(base_url: ENV.fetch('CONNECTA_PLATFORM_URL', nil), secret: ENV.fetch('CONNECTA_FORK_TO_PLATFORM_SECRET', nil),
+                 timeout: nil)
     @base_url = base_url.to_s.chomp('/')
     @secret = secret.to_s
+    @timeout = timeout
   end
 
   def get(path)
     request(:get, path)
+  end
+
+  # Fio fork→WP da fila Bot (somente leitura): até 100 pares únicos
+  # { inbox_id:, conversation_id: }. Assinatura HMAC e timeout existentes; a
+  # validação estrita da resposta (subconjunto, sem duplicatas) fica no chamador.
+  def bot_eligibility(candidates)
+    post('/attendance/v1/bot-eligibility', { candidates: candidates })
   end
 
   def post(path, payload)
@@ -29,7 +38,7 @@ class Connecta::Runtime::PlatformClient
     ensure_configured!
     body = payload.nil? ? '' : payload.to_json
     response = HTTParty.public_send(method, "#{@base_url}#{path}", headers: request_headers(method, path, body),
-                                                                   body: body.presence, timeout: REQUEST_TIMEOUT)
+                                                                   body: body.presence, timeout: @timeout || REQUEST_TIMEOUT)
     parsed = response.parsed_response
     return parsed if response.success?
 

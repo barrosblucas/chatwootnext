@@ -11,14 +11,20 @@
     "TAB_HEADING": "Conversas",
     "MENTION_HEADING": "Menções",
     "UNATTENDED_HEADING": "Por responder",
+    "BOT_HEADING": "Bot",
+    "BOT_LIST_EMPTY": "Nenhuma conversa no Bot no momento.",
+    "BOT_LIST_UNAVAILABLE": "Fila do Bot indisponível. Mostrando a última lista conhecida.",
+    "BOT_RETRY": "Tentar de novo",
+    "BOT_CLASSIFICATION_UNAVAILABLE": "Classificação do Bot indisponível — mostrando a fila completa.",
     "SEARCH": {
       "INPUT": "Pesquisar pessoas, conversas, respostas guardadas .."
     },
     "FILTER_ALL": "Todas",
     "ASSIGNEE_TYPE_TABS": {
       "me": "Minhas",
-      "unassigned": "Não atribuídas",
-      "all": "Todas"
+      "unassigned": "Aguardando",
+      "all": "Todas",
+      "bot": "Bot"
     },
     "CHAT_STATUS_FILTER_ITEMS": {
       "open": {

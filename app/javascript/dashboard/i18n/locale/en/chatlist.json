@@ -11,6 +11,11 @@
     "TAB_HEADING": "Conversations",
     "MENTION_HEADING": "Mentions",
     "UNATTENDED_HEADING": "Unattended",
+    "BOT_HEADING": "Bot",
+    "BOT_LIST_EMPTY": "No active Bot sessions right now.",
+    "BOT_LIST_UNAVAILABLE": "Bot queue unavailable. Showing the last known list.",
+    "BOT_RETRY": "Try again",
+    "BOT_CLASSIFICATION_UNAVAILABLE": "Bot classification unavailable — showing the full queue.",
     "SEARCH": {
       "INPUT": "Search for People, Chats, Saved Replies .."
     },
@@ -18,7 +23,8 @@
     "ASSIGNEE_TYPE_TABS": {
       "me": "Mine",
       "unassigned": "Unassigned",
-      "all": "All"
+      "all": "All",
+      "bot": "Bot"
     },
     "CHAT_STATUS_FILTER_ITEMS": {
       "open": {

@@ -6,6 +6,12 @@ const state = {
   mineCount: 0,
   unAssignedCount: 0,
   allCount: 0,
+  // Bot tab badge (eligible count) lives apart so Bot answers never rewrite
+  // the human badges sharing this module. botClassificationUnavailable mirrors
+  // the server opt-in flag: null = never attempted, false = exclusion applied,
+  // true = original list preserved, classification unavailable.
+  botCount: 0,
+  botClassificationUnavailable: null,
 };
 
 export const getters = {
@@ -19,7 +25,13 @@ const fetchMetaData = async (commit, params) => {
     const {
       data: { meta },
     } = response;
-    commit(types.SET_CONV_TAB_META, meta);
+    // Bot meta answers carry the eligible count for the Bot badge only; they
+    // must never rewrite the human badges sharing this module.
+    if (params?.conversationType === 'bot') {
+      commit(types.SET_BOT_TAB_META, { count: meta.all_count });
+    } else {
+      commit(types.SET_CONV_TAB_META, meta);
+    }
   } catch (error) {
     // ignore
   }
@@ -55,6 +67,9 @@ export const actions = {
   set({ commit }, meta) {
     commit(types.SET_CONV_TAB_META, meta);
   },
+  setBotMeta({ commit }, { count } = {}) {
+    commit(types.SET_BOT_TAB_META, { count });
+  },
 };
 
 export const mutations = {
@@ -64,11 +79,21 @@ export const mutations = {
       mine_count: mineCount,
       unassigned_count: unAssignedCount,
       all_count: allCount,
+      bot_classification_unavailable: botClassificationUnavailable,
     } = {}
   ) {
     $state.mineCount = mineCount;
     $state.allCount = allCount;
     $state.unAssignedCount = unAssignedCount;
+    $state.updatedOn = new Date();
+    // Only human opt-in answers carry the flag; anything else leaves the last
+    // known classification state untouched instead of clearing it.
+    if (botClassificationUnavailable !== undefined) {
+      $state.botClassificationUnavailable = botClassificationUnavailable;
+    }
+  },
+  [types.SET_BOT_TAB_META]($state, { count } = {}) {
+    $state.botCount = count;
     $state.updatedOn = new Date();
   },
 };
