@@ -87,9 +87,9 @@ describe('#connectaBotTab', () => {
       expect(
         shouldExcludeActiveBot({ ...base, conversationType: 'mention' })
       ).toBe(false);
-      expect(shouldExcludeActiveBot({ ...base, status: 'resolved' })).toBe(
-        false
-      );
+      expect(
+        shouldExcludeActiveBot({ ...base, status: 'resolved' })
+      ).toBe(false);
       expect(
         shouldExcludeActiveBot({ ...base, connectaEnabled: false })
       ).toBe(false);

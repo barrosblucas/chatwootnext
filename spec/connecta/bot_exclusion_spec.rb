@@ -45,20 +45,23 @@ RSpec.describe 'Connecta · exclusão opt-in do Bot na fila humana', type: :requ
     create(:inbox_member, inbox: marked_inbox, user: agent)
     create(:inbox_member, inbox: control_inbox, user: agent)
     Connecta::Scope::ScopedInbox.create!(inbox_id: marked_inbox.id, enforcement: 'enforce', maintenance: false)
+    # Projeção utilizável do ator positivo (espelha g0_scope_fixture.rb:45-68):
+    # heartbeat fresco, época de autenticação sem revogação e grant de leitura.
+    Connecta::Scope::AclSyncState.create!(last_version: 1, last_heartbeat_at: Time.current)
+    Connecta::Scope::UserAuthEpoch.create!(user_id: agent.id, epoch: 1)
+    Connecta::Scope::UserGrant.create!(user_id: agent.id, org_unit: org, permission: 'atender')
     reception_scope!(bot_confirmed)
     reception_scope!(bot_open)
     reception_scope!(with_protocol, protocol: 'BND00000001', version: 1)
     reception_scope!(resolved)
     allow(Connecta::Runtime::Feature).to receive(:enabled?).and_return(true)
     allow(Connecta::Runtime::PlatformClient).to receive(:new).and_return(client)
-    allow(client).to receive(:post).and_return({
-                                                 'eligible' => [
-                                                   { 'inbox_id' => marked_inbox.id, 'conversation_id' => bot_confirmed.id }
-                                                 ]
-                                               })
+    allow(client).to receive(:bot_eligibility).and_return(
+      { 'eligible' => [{ 'inbox_id' => marked_inbox.id, 'conversation_id' => bot_confirmed.id }] }
+    )
   end
 
-  def bot_ids(payload = json['payload'])
+  def bot_ids(payload = json['data']['payload'])
     Array(payload).map { |row| row['id'] }
   end
 
@@ -68,9 +71,9 @@ RSpec.describe 'Connecta · exclusão opt-in do Bot na fila humana', type: :requ
 
       expect(response).to have_http_status(:ok)
       expect(bot_ids).to contain_exactly(bot_open.display_id, with_protocol.display_id, generic.display_id)
-      expect(json['meta']).to include('all_count' => 3, 'unassigned_count' => 3, 'bot_classification_unavailable' => false)
+      expect(json['data']['meta']).to include('all_count' => 3, 'unassigned_count' => 3, 'bot_classification_unavailable' => false)
       expect(Connecta::Runtime::PlatformClient).to have_received(:new).with(timeout: 1)
-      expect(client).to have_received(:post).once
+      expect(client).to have_received(:bot_eligibility).once
     end
 
     it 'meta opt-in conta sem o confirmado', :aggregate_failures do
@@ -85,9 +88,9 @@ RSpec.describe 'Connecta · exclusão opt-in do Bot na fila humana', type: :requ
 
       expect(response).to have_http_status(:ok)
       expect(bot_ids).to include(bot_confirmed.display_id, bot_open.display_id)
-      expect(json['meta']['all_count']).to eq(4)
-      expect(json['meta'].key?('bot_classification_unavailable')).to be(false)
-      expect(client).not_to have_received(:post)
+      expect(json['data']['meta']['all_count']).to eq(4)
+      expect(json['data']['meta'].key?('bot_classification_unavailable')).to be(false)
+      expect(client).not_to have_received(:bot_eligibility)
     end
   end
 
@@ -98,8 +101,8 @@ RSpec.describe 'Connecta · exclusão opt-in do Bot na fila humana', type: :requ
 
       expect(response).to have_http_status(:ok)
       expect(bot_ids).to include(bot_confirmed.display_id, resolved.display_id)
-      expect(client).not_to have_received(:post)
-      expect(json['meta'].key?('bot_classification_unavailable')).to be(false)
+      expect(client).not_to have_received(:bot_eligibility)
+      expect(json['data']['meta'].key?('bot_classification_unavailable')).to be(false)
     end
 
     it 'busca com opt-in: inalterada e sem rede' do
@@ -107,8 +110,8 @@ RSpec.describe 'Connecta · exclusão opt-in do Bot na fila humana', type: :requ
                     as: :json
 
       expect(response).to have_http_status(:ok)
-      expect(client).not_to have_received(:post)
-      expect(json['meta'].key?('bot_classification_unavailable')).to be(false)
+      expect(client).not_to have_received(:bot_eligibility)
+      expect(json['data']['meta'].key?('bot_classification_unavailable')).to be(false)
     end
 
     it 'aba participating com opt-in: inalterada e sem rede' do
@@ -116,32 +119,32 @@ RSpec.describe 'Connecta · exclusão opt-in do Bot na fila humana', type: :requ
                     headers: agent.create_new_auth_token, as: :json
 
       expect(response).to have_http_status(:ok)
-      expect(client).not_to have_received(:post)
-      expect(json['meta'].key?('bot_classification_unavailable')).to be(false)
+      expect(client).not_to have_received(:bot_eligibility)
+      expect(json['data']['meta'].key?('bot_classification_unavailable')).to be(false)
     end
   end
 
   describe 'falha preserva a lista humana com sinal explícito' do
     it 'dependência fora: lista original e flag true', :aggregate_failures do
-      allow(client).to receive(:post).and_raise(Connecta::Runtime::PlatformClient::Error.new('down'))
+      allow(client).to receive(:bot_eligibility).and_raise(Connecta::Runtime::PlatformClient::Error.new('down'))
 
       get bot_path, params: { exclude_active_bot: 'true' }, headers: agent.create_new_auth_token, as: :json
 
       expect(response).to have_http_status(:ok)
       expect(bot_ids).to include(bot_confirmed.display_id, bot_open.display_id, generic.display_id)
-      expect(json['meta']).to include('all_count' => 4, 'bot_classification_unavailable' => true)
+      expect(json['data']['meta']).to include('all_count' => 4, 'bot_classification_unavailable' => true)
     end
 
     it 'resposta fora do subconjunto: sem exclusão parcial, flag true', :aggregate_failures do
-      allow(client).to receive(:post).and_return({
-                                                   'eligible' => [{ 'inbox_id' => marked_inbox.id, 'conversation_id' => 999_999 }]
-                                                 })
+      allow(client).to receive(:bot_eligibility).and_return(
+        { 'eligible' => [{ 'inbox_id' => marked_inbox.id, 'conversation_id' => 999_999 }] }
+      )
 
       get bot_path, params: { exclude_active_bot: 'true' }, headers: agent.create_new_auth_token, as: :json
 
       expect(response).to have_http_status(:ok)
       expect(bot_ids).to include(bot_confirmed.display_id)
-      expect(json['meta']).to include('bot_classification_unavailable' => true)
+      expect(json['data']['meta']).to include('bot_classification_unavailable' => true)
     end
 
     it 'estouro acima de 100 candidatos: sem rede, lista preservada, flag true', :aggregate_failures do
@@ -160,8 +163,8 @@ RSpec.describe 'Connecta · exclusão opt-in do Bot na fila humana', type: :requ
 
       expect(response).to have_http_status(:ok)
       expect(bot_ids).to include(bot_confirmed.display_id)
-      expect(json['meta']).to include('bot_classification_unavailable' => true)
-      expect(client).not_to have_received(:post)
+      expect(json['data']['meta']).to include('bot_classification_unavailable' => true)
+      expect(client).not_to have_received(:bot_eligibility)
     end
 
     it 'runtime desligado: sem rede, lista preservada, flag true', :aggregate_failures do
@@ -171,8 +174,8 @@ RSpec.describe 'Connecta · exclusão opt-in do Bot na fila humana', type: :requ
 
       expect(response).to have_http_status(:ok)
       expect(bot_ids).to include(bot_confirmed.display_id, bot_open.display_id)
-      expect(json['meta']).to include('bot_classification_unavailable' => true)
-      expect(client).not_to have_received(:post)
+      expect(json['data']['meta']).to include('bot_classification_unavailable' => true)
+      expect(client).not_to have_received(:bot_eligibility)
     end
 
     it 'sem permissão: vazio exato, sem rede e sem vazar pares' do
@@ -180,7 +183,7 @@ RSpec.describe 'Connecta · exclusão opt-in do Bot na fila humana', type: :requ
 
       expect(response).to have_http_status(:ok)
       expect(bot_ids).to be_empty
-      expect(client).not_to have_received(:post)
+      expect(client).not_to have_received(:bot_eligibility)
     end
   end
 end

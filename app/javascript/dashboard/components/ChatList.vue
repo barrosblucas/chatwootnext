@@ -229,6 +229,14 @@ const assigneeTabPermissions = computed(() => {
   });
 });
 
+const botTabVisible = computed(() => {
+  return isBotTabVisible({
+    connectaEnabled: connectaHumanNumberEnabled,
+    conversationType: props.conversationType,
+    status: activeStatus.value,
+  });
+});
+
 const assigneeTabItems = computed(() => {
   const baseItems = filterItemsByPermission(
     assigneeTabPermissions.value,
@@ -254,14 +262,6 @@ const assigneeTabItems = computed(() => {
 });
 
 const isBotTab = computed(() => activeAssigneeTab.value === BOT_TAB_KEY);
-
-const botTabVisible = computed(() => {
-  return isBotTabVisible({
-    connectaEnabled: connectaHumanNumberEnabled,
-    conversationType: props.conversationType,
-    status: activeStatus.value,
-  });
-});
 
 const shouldExcludeBots = computed(() => {
   return shouldExcludeActiveBot({

@@ -2,6 +2,7 @@ import axios from 'axios';
 import { actions, mutations } from '../../conversationStats';
 import types from '../../../mutation-types';
 
+global.axios = axios;
 vi.mock('axios');
 vi.mock('@chatwoot/utils', () => ({
   debounce: vi.fn(fn => fn),
@@ -71,7 +72,10 @@ describe('#conversationStats Bot', () => {
       axios.get.mockResolvedValue({
         data: { meta: { mine_count: 0, unassigned_count: 0, all_count: 2 } },
       });
-      actions.get({ commit, state: { allCount: 1 } }, { conversationType: 'bot' });
+      actions.get(
+        { commit, state: { allCount: 1 } },
+        { conversationType: 'bot' }
+      );
       await vi.waitFor(() => {
         expect(commit).toHaveBeenCalledWith(types.SET_BOT_TAB_META, {
           count: 2,

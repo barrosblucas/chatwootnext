@@ -4,6 +4,7 @@ import getters from '../../conversations/getters';
 import { mutations } from '../../conversations/index';
 import types from '../../../mutation-types';
 
+global.axios = axios;
 vi.mock('axios');
 
 const rows = [

@@ -45,6 +45,11 @@ RSpec.describe 'Connecta · fila Bot (bot-eligibility)', type: :request do
     create(:inbox_member, inbox: marked_inbox, user: agent)
     create(:inbox_member, inbox: control_inbox, user: agent)
     Connecta::Scope::ScopedInbox.create!(inbox_id: marked_inbox.id, enforcement: 'enforce', maintenance: false)
+    # Projeção utilizável do ator positivo (espelha g0_scope_fixture.rb:45-68):
+    # heartbeat fresco, época de autenticação sem revogação e grant de leitura.
+    Connecta::Scope::AclSyncState.create!(last_version: 1, last_heartbeat_at: Time.current)
+    Connecta::Scope::UserAuthEpoch.create!(user_id: agent.id, epoch: 1)
+    Connecta::Scope::UserGrant.create!(user_id: agent.id, org_unit: org, permission: 'atender')
     reception_scope!(bot_eligible)
     reception_scope!(bot_expired)
     reception_scope!(with_protocol, protocol: 'BND00000001', version: 1)
@@ -54,14 +59,12 @@ RSpec.describe 'Connecta · fila Bot (bot-eligibility)', type: :request do
     # Caminho dedicado exige opt-in do runtime; os contextos de sucesso exercem
     # o guarda real como disponível, os de regressão forçam indisponível.
     allow(Connecta::Runtime::Feature).to receive(:enabled?).and_return(true)
-    allow(client).to receive(:post).and_return({
-                                                'eligible' => [
-                                                  { 'inbox_id' => marked_inbox.id, 'conversation_id' => bot_eligible.id }
-                                                ]
-                                              })
+    allow(client).to receive(:bot_eligibility).and_return(
+      { 'eligible' => [{ 'inbox_id' => marked_inbox.id, 'conversation_id' => bot_eligible.id }] }
+    )
   end
 
-  def bot_ids(payload = json['payload'])
+  def bot_ids(payload = json['data']['payload'])
     Array(payload).map { |row| row['id'] }
   end
 
@@ -70,20 +73,24 @@ RSpec.describe 'Connecta · fila Bot (bot-eligibility)', type: :request do
       get bot_path, params: { conversation_type: 'bot' }, headers: agent.create_new_auth_token, as: :json
 
       expect(response).to have_http_status(:ok)
+      # A projeção do ator positivo é utilizável: sem isso a relação positiva
+      # seria vazia por desenho e o 503 nunca seria exercido.
+      expect(Connecta::Scope::Projection.new(agent).usable?).to be(true)
       expect(bot_ids).to contain_exactly(bot_eligible.display_id)
-      expect(json['meta']).to include('all_count' => 1, 'unassigned_count' => 1, 'mine_count' => 0, 'assigned_count' => 0)
+      expect(json['data']['meta']).to include('all_count' => 1, 'unassigned_count' => 1, 'mine_count' => 0, 'assigned_count' => 0)
     end
 
     it 'envia à plataforma só pares permitidos (sem vazamento de outra conta ou inbox genérica)', :aggregate_failures do
       get bot_path, params: { conversation_type: 'bot' }, headers: agent.create_new_auth_token, as: :json
 
       expect(response).to have_http_status(:ok)
-      expect(client).to have_received(:post).with(
-        '/attendance/v1/bot-eligibility',
-        { candidates: [
+      # Só pares permitidos chegam à plataforma (sem vazamento de outra conta ou
+      # inbox genérica): os dois candidatos sobrevivem ao filtro de escopo.
+      expect(client).to have_received(:bot_eligibility).with(
+        [
           { inbox_id: marked_inbox.id, conversation_id: bot_eligible.id },
           { inbox_id: marked_inbox.id, conversation_id: bot_expired.id }
-        ] }
+        ]
       )
     end
 
@@ -92,8 +99,8 @@ RSpec.describe 'Connecta · fila Bot (bot-eligibility)', type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(bot_ids).to be_empty
-      expect(json['meta']).to include('all_count' => 0)
-      expect(client).not_to have_received(:post)
+      expect(json['data']['meta']).to include('all_count' => 0)
+      expect(client).not_to have_received(:bot_eligibility)
     end
 
     it 'inbox genérica: vazio exato sem rede; fila humana segue com a linha de triagem expirada', :aggregate_failures do
@@ -102,7 +109,7 @@ RSpec.describe 'Connecta · fila Bot (bot-eligibility)', type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(bot_ids).to be_empty
-      expect(client).not_to have_received(:post)
+      expect(client).not_to have_received(:bot_eligibility)
 
       get bot_path, headers: agent.create_new_auth_token, as: :json
       expect(response).to have_http_status(:ok)
@@ -113,11 +120,9 @@ RSpec.describe 'Connecta · fila Bot (bot-eligibility)', type: :request do
       get bot_path, params: { conversation_type: 'bot' }, headers: agent.create_new_auth_token, as: :json
       expect(bot_ids).to contain_exactly(bot_eligible.display_id)
 
-      allow(client).to receive(:post).and_return({
-                                                  'eligible' => [
-                                                    { 'inbox_id' => marked_inbox.id, 'conversation_id' => bot_expired.id }
-                                                  ]
-                                                })
+      allow(client).to receive(:bot_eligibility).and_return(
+        { 'eligible' => [{ 'inbox_id' => marked_inbox.id, 'conversation_id' => bot_expired.id }] }
+      )
 
       get bot_path, params: { conversation_type: 'bot' }, headers: agent.create_new_auth_token, as: :json
       expect(response).to have_http_status(:ok)
@@ -127,9 +132,9 @@ RSpec.describe 'Connecta · fila Bot (bot-eligibility)', type: :request do
 
   describe 'falha fechada (503, nunca vazio parcial)' do
     it 'resposta fora do subconjunto enviado' do
-      allow(client).to receive(:post).and_return({
-                                                   'eligible' => [{ 'inbox_id' => marked_inbox.id, 'conversation_id' => 999_999 }]
-                                                 })
+      allow(client).to receive(:bot_eligibility).and_return(
+        { 'eligible' => [{ 'inbox_id' => marked_inbox.id, 'conversation_id' => 999_999 }] }
+      )
 
       get bot_path, params: { conversation_type: 'bot' }, headers: agent.create_new_auth_token, as: :json
 
@@ -138,12 +143,12 @@ RSpec.describe 'Connecta · fila Bot (bot-eligibility)', type: :request do
     end
 
     it 'resposta duplicada' do
-      allow(client).to receive(:post).and_return({
-                                                   'eligible' => [
-                                                     { 'inbox_id' => marked_inbox.id, 'conversation_id' => bot_eligible.id },
-                                                     { 'inbox_id' => marked_inbox.id, 'conversation_id' => bot_eligible.id }
-                                                   ]
-                                                 })
+      allow(client).to receive(:bot_eligibility).and_return(
+        { 'eligible' => [
+          { 'inbox_id' => marked_inbox.id, 'conversation_id' => bot_eligible.id },
+          { 'inbox_id' => marked_inbox.id, 'conversation_id' => bot_eligible.id }
+        ] }
+      )
 
       get bot_path, params: { conversation_type: 'bot' }, headers: agent.create_new_auth_token, as: :json
 
@@ -152,7 +157,7 @@ RSpec.describe 'Connecta · fila Bot (bot-eligibility)', type: :request do
     end
 
     it 'resposta malformada' do
-      allow(client).to receive(:post).and_return({ 'eligible' => 'ok' })
+      allow(client).to receive(:bot_eligibility).and_return({ 'eligible' => 'ok' })
 
       get bot_path, params: { conversation_type: 'bot' }, headers: agent.create_new_auth_token, as: :json
 
@@ -161,7 +166,7 @@ RSpec.describe 'Connecta · fila Bot (bot-eligibility)', type: :request do
     end
 
     it 'dependência fora (inclui cliente desconfigurado): 503 no Bot, humana intacta', :aggregate_failures do
-      allow(client).to receive(:post).and_raise(Connecta::Runtime::PlatformClient::Error.new('down'))
+      allow(client).to receive(:bot_eligibility).and_raise(Connecta::Runtime::PlatformClient::Error.new('down'))
 
       get bot_path, params: { conversation_type: 'bot' }, headers: agent.create_new_auth_token, as: :json
       expect(response).to have_http_status(:service_unavailable)
@@ -188,7 +193,7 @@ RSpec.describe 'Connecta · fila Bot (bot-eligibility)', type: :request do
 
       expect(response).to have_http_status(:service_unavailable)
       expect(json['error']).to eq('bot_eligibility_overflow')
-      expect(client).not_to have_received(:post)
+      expect(client).not_to have_received(:bot_eligibility)
     end
   end
 
@@ -200,8 +205,8 @@ RSpec.describe 'Connecta · fila Bot (bot-eligibility)', type: :request do
 
       expect(response).to have_http_status(:service_unavailable)
       expect(json['error']).to eq('bot_eligibility_unavailable')
-      expect(json['payload']).to be_nil
-      expect(client).not_to have_received(:post)
+      expect(json['data']).to be_nil
+      expect(client).not_to have_received(:bot_eligibility)
     end
 
     it 'meta bot responde 503 na mesma guarda', :aggregate_failures do

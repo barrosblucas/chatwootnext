@@ -128,7 +128,8 @@ const actions = {
   // unioned on later pages). 503 means unavailable with retry, never an empty
   // tab; a stale answer arriving after a newer request is dropped entirely.
   fetchBotConversations: async ({ commit, dispatch }, params) => {
-    const requestId = ++botRequestSeq;
+    botRequestSeq += 1;
+    const requestId = botRequestSeq;
     commit(types.SET_LIST_LOADING_STATUS);
     commit(types.SET_BOT_LIST_STATUS, 'loading');
     try {
@@ -136,13 +137,9 @@ const actions = {
         data: { data },
       } = await ConversationApi.get(params);
       if (requestId !== botRequestSeq) return;
-      buildConversationList(
-        { commit, dispatch },
-        params,
-        data,
-        'bot',
-        { skipStatsUpdate: true }
-      );
+      buildConversationList({ commit, dispatch }, params, data, 'bot', {
+        skipStatsUpdate: true,
+      });
       dispatch(
         'conversationStats/setBotMeta',
         { count: data.meta.all_count },
