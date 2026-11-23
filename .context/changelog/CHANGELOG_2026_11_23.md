@@ -139,3 +139,15 @@
 - Layout: `bot_exclusion_spec.rb:91-94` no padrão `include(` multilinha do arquivo; `bot_eligibility_spec.rb:249-253` array em local antes do `with` (mesmos pares, mesma asserção).
 - `manual_admission_transaction.rb:143`: `activate_scope!` extraído em `apply_locked_activation!` → `[scope, activated]` (padrão de tupla), `already_active?` e `reject_unactivatable_state!`; lock, replay silencioso, rejeição de transferência e notify só pós-commit em ativação real preservados; `rubocop:disable Metrics/AbcSize` removido (método abaixo do teto).
 - Validação nesta VM: `git diff --check` passed + `node --check` do spec + revisão estática; sem Ruby na VM (`ruby -c` indisponível); RSpec/RuboCop/lint só no Actions (proibido aqui); sem commit/push/dispatch. --spec --apply spec/connecta/scope_activation_announcement_spec.rb` + lint-backend. Sem commit/push/deploy; JS e WP intocados.
+
+## Fixed — Prettier restante + import default do spec (run 45278174231; sem publicar)
+
+- `queueReconciliation.spec.js`: Promise blocks em `() =>` + `new Promise` recuado (evidência exata :127-129, :154-156 com coluna); chamadas `SET_BOT_CONVERSATIONS` em `(state, {` + props uma por linha (:217-222; gêmea :222-225 por simetria — anotação cobre só a abertura da segunda); `types.default.X` → `types.X` (:146, :193, :198) pois `mutation-types.js` só tem default export (prova: testes com acesso direto passam).
+- NÃO corrigido: `assignment reconciles queues` (:99) — `getCurrentAccount` lê `accounts.find` de `getCurrentUser` mockado sem `accounts` (via `assignmentMayHaveGrantedAccess`); desenho do mock exige julgar semântica de permissão, sem Vitest na VM — handoff p/ Explorer/Coder com erro exato.
+- Outcomes run 45278174231 (completed, failure): lint-backend success (RuboCop 6 OK); backend-tests success (F5 37/37 OK); lint-frontend failure (só este spec, acima); frontend-tests failure (3 no mesmo spec: :99 fixture accounts, :146/:193 `types.default` agora corrigido); security-scan failure só bundle-audit (IDs pendentes de log, sem novos achados evidenciados).
+- Validação nesta VM: `git diff --check` passed + `node --check` do spec; sem commit/push/dispatch; sem Ruby/Vitest/ESLint aqui.
+
+## Fixed — fixture :99 do handoff Bot→humano (sem publicar ainda)
+
+- `queueReconciliation.spec.js:99-103`: `getCurrentUser` do teste agora `{ id: 7, accounts: [{ id: 1, permissions: ['conversation_participating_manage'] }] }` (idioma `userWith` do `actionCable.spec.js:520-529`); conta corrente 1 = `getCurrentAccountId` do mock; permissão mínima que segue assignment (evidência: `actionCable.js:35-38`, precedente verde que refetcha pins p/ self-assignment); assignee 7 = current user → grant real pelo caminho de produção, sem bypass/admin/helper falso; asserções do sinal preservadas.
+- Validação nesta VM: `node --check` passed + `git diff --check` a seguir; Vitest só no Actions.

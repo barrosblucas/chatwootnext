@@ -96,6 +96,10 @@ describe('#queueReconciliation cable signals', () => {
   });
 
   it('assignment reconciles queues (Bot to human handoff)', () => {
+    store.$store.getters.getCurrentUser = {
+      id: 7,
+      accounts: [{ id: 1, permissions: ['conversation_participating_manage'] }],
+    };
     actionCable.onAssigneeChanged({
       id: 9,
       account_id: 1,
@@ -124,9 +128,10 @@ describe('#queueReconciliation stats guards', () => {
   it('drops an older answer that arrives after a newer signal', async () => {
     const resolvers = [];
     axios.get.mockImplementation(
-      () => new Promise(resolve => {
-        resolvers.push(resolve);
-      })
+      () =>
+        new Promise(resolve => {
+          resolvers.push(resolve);
+        })
     );
     const commit = vi.fn();
     const rootGetters = { getCurrentAccountId: 1 };
@@ -143,7 +148,7 @@ describe('#queueReconciliation stats guards', () => {
     resolvers[0]({ data: { meta: { mine_count: 1 } } });
     await flush();
     expect(commit).toHaveBeenCalledTimes(1);
-    expect(commit).toHaveBeenCalledWith(types.default.SET_CONV_TAB_META, {
+    expect(commit).toHaveBeenCalledWith(types.SET_CONV_TAB_META, {
       mine_count: 2,
     });
   });
@@ -151,9 +156,10 @@ describe('#queueReconciliation stats guards', () => {
   it('drops an answer that returns after an account switch', async () => {
     let resolveMeta;
     axios.get.mockImplementation(
-      () => new Promise(resolve => {
-        resolveMeta = resolve;
-      })
+      () =>
+        new Promise(resolve => {
+          resolveMeta = resolve;
+        })
     );
     const commit = vi.fn();
     const rootGetters = { getCurrentAccountId: 1 };
@@ -190,12 +196,12 @@ describe('#queueReconciliation stats guards', () => {
       { status: 'open', conversationType: 'bot' }
     );
     await flush(10);
-    expect(commit).toHaveBeenCalledWith(types.default.SET_CONV_TAB_META, {
+    expect(commit).toHaveBeenCalledWith(types.SET_CONV_TAB_META, {
       mine_count: 1,
       unassigned_count: 1,
       all_count: 2,
     });
-    expect(commit).toHaveBeenCalledWith(types.default.SET_BOT_TAB_META, {
+    expect(commit).toHaveBeenCalledWith(types.SET_BOT_TAB_META, {
       count: 2,
     });
   });
@@ -214,15 +220,15 @@ describe('#queueReconciliation Bot membership', () => {
 
   it('page 1 replaces Bot membership while later pages union without duplicates', () => {
     const state = { botConversationIds: [1, 2] };
-    conversationMutations[types.SET_BOT_CONVERSATIONS](
-      state,
-      { ids: [2, 3], page: 1 }
-    );
+    conversationMutations[types.SET_BOT_CONVERSATIONS](state, {
+      ids: [2, 3],
+      page: 1,
+    });
     expect(state.botConversationIds).toEqual([2, 3]);
-    conversationMutations[types.SET_BOT_CONVERSATIONS](
-      state,
-      { ids: [3, 4], page: 2 }
-    );
+    conversationMutations[types.SET_BOT_CONVERSATIONS](state, {
+      ids: [3, 4],
+      page: 2,
+    });
     expect(state.botConversationIds).toEqual([2, 3, 4]);
   });
 });
