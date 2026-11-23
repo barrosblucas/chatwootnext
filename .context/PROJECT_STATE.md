@@ -4,7 +4,7 @@ Estado atual verificado no código em 2026-11-14. Histórico vive em `.context/c
 
 ## Referência e data da verificação
 
-- HEAD verificado: `819d76a4fbb1a765173180e2214b20c2c831e571` (2026-11-15, `fix(i18n): add missing es translations for CONNECTA.BOT_OPTOUT`), confirmado em 2026-11-15. `script/criar_admin.rb` segue untracked, nunca commitado.
+- HEAD verificado: `629c92e717bcd247f5bbd3439709a4d47152528a` (2026-11-23, `fix(connecta): allow renaming a linked contact (Correção 01)`), em produção desde 2026-11-23 (digest `sha256:cfc77322254b6e9ac6d5a64cb23186d8f4a9b0ee914d0504906569af534efe10`) — `CHANGELOG_2026_11_23.md`. `script/criar_admin.rb` segue untracked, nunca commitado.
 - Regra: produção/CI só com fonte citada (changelog/evidência); sem fonte, "não verificado". Sem segredos, IPs ou dados pessoais aqui.
 
 ## Capacidades presentes no código
@@ -33,6 +33,7 @@ Estado atual verificado no código em 2026-11-14. Histórico vive em `.context/c
 
 ## Pendências atuais
 
+- `security-scan` (CI da main) vermelho desde 2026-11-22 por advisories de dependência, não por código: puma 7.2.2 `GHSA-4v6q-hvv7-49h9` (corrige em `~> 7.2.3`) e rack-protection 4.2.1 `GHSA-pf75-2v58-7mxg`, `GHSA-r29j-38x9-qr26`, `GHSA-vvhm-j6m8-64cw` (corrige em `>= 4.2.2`). Bump em frente separada; o merge de 2026-11-23 (Correção 01) foi autorizado com esse gate vermelho — `CHANGELOG_2026_11_23.md`.
 - CI GitHub Actions das frentes "código; CI pendente" (protocolo 08/11, primeiro-operador 11/11).
 - Homologação UI/E2E humano dos ensaios LAN e da mídia protegida.
 - Pendências G0 de 2026-10-22 verificadas em 2026-11-15: 2 resolvidas, 4 abertas com responsável humano (ver "Decisões abertas").
