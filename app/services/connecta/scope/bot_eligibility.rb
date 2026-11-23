@@ -108,14 +108,18 @@ class Connecta::Scope::BotEligibility
     entries
   end
 
+  # Inteiro positivo estrito: forma ou tipo errado é indisponível.
+  def self.positive_integer?(value)
+    value.is_a?(Integer) && value.positive?
+  end
+
   # Par estrito: ids inteiros positivos; forma ou tipo errado é indisponível.
   def self.strict_key!(entry)
-    inbox_id = entry.is_a?(Hash) ? (entry['inbox_id'] || entry[:inbox_id]) : nil
-    conversation_id = entry.is_a?(Hash) ? (entry['conversation_id'] || entry[:conversation_id]) : nil
-    unless inbox_id.is_a?(Integer) && inbox_id.positive? && conversation_id.is_a?(Integer) &&
-           conversation_id.positive?
-      raise Unavailable, UNAVAILABLE_CODE
-    end
+    raise Unavailable, UNAVAILABLE_CODE unless entry.is_a?(Hash)
+
+    inbox_id = entry['inbox_id'] || entry[:inbox_id]
+    conversation_id = entry['conversation_id'] || entry[:conversation_id]
+    raise Unavailable, UNAVAILABLE_CODE unless positive_integer?(inbox_id) && positive_integer?(conversation_id)
 
     "#{inbox_id}:#{conversation_id}"
   end
