@@ -7,7 +7,7 @@ import ReconnectService from '../ReconnectService';
 import { emitter } from 'shared/helpers/mitt';
 import { actions as statsActions } from '../../store/modules/conversationStats';
 import { mutations as conversationMutations } from '../../store/modules/conversations/index';
-import types from '../../store/modules/mutation-types';
+import types from '../../store/mutation-types';
 
 vi.mock('shared/helpers/mitt', () => ({
   emitter: {
@@ -86,13 +86,14 @@ describe('#queueReconciliation cable signals', () => {
     expect(emitter.emit).toHaveBeenCalledWith('fetch_conversation_stats');
   });
 
-  it.each([['onConversationCreated'], ['onStatusChange'], ['onConversationUpdated']])(
-    '%s reconciles queues',
-    handler => {
-      actionCable[handler]({ id: 5, account_id: 1 });
-      expect(emitter.emit).toHaveBeenCalledWith('fetch_conversation_stats');
-    }
-  );
+  it.each([
+    ['onConversationCreated'],
+    ['onStatusChange'],
+    ['onConversationUpdated'],
+  ])('%s reconciles queues', handler => {
+    actionCable[handler]({ id: 5, account_id: 1 });
+    expect(emitter.emit).toHaveBeenCalledWith('fetch_conversation_stats');
+  });
 
   it('assignment reconciles queues (Bot to human handoff)', () => {
     actionCable.onAssigneeChanged({
@@ -123,7 +124,9 @@ describe('#queueReconciliation stats guards', () => {
   it('drops an older answer that arrives after a newer signal', async () => {
     const resolvers = [];
     axios.get.mockImplementation(
-      () => new Promise(resolve => resolvers.push(resolve))
+      () => new Promise(resolve => {
+        resolvers.push(resolve);
+      })
     );
     const commit = vi.fn();
     const rootGetters = { getCurrentAccountId: 1 };
@@ -148,7 +151,9 @@ describe('#queueReconciliation stats guards', () => {
   it('drops an answer that returns after an account switch', async () => {
     let resolveMeta;
     axios.get.mockImplementation(
-      () => new Promise(resolve => (resolveMeta = resolve))
+      () => new Promise(resolve => {
+        resolveMeta = resolve;
+      })
     );
     const commit = vi.fn();
     const rootGetters = { getCurrentAccountId: 1 };
@@ -163,7 +168,7 @@ describe('#queueReconciliation stats guards', () => {
   });
 
   it('refreshes human badges and the Bot badge in the same burst', async () => {
-    axios.get.mockImplementation(params =>
+    axios.get.mockImplementation(() =>
       Promise.resolve({
         data: {
           meta: {

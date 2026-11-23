@@ -140,27 +140,11 @@ class Connecta::Runtime::ManualAdmissionTransaction
     raise Error.new(e.message, status: e.status)
   end
 
-  def activate_scope!(conversation, admission) # rubocop:disable Metrics/AbcSize
+  def activate_scope!(conversation, admission)
     expected = admission['case_protocol'].to_s
     version = Integer(admission['case_version'])
-    activated = false
-    scope = Connecta::Scope::ConversationScope.transaction do
-      scope = Connecta::Scope::ConversationScope.lock.find_by!(conversation_id: conversation.id)
-      # Idempotência: já active com mesmo protocolo/versão/unidade → retorna.
-      next scope if scope.state == 'active' && scope.case_protocol == expected &&
-                    scope.case_version == version && scope.org_unit_id.to_s == @org_unit_id
-
-      # transferring/pending nunca ativam por este caminho (só transferência real).
-      if %w[transferring pending_activation activation_stuck].include?(scope.state)
-        raise Error.new('Conversation is in transfer; sending is not allowed', status: :conflict)
-      end
-
-      scope.update!(
-        org_unit_id: @org_unit_id, state: 'active', case_protocol: expected,
-        platform_session_ref: admission['session_ref'].to_s, case_version: version, activated_at: Time.current
-      )
-      activated = true
-      scope
+    scope, activated = Connecta::Scope::ConversationScope.transaction do
+      apply_locked_activation!(conversation, expected, version, admission['session_ref'].to_s)
     end
     # Só na transição real: reuso idempotente não reanuncia. Após o commit do
     # bloco acima (padrão transfer local_transaction.rb:171-174), mesmo sem
@@ -171,6 +155,35 @@ class Connecta::Runtime::ManualAdmissionTransaction
     raise Error.new('Conversation scope is unavailable', status: :not_found)
   rescue ArgumentError
     raise Error.new('WP admission response is invalid', status: :bad_gateway)
+  end
+
+  # Decisão + update sob lock, dentro da transação: devolve [scope, activated],
+  # no padrão de tupla de find_or_create_conversation!. Extração semântica
+  # idêntica: lock, replay silencioso, rejeição de transferência e update.
+  def apply_locked_activation!(conversation, expected, version, session_ref)
+    scope = Connecta::Scope::ConversationScope.lock.find_by!(conversation_id: conversation.id)
+    # Idempotência: já active com mesmo protocolo/versão/unidade → retorna.
+    return [scope, false] if already_active?(scope, expected, version)
+
+    # transferring/pending nunca ativam por este caminho (só transferência real).
+    reject_unactivatable_state!(scope)
+
+    scope.update!(
+      org_unit_id: @org_unit_id, state: 'active', case_protocol: expected,
+      platform_session_ref: session_ref, case_version: version, activated_at: Time.current
+    )
+    [scope, true]
+  end
+
+  def already_active?(scope, expected, version)
+    scope.state == 'active' && scope.case_protocol == expected &&
+      scope.case_version == version && scope.org_unit_id.to_s == @org_unit_id
+  end
+
+  def reject_unactivatable_state!(scope)
+    return unless %w[transferring pending_activation activation_stuck].include?(scope.state)
+
+    raise Error.new('Conversation is in transfer; sending is not allowed', status: :conflict)
   end
 
   # Pós-commit: reanuncia a ativação pelo caminho autorizado existente

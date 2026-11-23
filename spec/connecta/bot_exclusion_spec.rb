@@ -88,8 +88,10 @@ RSpec.describe 'Connecta · exclusão opt-in do Bot na fila humana', type: :requ
       expect(bot_ids).to contain_exactly(
         convs[:active_open].display_id, convs[:active_mine].display_id, convs[:generic].display_id
       )
-      expect(json['data']['meta']).to include('all_count' => 3, 'unassigned_count' => 2, 'mine_count' => 1,
-                                               'assigned_count' => 1, 'bot_classification_unavailable' => false)
+      expect(json['data']['meta']).to include(
+        'all_count' => 3, 'unassigned_count' => 2, 'mine_count' => 1,
+        'assigned_count' => 1, 'bot_classification_unavailable' => false
+      )
       expect(Connecta::Runtime::PlatformClient).not_to have_received(:new)
     end
 
@@ -211,7 +213,7 @@ RSpec.describe 'Connecta · exclusão opt-in do Bot na fila humana', type: :requ
     end
 
     it 'banco fora: lista original e flag true' do
-      allow(Connecta::Scope::Projection).to receive(:marked_inbox_ids)
+      allow(Connecta::Scope::BotEligibility).to receive(:human_only)
         .and_raise(ActiveRecord::StatementInvalid.new('synthetic_db_failure'))
 
       get bot_path, params: { exclude_active_bot: 'true' }, headers: agent.create_new_auth_token, as: :json

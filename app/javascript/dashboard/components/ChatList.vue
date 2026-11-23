@@ -1053,10 +1053,7 @@ const runQueueSignal = () => {
   const filters = conversationFilters.value;
   store.dispatch('conversationStats/get', filters);
   if (botTabVisible.value) {
-    store.dispatch(
-      'conversationStats/get',
-      buildBotBadgeFilters(filters)
-    );
+    store.dispatch('conversationStats/get', buildBotBadgeFilters(filters));
   }
   if (isBotTab.value) {
     store.dispatch('fetchBotConversations', {
@@ -1073,11 +1070,7 @@ const queueSignalGuard = createTrailingGuard(
   () => chatListLoading.value
 );
 
-const onQueueSignal = debounce(
-  () => queueSignalGuard.fire(),
-  1500,
-  false
-);
+const onQueueSignal = debounce(() => queueSignalGuard.fire(), 1500, false);
 
 useEmitter('fetch_conversation_stats', () => {
   if (hasAppliedFiltersOrActiveFolders.value) return;

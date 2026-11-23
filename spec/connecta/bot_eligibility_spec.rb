@@ -246,10 +246,11 @@ RSpec.describe 'Connecta · fila Bot (bot-eligibility)', type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(bot_ids).to contain_exactly(bot_eligible.display_id)
-      expect(client).to have_received(:bot_eligibility).with([
+      expected_pairs = [
         { inbox_id: marked_inbox.id, conversation_id: bot_eligible.id },
         { inbox_id: marked_inbox.id, conversation_id: bot_expired.id }
-      ])
+      ]
+      expect(client).to have_received(:bot_eligibility).with(expected_pairs)
     end
 
     it 'candidatos exigem reception/nulo/versão 0 mesmo na relação crua' do
