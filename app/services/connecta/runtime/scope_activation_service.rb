@@ -19,7 +19,8 @@ class Connecta::Runtime::ScopeActivationService
     case_version = Integer(@attributes.fetch('case_version'))
     raise Conflict, 'activation fields are invalid' if unit_id.blank? || protocol.blank? || session_ref.blank? || case_version <= 0
 
-    Connecta::ConversationScope.transaction do
+    activated_conversation_id = nil
+    result = Connecta::ConversationScope.transaction do
       account_id = Connecta::Runtime::Feature.current_account_id!
       conversation = Conversation.find_by!(account_id: account_id, display_id: @conversation_display_id)
       scope = Connecta::ConversationScope.lock.find_by!(conversation_id: conversation.id)
@@ -39,8 +40,15 @@ class Connecta::Runtime::ScopeActivationService
         org_unit: unit, state: 'active', case_protocol: protocol, platform_session_ref: session_ref,
         case_version: case_version, activated_at: Time.current
       )
+      activated_conversation_id = conversation.id
       { status: 'activated', conversation_id: @conversation_display_id, case_version: case_version }
     end
+    # Só na transição real: repetição idempotente não reanuncia. Após o commit
+    # do bloco acima para o listener ler o escopo já commitado (padrão
+    # transfer local_transaction.rb:171-174); sem transação externa nos
+    # chamadores traçados (scopes_controller).
+    notify_scope_active!(activated_conversation_id) if activated_conversation_id
+    result
   rescue KeyError, ArgumentError, ActiveRecord::RecordNotFound => e
     raise Conflict, e.message
   end
@@ -62,5 +70,17 @@ class Connecta::Runtime::ScopeActivationService
     raise Conflict, 'case version mismatch' unless transfer.target_case_version == case_version
 
     transfer.update!(state: 'committed', committed_at: Time.current) if transfer.state == 'committed_local'
+  end
+
+  # Pós-commit: reanuncia a ativação pelo caminho autorizado existente
+  # (conversation.updated, sem payload/metadata novos) para a fila reconciliar
+  # sem depender de mensagem de saída; o gate do socket filtra (só quem lê a
+  # conversa recebe). Falha de anúncio nunca desfaz a ativação já commitada.
+  def notify_scope_active!(conversation_id)
+    conversation = Conversation.find(conversation_id)
+    Rails.configuration.dispatcher.dispatch(Events::Types::CONVERSATION_UPDATED, Time.zone.now,
+                                            conversation: conversation)
+  rescue StandardError => e
+    Rails.logger.warn("[connecta] anúncio de ativação #{conversation_id} falhou: #{e.class}")
   end
 end

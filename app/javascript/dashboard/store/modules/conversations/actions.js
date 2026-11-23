@@ -181,13 +181,18 @@ const actions = {
   // Returns what it removed, so the caller can drop the same conversations from anything keyed
   // by them.
   reconcileConversationTab: async ({ commit, getters, state }, filters) => {
-    const tabGetter = TAB_GETTERS[filters.assigneeType];
+    // The Bot tab asks by server conversation type with no assigneeType, so it
+    // resolves by conversationType: by assigneeType it would look like no tab
+    // and silently reconcile nothing (the reconnect gap).
+    const tabKey =
+      filters.conversationType === 'bot' ? 'bot' : filters.assigneeType;
+    const tabGetter = TAB_GETTERS[tabKey];
     if (!tabGetter || UNRECONCILABLE_VIEWS.includes(filters.conversationType)) {
       return [];
     }
-    if (tabsBeingReconciled.has(filters.assigneeType)) return [];
+    if (tabsBeingReconciled.has(tabKey)) return [];
 
-    tabsBeingReconciled.add(filters.assigneeType);
+    tabsBeingReconciled.add(tabKey);
     try {
       const candidates = getters[tabGetter](filters).map(c => ({
         id: c.id,
@@ -228,7 +233,7 @@ const actions = {
     } catch (error) {
       return [];
     } finally {
-      tabsBeingReconciled.delete(filters.assigneeType);
+      tabsBeingReconciled.delete(tabKey);
     }
   },
 

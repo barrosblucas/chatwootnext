@@ -49,17 +49,31 @@ class ReconnectService {
   };
 
   fetchConversations = async () => {
+    const filters = this.store.getters.getChatListFilters;
     await this.store.dispatch('updateChatListFilters', {
       page: null,
       updatedWithin:
         this.getSecondsSinceDisconnect() + DISCONNECT_DELAY_THRESHOLD,
     });
-    await this.store.dispatch('fetchAllConversations');
+    // The Bot tab is server membership, not the human list: refetching the
+    // human list would leave its departed rows on screen, so page 1 replaces
+    // Bot membership instead (later pages refetch on scroll).
+    if (filters?.conversationType === 'bot') {
+      await this.store.dispatch('fetchBotConversations', {
+        ...this.store.getters.getChatListFilters,
+        page: 1,
+      });
+    } else {
+      await this.store.dispatch('fetchAllConversations');
+    }
     // Reset the updatedWithin in the store chat list filter after fetching conversations when the user is reconnected
     await this.store.dispatch('updateChatListFilters', {
       updatedWithin: null,
     });
     await this.reconcileConversationTab();
+    // Badges (including Bot while another tab is selected) refresh through
+    // the same debounced queue signal as live cable events.
+    emitter.emit('fetch_conversation_stats');
   };
 
   // The fetch above asks for one tab, so a conversation that LEFT that tab while the socket was

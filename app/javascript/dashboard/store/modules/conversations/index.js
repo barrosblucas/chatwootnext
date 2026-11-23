@@ -278,12 +278,19 @@ export const mutations = {
 
   // Drops copies the server no longer lists in the tab they were shown under. The counterpart to
   // SET_ALL_CONVERSATION, which only ever adds or replaces: a conversation that leaves a tab stops
-  // being sent to it, so nothing else would ever take it off the list.
+  // being sent to it, so nothing else would ever take it off the list. Bot
+  // membership is id-based too, so the same ids leave it: otherwise a later
+  // Bot page holding the stale row would reintroduce the removed conversation.
   [types.REMOVE_CONVERSATIONS](_state, conversationIds) {
     const idsToRemove = new Set(conversationIds);
     _state.allConversations = _state.allConversations.filter(
       c => !idsToRemove.has(c.id)
     );
+    if (_state.botConversationIds?.length) {
+      _state.botConversationIds = _state.botConversationIds.filter(
+        id => !idsToRemove.has(id)
+      );
+    }
   },
 
   [types.REVOKE_CONNECTA_SCOPE](_state, payload = {}) {

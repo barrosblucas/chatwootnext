@@ -1,11 +1,13 @@
 # Fila Bot (somente leitura, servidor): conversas abertas autorizadas com triagem
-# ativa no bot e sem protocolo. Dois consumidores partilham a mesma seleção
-# (pré-filtro local + subconjunto elegível confirmado pela plataforma):
-# - caminho dedicado (`perform`): até 300 candidatos em 3 lotes de 100, timeout
-#   de 5 s por lote; falha fechada com Unavailable (503), nunca parcial;
-# - exclusão opt-in da fila humana (`exclude_from`): um único lote de até 100
-#   com orçamento HTTP total de ~1 s; qualquer falha preserva a lista original
-#   e sinaliza `unavailable: true`, sem exclusão parcial.
+# ativa no bot e sem protocolo. Dois consumidores com seleções distintas:
+# - caminho dedicado (`perform`): pré-filtro local (reception, sem protocolo,
+#   versão 0) + subconjunto elegível confirmado pela plataforma; até 300
+#   candidatos em 3 lotes de 100, timeout de 5 s por lote; falha fechada com
+#   Unavailable (503), nunca parcial;
+# - exclusão opt-in da fila humana (`exclude_from`): puramente local, sem rede.
+#   Nas inboxes marcadas só permanece atendimento corrente e roteado (escopo
+#   `active` do mesmo par, protocolo não-branco, unidade habilitada); qualquer
+#   falha de banco preserva a lista original e sinaliza `unavailable: true`.
 class Connecta::Scope::BotEligibility
   class Unavailable < StandardError
     attr_reader :code
@@ -23,12 +25,6 @@ class Connecta::Scope::BotEligibility
   # overhead em vez de crescer com a conta; acima disso a fila responde 503
   # (overflow) em vez de truncar — truncar seria indistinguível de "sem Bot".
   MAX_CANDIDATES = 300
-  # Exclusão opt-in da fila humana quente: um único lote de até 100 pares com
-  # orçamento HTTP total de ~1 s (HUMAN_HTTP_TIMEOUT_SECONDS). Acima de 100
-  # candidatos, classifica como indisponível sem rede: excluir só os 100
-  # primeiros seria parcial e enganoso para quem reconcilia a fila.
-  HUMAN_MAX_CANDIDATES = 100
-  HUMAN_HTTP_TIMEOUT_SECONDS = 1
 
   OVERFLOW_CODE = 'bot_eligibility_overflow'.freeze
   UNAVAILABLE_CODE = 'bot_eligibility_unavailable'.freeze
@@ -41,21 +37,46 @@ class Connecta::Scope::BotEligibility
       (ConversationFinder <= Connecta::Scope::ConversationFinderHook) == true
   end
 
-  # Exclusão opt-in da fila humana: remove só ids positivamente confirmados,
-  # antes de contagens e paginação. Nunca levanta: qualquer falha (dependência,
-  # resposta inválida, estouro, banco) devolve a relação original com
-  # `unavailable: true`. Sem candidatos, devolve a relação com `false`, sem rede.
+  # Exclusão opt-in da fila humana: estreita a relação autorizada, antes de
+  # contagens e paginação, ao atendimento corrente e roteado nas inboxes
+  # marcadas (escopo `active` do mesmo par conversation+inbox, protocolo
+  # não-branco, unidade vinculada habilitada). Recepção sem protocolo (Bot, com
+  # ou sem caso vigente no WP), `pending_activation`/`transferring`/
+  # `activation_stuck` (protocolo commitido com ativação local pendente: nem Bot
+  # nem humano) e conversas legadas sem escopo somem desta visão marcada;
+  # inboxes não-marcadas passam intactas. Sem rede: a partição positiva local é
+  # suficiente porque nenhum candidato Bot (`reception`/nulo/versão 0) satisfaz
+  # o predicado humano, e o caminho Bot dedicado segue com confirmação WP e
+  # 503 explícito. Nunca levanta: erro de banco devolve a relação original com
+  # `unavailable: true`; sem erro, `unavailable` é sempre `false`.
   def self.exclude_from(relation)
     return { relation: relation, unavailable: true } unless available?
 
-    pairs = candidate_pairs(relation, HUMAN_MAX_CANDIDATES + 1)
-    return { relation: relation, unavailable: false } if pairs.empty?
-    return { relation: relation, unavailable: true } if pairs.size > HUMAN_MAX_CANDIDATES
+    marked_ids = Connecta::Scope::Projection.marked_inbox_ids
+    return { relation: relation, unavailable: false } if marked_ids.empty?
 
-    client = Connecta::Runtime::PlatformClient.new(timeout: HUMAN_HTTP_TIMEOUT_SECONDS)
-    { relation: relation.where.not(id: eligible_ids(pairs, client)), unavailable: false }
-  rescue ActiveRecord::ActiveRecordError, Connecta::Runtime::PlatformClient::Error, Unavailable
+    { relation: human_only(relation, marked_ids), unavailable: false }
+  rescue ActiveRecord::ActiveRecordError
     { relation: relation, unavailable: true }
+  end
+
+  # Fila humana marcada = atendimento ativo corrente. EXISTS correlacionado ao
+  # par atual para linhas e contagens saírem da mesma relação, sem lista em
+  # memória e sem ampliar conta, inbox ou grant da relação de entrada.
+  def self.human_only(relation, marked_ids)
+    scope_table = Conversation.connection.quote_table_name(Connecta::Scope::ConversationScope.table_name)
+    unit_table = Conversation.connection.quote_table_name(Connecta::Scope::OrgUnit.table_name)
+    relation.where.not(inbox_id: marked_ids).or(
+      relation.where(
+        "EXISTS (SELECT 1 FROM #{scope_table} human_scope " \
+        "INNER JOIN #{unit_table} human_unit " \
+        'ON human_unit.id = human_scope.org_unit_id AND human_unit.enabled = TRUE ' \
+        'WHERE human_scope.conversation_id = conversations.id ' \
+        'AND human_scope.inbox_id = conversations.inbox_id ' \
+        "AND human_scope.state = 'active' " \
+        "AND NULLIF(BTRIM(human_scope.case_protocol), '') IS NOT NULL)"
+      )
+    )
   end
 
   # Só conversa aberta, já autorizada pela relação de entrada (conta + inboxes do

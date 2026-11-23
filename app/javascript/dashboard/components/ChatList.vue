@@ -75,6 +75,10 @@ import {
   isBotTabVisible,
   shouldExcludeActiveBot,
 } from 'dashboard/helper/connectaBotTab';
+import {
+  buildBotBadgeFilters,
+  createTrailingGuard,
+} from 'dashboard/helper/queueSignal';
 import { CONVERSATION_EVENTS } from '../helper/AnalyticsHelper/events';
 
 const props = defineProps({
@@ -1027,29 +1031,61 @@ useEmitter(BUS_EVENTS.OPEN_CONVERSATION_GONE, () =>
   redirectToConversationList()
 );
 
-// Cable traffic (handoffs, resolutions, new triage) is what moves rows out of
-// the Bot tab, and the store never evicts them on its own. While the Bot tab is
-// open, re-ask page 1 on the same debounced signal that refreshes the badges:
-// the answer replaces membership instead of polling, and the request token in
-// the store drops any older answer that arrives late.
-const refreshBotTab = debounce(
-  () => {
-    if (activeAssigneeTab.value !== BOT_TAB_KEY || chatListLoading.value) {
-      return;
-    }
+// Cable traffic (handoffs, resolutions, new triage, inbound messages) is what
+// moves rows between queues, and the store never evicts them on its own. One
+// debounced signal per burst reconciles the badges for the open tab plus the
+// Bot badge (even while another tab is selected), then reconciles the visible
+// tab membership against the server instead of polling. Filters, folders,
+// search and Resolvidas keep their own semantics untouched.
+//
+// No snapshot is ever written: the run reads the current filters at execution
+// time, and the store drops older in-flight answers (Bot request sequence,
+// stats sequence), so a stale request cannot overwrite a new account, inbox
+// or tab. Pagination is preserved: the human path only removes departed rows
+// (loaded pages stay, no duplicates), the Bot path replaces page-1 membership
+// (later pages refetch on scroll, stale ids cannot reintroduce a removal).
+//
+// Events landing mid-load are retained, not dropped: the guard marks them
+// pending and the loading watcher replays one trailing refresh when the load
+// clears.
+const runQueueSignal = () => {
+  if (hasAppliedFiltersOrActiveFolders.value) return;
+  const filters = conversationFilters.value;
+  store.dispatch('conversationStats/get', filters);
+  if (botTabVisible.value) {
+    store.dispatch(
+      'conversationStats/get',
+      buildBotBadgeFilters(filters)
+    );
+  }
+  if (isBotTab.value) {
     store.dispatch('fetchBotConversations', {
-      ...conversationFilters.value,
+      ...filters,
       page: 1,
     });
-  },
-  2000,
+  } else {
+    store.dispatch('reconcileConversationTab', filters);
+  }
+};
+
+const queueSignalGuard = createTrailingGuard(
+  runQueueSignal,
+  () => chatListLoading.value
+);
+
+const onQueueSignal = debounce(
+  () => queueSignalGuard.fire(),
+  1500,
   false
 );
 
 useEmitter('fetch_conversation_stats', () => {
   if (hasAppliedFiltersOrActiveFolders.value) return;
-  store.dispatch('conversationStats/get', conversationFilters.value);
-  refreshBotTab();
+  onQueueSignal();
+});
+
+watch(chatListLoading, loading => {
+  if (!loading) queueSignalGuard.settle();
 });
 
 // The list can only ever be a subset of what the server counts for the tab, so a list longer than

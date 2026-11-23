@@ -3,9 +3,12 @@
 # mesma relação autorizada às conversas com triagem ativa confirmada pela plataforma (leitura ponto no tempo, sem
 # atomicidade entre serviços); falha fechada com 503 via BotEligibility::Unavailable, nunca parcial. O guarda de
 # reentrância cobre install! repetido em suíte (mesmo processo): sem ele a plataforma seria chamada duas vezes.
-# A exclusão opt-in da fila humana (`exclude_active_bot=true`) roda sobre a relação já autorizada, antes de
+# A exclusão opt-in da fila humana (`exclude_active_bot=true`) estreita a
+# relação já autorizada ao atendimento ativo corrente nas inboxes marcadas
+# (escopo `active` + protocolo + unidade habilitada), antes de
 # status/contagens/paginação. Só na lista aberta padrão (sem tipo de conversa, sem busca): outras visões nunca
-# disparam lookup externo por acidente. Falha preserva a lista e sinaliza via `bot_classification_unavailable`.
+# disparam lookup externo por acidente. Sem rede no caminho humano: erro de
+# banco preserva a lista e sinaliza via `bot_classification_unavailable`.
 module Connecta::Scope::ConversationFinderHook
   private
 

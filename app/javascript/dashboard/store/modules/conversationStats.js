@@ -18,10 +18,17 @@ export const getters = {
   getStats: $state => $state,
 };
 
-// Create a debounced version of the actual API call function
-const fetchMetaData = async (commit, params) => {
+// Create a debounced version of the actual API call function.
+// The Bot badge answers travel on their own debouncer: human and Bot badge
+// refreshes fire in the same tick (one queue signal refreshes both), and a
+// shared trailing debouncer would keep only the last params and silently drop
+// the human badges.
+const fetchMetaData = async (commit, params, token) => {
   try {
     const response = await ConversationApi.meta(params);
+    // A newer signal supersedes this answer (tab/account switched, or a later
+    // burst re-asked): the older answer must not overwrite current badges.
+    if (token && (token.seq !== statsRequestSeq || token.isStale?.())) return;
     const {
       data: { meta },
     } = response;
@@ -38,6 +45,7 @@ const fetchMetaData = async (commit, params) => {
 };
 
 const debouncedFetchMetaData = debounce(fetchMetaData, 1000, false, 5000);
+const botDebouncedFetchMetaData = debounce(fetchMetaData, 1000, false, 5000);
 const longDebouncedFetchMetaData = debounce(fetchMetaData, 7500, false, 20000);
 const superLongDebouncedFetchMetaData = debounce(
   fetchMetaData,
@@ -45,6 +53,11 @@ const superLongDebouncedFetchMetaData = debounce(
   false,
   30000
 );
+
+// Newer badge signals supersede older in-flight answers: each `get` bumps the
+// sequence and a late answer whose token no longer matches is dropped instead
+// of overwriting the current tab's badges.
+let statsRequestSeq = 0;
 
 const metaDebouncers = {
   default: debouncedFetchMetaData,
@@ -61,8 +74,24 @@ export const getMetaDebounceKey = allCount => {
 };
 
 export const actions = {
-  get: ({ commit, state: $state }, params) => {
-    metaDebouncers[getMetaDebounceKey($state.allCount)](commit, params);
+  get: ({ commit, state: $state, rootGetters }, params) => {
+    statsRequestSeq += 1;
+    const seq = statsRequestSeq;
+    const accountId = rootGetters?.getCurrentAccountId;
+    // Stale-account guard: an answer that returns after the agent switched
+    // accounts must not write the previous account's counts here.
+    const token = {
+      seq,
+      isStale: () =>
+        accountId !== undefined &&
+        rootGetters?.getCurrentAccountId !== undefined &&
+        rootGetters.getCurrentAccountId !== accountId,
+    };
+    const fetch =
+      params?.conversationType === 'bot'
+        ? botDebouncedFetchMetaData
+        : metaDebouncers[getMetaDebounceKey($state.allCount)];
+    fetch(commit, params, token);
   },
   set({ commit }, meta) {
     commit(types.SET_CONV_TAB_META, meta);

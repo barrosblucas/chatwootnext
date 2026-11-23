@@ -143,7 +143,8 @@ class Connecta::Runtime::ManualAdmissionTransaction
   def activate_scope!(conversation, admission) # rubocop:disable Metrics/AbcSize
     expected = admission['case_protocol'].to_s
     version = Integer(admission['case_version'])
-    Connecta::Scope::ConversationScope.transaction do
+    activated = false
+    scope = Connecta::Scope::ConversationScope.transaction do
       scope = Connecta::Scope::ConversationScope.lock.find_by!(conversation_id: conversation.id)
       # Idempotência: já active com mesmo protocolo/versão/unidade → retorna.
       next scope if scope.state == 'active' && scope.case_protocol == expected &&
@@ -158,12 +159,30 @@ class Connecta::Runtime::ManualAdmissionTransaction
         org_unit_id: @org_unit_id, state: 'active', case_protocol: expected,
         platform_session_ref: admission['session_ref'].to_s, case_version: version, activated_at: Time.current
       )
+      activated = true
       scope
     end
+    # Só na transição real: reuso idempotente não reanuncia. Após o commit do
+    # bloco acima (padrão transfer local_transaction.rb:171-174), mesmo sem
+    # primeira mensagem; falha de anúncio nunca desfaz a ativação commitada.
+    notify_scope_active!(conversation.id) if activated
+    scope
   rescue ActiveRecord::RecordNotFound
     raise Error.new('Conversation scope is unavailable', status: :not_found)
   rescue ArgumentError
     raise Error.new('WP admission response is invalid', status: :bad_gateway)
+  end
+
+  # Pós-commit: reanuncia a ativação pelo caminho autorizado existente
+  # (conversation.updated, sem payload/metadata novos) para a fila reconciliar
+  # sem depender de mensagem de saída; o gate do socket filtra (só quem lê a
+  # conversa recebe). Falha de anúncio nunca desfaz a ativação já commitada.
+  def notify_scope_active!(conversation_id)
+    conversation = Conversation.find(conversation_id)
+    Rails.configuration.dispatcher.dispatch(Events::Types::CONVERSATION_UPDATED, Time.zone.now,
+                                            conversation: conversation)
+  rescue StandardError => e
+    Rails.logger.warn("[connecta] anúncio de ativação #{conversation_id} falhou: #{e.class}")
   end
 
   # Primeira mensagem UMA VEZ: exige write? na conversa ativa; source_id

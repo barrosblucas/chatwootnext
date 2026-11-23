@@ -250,6 +250,11 @@ class ActionCableConnector extends BaseActionCableConnector {
       lastActivityAt,
       conversationId,
     });
+    // An inbound message can move a conversation between queues (new triage
+    // into Bot, a reply out of it) while the agent sits on another tab, so the
+    // open list and the badges reconcile through the same debounced signal as
+    // every other queue event instead of waiting for a tab click.
+    this.fetchConversationStats();
   };
 
   // eslint-disable-next-line class-methods-use-this

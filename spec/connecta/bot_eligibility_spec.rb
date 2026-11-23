@@ -233,6 +233,40 @@ RSpec.describe 'Connecta · fila Bot (bot-eligibility)', type: :request do
     end
   end
 
+  describe 'protocolo commitido com ativação pendente (nem Bot)' do
+    it 'pending_activation com protocolo não entra na lista nem é enviado à plataforma', :aggregate_failures do
+      pending_contact = create(:contact, account: account)
+      pending_conv = create(:conversation, account: account, inbox: marked_inbox, contact: pending_contact)
+      Connecta::Scope::ConversationScope.create!(
+        conversation_id: pending_conv.id, inbox_id: marked_inbox.id, contact_id: pending_contact.id,
+        org_unit: org, state: 'pending_activation', case_protocol: 'BND00000099', case_version: 0
+      )
+
+      get bot_path, params: { conversation_type: 'bot' }, headers: agent.create_new_auth_token, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(bot_ids).to contain_exactly(bot_eligible.display_id)
+      expect(client).to have_received(:bot_eligibility).with([
+        { inbox_id: marked_inbox.id, conversation_id: bot_eligible.id },
+        { inbox_id: marked_inbox.id, conversation_id: bot_expired.id }
+      ])
+    end
+
+    it 'candidatos exigem reception/nulo/versão 0 mesmo na relação crua' do
+      pending_contact = create(:contact, account: account)
+      pending_conv = create(:conversation, account: account, inbox: marked_inbox, contact: pending_contact)
+      Connecta::Scope::ConversationScope.create!(
+        conversation_id: pending_conv.id, inbox_id: marked_inbox.id, contact_id: pending_contact.id,
+        org_unit: org, state: 'pending_activation', case_protocol: 'BND00000099', case_version: 0
+      )
+
+      ids = Connecta::Scope::BotEligibility.candidate_pairs(Conversation.where(account_id: account.id), 10).map(&:last)
+
+      expect(ids).to include(bot_eligible.id, bot_expired.id)
+      expect(ids & [pending_conv.id, with_protocol.id, resolved.id, generic.id]).to be_empty
+    end
+  end
+
   describe '.available? (prova real de filtragem segura)' do
     it 'falso com runtime desligado' do
       allow(Connecta::Runtime::Feature).to receive(:enabled?).and_return(false)
