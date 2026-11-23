@@ -6,7 +6,7 @@
 module Connecta::Scope::ContactHook
   def self.prepended(base)
     base.after_action :connecta_scope_redact_contact_response!,
-                      only: %i[index show search active filter]
+                      only: %i[index show search active filter update]
   end
 
   # POST contacts com inbox_id marcada (spike G0): só admin nominal da projeção cria o vínculo, depois da
@@ -83,7 +83,15 @@ module Connecta::Scope::ContactHook
 
   def fetch_contact
     super
-    Connecta::Scope::ContactVisibility.guard!(@contact, current_user, account: Current.account, read: request.get?)
+    options = { account: Current.account, read: request.get?, name_only_update: connecta_scope_name_only_update? }
+    Connecta::Scope::ContactVisibility.guard!(@contact, current_user, **options)
+  end
+
+  # Correção 01: qualquer usuário da conta pode corrigir o nome de um contato vinculado visível. As demais
+  # ações (destroy, avatar, merge, contact_inboxes, notas) e campos seguem negados pelo guard.
+  def connecta_scope_name_only_update?
+    action_name == 'update' &&
+      Connecta::Scope::ContactVisibility.name_only_update?(@contact, contact_update_params)
   end
 
   # Roda como parte do create sobrescrito. Sem inbox_id: nativo. Inbox não marcada: nativo. Autenticação/conta

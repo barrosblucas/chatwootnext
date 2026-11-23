@@ -226,11 +226,16 @@ RSpec.describe 'Connecta G0 · superfícies HTTP relacionadas (T0.2 parte B2)', 
       expect(JSON.parse(response.body)['meta']['count']).to eq(1)
     end
 
-    it 'gestor lê contato visível, mas não altera o contato global (403) e o nome permanece' do
-      patch "#{contacts_path}/#{contact_a.id}", params: { contact: { name: 'Trocado pelo gestor' } }, headers: token_manager
+    it 'gestor lê contato visível e PODE corrigir o nome (Correção 01), mas não os demais campos' do
+      patch "#{contacts_path}/#{contact_a.id}", params: { name: 'Trocado pelo gestor' }, headers: token_manager
+
+      expect(response).to have_http_status(:ok)
+      expect(contact_a.reload.name).to eq('Trocado pelo gestor')
+
+      patch "#{contacts_path}/#{contact_a.id}", params: { phone_number: '+5511955554444' }, headers: token_manager
 
       expect(response).to have_http_status(:forbidden)
-      expect(contact_a.reload.name).to eq('Contato Alfa')
+      expect(contact_a.reload.phone_number).not_to eq('+5511955554444')
     end
 
     it 'agente com grant não exclui contato vinculado (negado pela autorização nativa, sem remoção)' do
