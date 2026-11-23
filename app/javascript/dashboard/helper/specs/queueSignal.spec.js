@@ -1,7 +1,4 @@
-import {
-  buildBotBadgeFilters,
-  createTrailingGuard,
-} from '../queueSignal';
+import { buildBotBadgeFilters, createTrailingGuard } from '../queueSignal';
 
 describe('#queueSignal', () => {
   describe('#createTrailingGuard', () => {

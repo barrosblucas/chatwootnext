@@ -18,6 +18,11 @@ export const getters = {
   getStats: $state => $state,
 };
 
+// Newer badge signals supersede older in-flight answers: each `get` bumps the
+// sequence and a late answer whose token no longer matches is dropped instead
+// of overwriting the current tab's badges.
+let statsRequestSeq = 0;
+
 // Create a debounced version of the actual API call function.
 // The Bot badge answers travel on their own debouncer: human and Bot badge
 // refreshes fire in the same tick (one queue signal refreshes both), and a
@@ -53,11 +58,6 @@ const superLongDebouncedFetchMetaData = debounce(
   false,
   30000
 );
-
-// Newer badge signals supersede older in-flight answers: each `get` bumps the
-// sequence and a late answer whose token no longer matches is dropped instead
-// of overwriting the current tab's badges.
-let statsRequestSeq = 0;
 
 const metaDebouncers = {
   default: debouncedFetchMetaData,

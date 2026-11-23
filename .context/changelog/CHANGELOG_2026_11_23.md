@@ -151,3 +151,10 @@
 
 - `queueReconciliation.spec.js:99-103`: `getCurrentUser` do teste agora `{ id: 7, accounts: [{ id: 1, permissions: ['conversation_participating_manage'] }] }` (idioma `userWith` do `actionCable.spec.js:520-529`); conta corrente 1 = `getCurrentAccountId` do mock; permissão mínima que segue assignment (evidência: `actionCable.js:35-38`, precedente verde que refetcha pins p/ self-assignment); assignee 7 = current user → grant real pelo caminho de produção, sem bypass/admin/helper falso; asserções do sinal preservadas.
 - Validação nesta VM: `node --check` passed + `git diff --check` a seguir; Vitest só no Actions.
+
+## Fixed — lint restante do run 45279811575 (sem publicar ainda)
+
+- `conversationStats.js`: `let statsRequestSeq = 0` movido p/ antes do primeiro uso léxico (24 < 36); incremento/cancelamento intactos (era só regra léxica TDZ — runtime já era correto).
+- `queueSignal.spec.js:1`: import de dois membros em linha única (76 cols, evidência exata).
+- Run 45279811575 (3e104ca3b) ao fechar: lint-backend success; backend/frontend tests ainda in_progress (sem veredito); security-scan failure padrão bundle-audit (IDs não verificados, sem achado novo); lint-frontend só os 2 erros acima (< 10, sem máscara de cap neste run); logs travados c/ run em progresso.
+- Validação nesta VM: `node --check` ambos + `git diff --check`; sem commit/push/dispatch aqui.
