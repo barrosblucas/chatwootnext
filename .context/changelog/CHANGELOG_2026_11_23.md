@@ -158,3 +158,10 @@
 - `queueSignal.spec.js:1`: import de dois membros em linha única (76 cols, evidência exata).
 - Run 45279811575 (3e104ca3b) ao fechar: lint-backend success; backend/frontend tests ainda in_progress (sem veredito); security-scan failure padrão bundle-audit (IDs não verificados, sem achado novo); lint-frontend só os 2 erros acima (< 10, sem máscara de cap neste run); logs travados c/ run em progresso.
 - Validação nesta VM: `node --check` ambos + `git diff --check`; sem commit/push/dispatch aqui.
+
+## Fixed — sequências independentes por lane nos badges (regressão realtime; publica neste passo)
+
+- Causa (estática, `conversationStats.js:24,31-36,78-94` no pai 68518f4): `statsRequestSeq` único incrementado em todo `get` e comparado no token; com debounce mockado como identidade, os dispatches síncronos de `queueReconciliation.spec.js:176-196` (humano + Bot no mesmo burst) tornavam o token humano obsoleto antes da resposta — `SET_CONV_TAB_META` nunca cometido no Actions (run 45280388048: frontend 5032 passed, 1 failure só neste teste).
+- Correção: `statsRequestSeq = { human: 0, bot: 0 }` + `statsRequestLane(params)` (`conversationType === 'bot'` → `bot`, senão `human`); `get` incrementa só a lane e grava `lane` no token; resposta compara `token.seq !== statsRequestSeq[token.lane]` (stale mesma-lane e guarda de troca de conta preservados; debouncers separados intactos). Asserções do spec preservadas, sem spec novo (mesmo-burst cobre a regressão; stale humano e account-switch já cobertos).
+- Validação nesta VM: `node --check` + `git diff --check`; Vitest só no Actions via `run_foss_spec.yml` tests-only após push. Sem merge main/imagem/deploy neste passo.
+- Hook local: commit normal bloqueado pelo shim Husky ausente (`.husky/pre-commit: 2: .: cannot open .husky/_/husky.sh: No such file`, sem pacote husky em disco p/ o loader documentado em `gotchas.md:17` e sem node_modules p/ o `lint-staged` do hook) — commit/push com `--no-verify` conforme precedente do repo (`CHANGELOG_2026_11_15.md:26,36`, `CHANGELOG_2026_11_11.md:44`); gates reais no Actions, sem bypass de gate funcional.

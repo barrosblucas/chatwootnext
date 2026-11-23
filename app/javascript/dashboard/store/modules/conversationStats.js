@@ -18,10 +18,14 @@ export const getters = {
   getStats: $state => $state,
 };
 
-// Newer badge signals supersede older in-flight answers: each `get` bumps the
-// sequence and a late answer whose token no longer matches is dropped instead
-// of overwriting the current tab's badges.
-let statsRequestSeq = 0;
+// Newer badge signals supersede older in-flight answers within their own lane:
+// each `get` bumps only its lane sequence and a late answer whose token no
+// longer matches is dropped instead of overwriting the current tab's badges.
+// Human and Bot answers travel on separate debouncers and resolve in either
+// order, so a shared sequence would let one lane invalidate the other.
+const statsRequestSeq = { human: 0, bot: 0 };
+const statsRequestLane = params =>
+  params?.conversationType === 'bot' ? 'bot' : 'human';
 
 // Create a debounced version of the actual API call function.
 // The Bot badge answers travel on their own debouncer: human and Bot badge
@@ -31,9 +35,15 @@ let statsRequestSeq = 0;
 const fetchMetaData = async (commit, params, token) => {
   try {
     const response = await ConversationApi.meta(params);
-    // A newer signal supersedes this answer (tab/account switched, or a later
-    // burst re-asked): the older answer must not overwrite current badges.
-    if (token && (token.seq !== statsRequestSeq || token.isStale?.())) return;
+    // A newer signal in the same lane supersedes this answer (tab/account
+    // switched, or a later burst re-asked): the older answer must not
+    // overwrite current badges. Answers from the other lane carry their own
+    // lane sequence and never invalidate this one.
+    if (
+      token &&
+      (token.seq !== statsRequestSeq[token.lane] || token.isStale?.())
+    )
+      return;
     const {
       data: { meta },
     } = response;
@@ -75,12 +85,14 @@ export const getMetaDebounceKey = allCount => {
 
 export const actions = {
   get: ({ commit, state: $state, rootGetters }, params) => {
-    statsRequestSeq += 1;
-    const seq = statsRequestSeq;
+    const lane = statsRequestLane(params);
+    statsRequestSeq[lane] += 1;
+    const seq = statsRequestSeq[lane];
     const accountId = rootGetters?.getCurrentAccountId;
     // Stale-account guard: an answer that returns after the agent switched
     // accounts must not write the previous account's counts here.
     const token = {
+      lane,
       seq,
       isStale: () =>
         accountId !== undefined &&
