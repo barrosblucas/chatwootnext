@@ -84,20 +84,32 @@ export const isConnectaDashboardParams = (params = {}) =>
 // strings are validated as decimal text, never via lossy `Number()` coercion,
 // so ids beyond the safe-integer range keep their exact value as strings and
 // malformed input (zero, fractions, hex, overflow) never becomes 0.
-const UUID_FORMAT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_FORMAT =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DECIMAL_FORMAT = /^\d+$/;
-const MAX_SAFE_ID = BigInt(Number.MAX_SAFE_INTEGER);
-const MAX_BIGINT_ID = 9223372036854775807n;
+// Text ceilings: the lint env has no BigInt global, so exact big integers
+// stay strings via length-first digit comparison (equal length keeps the
+// lexicographic order numeric). Safe integers fit in 15 digits; the 16-digit
+// ceiling is MAX_SAFE_INTEGER itself.
+const MAX_SAFE_TEXT = String(Number.MAX_SAFE_INTEGER);
+const MAX_BIGINT_TEXT = '9223372036854775807';
 
 const normalizeDecimalId = text => {
-  let id;
-  try {
-    id = BigInt(text);
-  } catch {
+  const digits = text.replace(/^0+/, '') || '0';
+  if (digits === '0') return null;
+  if (
+    digits.length > MAX_BIGINT_TEXT.length ||
+    (digits.length === MAX_BIGINT_TEXT.length && digits > MAX_BIGINT_TEXT)
+  ) {
     return null;
   }
-  if (id <= 0n || id > MAX_BIGINT_ID) return null;
-  return id <= MAX_SAFE_ID ? Number(id) : text;
+  if (
+    digits.length < MAX_SAFE_TEXT.length ||
+    (digits.length === MAX_SAFE_TEXT.length && digits <= MAX_SAFE_TEXT)
+  ) {
+    return Number(digits);
+  }
+  return digits;
 };
 
 // Canonical selected-sector id: safe integers stay numbers, big integers

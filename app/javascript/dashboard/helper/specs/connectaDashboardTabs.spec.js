@@ -165,9 +165,9 @@ describe('connectaDashboardTabs', () => {
     });
 
     it('lowercases UUIDs and trims whitespace', () => {
-      expect(
-        normalizeOrgUnitId('123E4567-E89B-12D3-A456-426614174000')
-      ).toBe('123e4567-e89b-12d3-a456-426614174000');
+      expect(normalizeOrgUnitId('123E4567-E89B-12D3-A456-426614174000')).toBe(
+        '123e4567-e89b-12d3-a456-426614174000'
+      );
     });
 
     it('keeps exact big integers beyond the safe range as strings', () => {
