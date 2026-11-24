@@ -184,8 +184,8 @@ class Connecta::Scope::DashboardTabs
     # table (e.g. a UUID on a bigint column) fails closed to :invalid, so a
     # selection can never probe for sectors. Truly absent (nil/blank) or an
     # explicitly cleared selection aggregates instead.
-    UUID_FORMAT = /\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/i.freeze
-    DECIMAL_FORMAT = /\A\d+\z/.freeze
+    UUID_FORMAT = /\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/i
+    DECIMAL_FORMAT = /\A\d+\z/
     MAX_ORG_UNIT_ID = 9_223_372_036_854_775_807
 
     def selected_unit(params)
@@ -221,16 +221,17 @@ class Connecta::Scope::DashboardTabs
     end
 
     def fetch(params, key)
-      value = params[key].nil? ? params[key.to_s] : params[key]
+      value = pick(params, key)
       return value unless value.nil?
 
       nested = params[:connecta].nil? ? params['connecta'] : params[:connecta]
       return nil unless nested.respond_to?(:fetch)
 
-      short = key.to_s.sub(/\Aconnecta_/, '')
-      inner = nested[key].nil? ? nested[key.to_s] : nested[key]
-      inner = nested[short].nil? ? nested[short.to_s] : nested[short] if inner.nil?
-      inner
+      pick(nested, key) || pick(nested, key.to_s.delete_prefix('connecta_'))
+    end
+
+    def pick(source, key)
+      source[key].nil? ? source[key.to_s] : source[key]
     end
   end
 end
