@@ -50,6 +50,7 @@ import { emitter } from 'shared/helpers/mitt';
 import { BUS_EVENTS } from 'shared/constants/busEvents';
 
 import ConversationAPI from 'dashboard/api/inbox/conversation';
+import ConnectaAPI from 'dashboard/api/connecta';
 import wootConstants from 'dashboard/constants/globals';
 import advancedFilterOptions from './widgets/conversation/advancedFilterItems';
 import filterQueryGenerator from '../helper/filterQueryGenerator.js';
@@ -79,6 +80,13 @@ import {
   buildBotBadgeFilters,
   createTrailingGuard,
 } from 'dashboard/helper/queueSignal';
+import {
+  buildConnectaListParams,
+  buildConnectaMetaParams,
+  connectaTabForAssigneeKey,
+  extractOrgUnitOptions,
+  isConnectaDashboardContext,
+} from 'dashboard/helper/connectaDashboardTabs';
 import { CONVERSATION_EVENTS } from '../helper/AnalyticsHelper/events';
 
 const props = defineProps({
@@ -126,6 +134,7 @@ const mineChatsList = useMapGetter('getMineChats');
 const allChatList = useMapGetter('getAllStatusChats');
 const unAssignedChatsList = useMapGetter('getUnAssignedChats');
 const botChatsList = useMapGetter('getBotChats');
+const connectaTabChats = useMapGetter('getConnectaTabChats');
 const botListStatus = useMapGetter('getBotListStatus');
 const participatingChatsList = useMapGetter('getParticipatingChats');
 const chatListLoading = useMapGetter('getChatListLoadingStatus');
@@ -225,6 +234,12 @@ const userPermissions = computed(() => {
   return getUserPermissions(currentUser.value, currentAccountId.value);
 });
 
+// Connecta queue scope: Todos and Bot are administrator-only. Standard
+// attendants keep Minhas and Aguardando; the server still enforces the rows.
+const isAccountAdministrator = computed(() => {
+  return currentRole.value === 'administrator';
+});
+
 const assigneeTabPermissions = computed(() => {
   return getVisibleAssigneeTabPermissions({
     conversationType: props.conversationType,
@@ -249,23 +264,46 @@ const assigneeTabItems = computed(() => {
   ).map(({ key, count: countKey }) => ({
     key,
     name: t(`CHAT_LIST.ASSIGNEE_TYPE_TABS.${key}`),
-    count: conversationStats.value[countKey] || 0,
+    // Connecta badges are exact per-tab totals: unknown renders blank, never
+    // a fake zero (only a successful zero shows 0).
+    count: isConnectaDashboard.value
+      ? connectaBadgeCount(key)
+      : conversationStats.value[countKey] || 0,
   }));
+  // Todos is administrator-only: attendants only reach their own sector queue.
+  const scopedBaseItems = isAccountAdministrator.value
+    ? baseItems
+    : baseItems.filter(item => item.key !== wootConstants.ASSIGNEE_TYPE.ALL);
   // The Bot tab is appended, never permission-filtered: triage rows are only
   // reachable here once the human tabs exclude them, so hiding the tab would
   // strand them. The server still enforces every row it serves.
-  if (!botTabVisible.value) return baseItems;
+  // Connecta scope: administrators only, like Todos.
+  if (!botTabVisible.value || !isAccountAdministrator.value)
+    return scopedBaseItems;
   return [
-    ...baseItems,
+    ...scopedBaseItems,
     {
       key: BOT_TAB_KEY,
       name: t('CHAT_LIST.ASSIGNEE_TYPE_TABS.bot'),
-      count: conversationStats.value.botCount || 0,
+      // Connecta Bot badge is the exact tab total; unknown renders blank.
+      count: isConnectaDashboard.value
+        ? connectaBadgeCount(BOT_TAB_KEY)
+        : conversationStats.value.botCount || 0,
     },
   ];
 });
 
 const isBotTab = computed(() => activeAssigneeTab.value === BOT_TAB_KEY);
+
+// Whether the selected tab is actually on screen: a stale route, filter or
+// account switch can leave an admin-only tab selected for a non-admin (or
+// after the Bot flag flips off). Fetching it would ask for a tab the user
+// cannot see, then fetch again for the fallback.
+const isActiveTabVisible = computed(() => {
+  return assigneeTabItems.value.some(
+    item => item.key === activeAssigneeTab.value
+  );
+});
 
 const shouldExcludeBots = computed(() => {
   return shouldExcludeActiveBot({
@@ -274,6 +312,48 @@ const shouldExcludeBots = computed(() => {
     status: activeStatus.value,
     hasFiltersOrFolders: hasAppliedFiltersOrActiveFolders.value,
   });
+});
+
+// Connecta dashboard queue: the plain queue (no conversation type, no
+// advanced filter or folder narrowing) with the human-number flag. List and
+// every visible badge share the opt-in contract here; any other route or
+// context keeps native behavior and the legacy opt-ins untouched.
+const isConnectaDashboard = computed(() => {
+  return isConnectaDashboardContext({
+    connectaEnabled: connectaHumanNumberEnabled,
+    conversationType: props.conversationType,
+    hasFiltersOrFolders: hasAppliedFiltersOrActiveFolders.value,
+  });
+});
+
+// Exact Connecta total for one visible tab, or null while unknown. Null
+// renders blank (never a fake 0); only a successful zero shows 0.
+const connectaBadgeCount = assigneeKey => {
+  const tab = connectaTabForAssigneeKey(assigneeKey);
+  const counts = conversationStats.value.connectaCounts;
+  if (!tab || !counts) return null;
+  const count = counts[tab];
+  return typeof count === 'number' ? count : null;
+};
+
+// Connecta dashboard sector filter: the account catalog of authorized sectors
+// (id/name only, same boundary as the selected-tab filter) plus the actor's
+// selection. Null aggregates every authorized sector; clearing restores it.
+const connectaSectorOptions = ref([]);
+const connectaSectorLoading = ref(false);
+const selectedConnectaSectorId = ref(null);
+let connectaSectorRequestId = 0;
+
+const connectaSectorId = computed(() => {
+  const id = Number(selectedConnectaSectorId.value);
+  return Number.isInteger(id) && id > 0 ? id : null;
+});
+
+const showConnectaSectorFilter = computed(() => {
+  return (
+    isConnectaDashboard.value &&
+    (connectaSectorLoading.value || connectaSectorOptions.value.length > 0)
+  );
 });
 
 // Degraded human classification: the server kept the original list because it
@@ -347,7 +427,7 @@ const conversationListPagination = computed(() => {
 });
 
 const conversationFilters = computed(() => {
-  return {
+  const base = {
     inboxId: props.conversationInbox ? props.conversationInbox : undefined,
     // The Bot tab asks by server conversation type; any assigneeType would be
     // ignored by the finder, so none travels instead of a misleading one.
@@ -364,6 +444,13 @@ const conversationFilters = computed(() => {
       !isBotTab.value && shouldExcludeBots.value ? 'true' : undefined,
     groupType: activeGroupType.value || undefined,
   };
+  if (!isConnectaDashboard.value) return base;
+  // The sector filter narrows the aggregate: a real selection travels as the
+  // verified org-unit id, clearing omits it and restores the authorized
+  // aggregate. Grants are never derived from inbox or team.
+  return buildConnectaListParams(base, activeAssigneeTab.value, {
+    orgUnitId: connectaSectorId.value,
+  });
 });
 
 const activeTeam = computed(() => {
@@ -448,6 +535,14 @@ const conversationList = computed(() => {
       localConversationList = filterByAssigneeTab(
         participatingChatsList.value(filters)
       );
+    } else if (isConnectaDashboard.value && !isBotTab.value) {
+      // Server membership: the client predicates cannot reproduce
+      // Aguardando/Todos, so the list renders exactly what the tab's
+      // completed request returned, narrowed only by the page filters.
+      const tab = connectaTabForAssigneeKey(activeAssigneeTab.value);
+      localConversationList = tab
+        ? [...connectaTabChats.value(tab, filters)]
+        : [];
     } else if (activeAssigneeTab.value === 'me') {
       localConversationList = [...mineChatsList.value(filters)];
     } else if (activeAssigneeTab.value === 'unassigned') {
@@ -485,6 +580,18 @@ const showEndOfListMessage = computed(() => {
     conversationList.value.length &&
     hasCurrentPageEndReached.value &&
     !chatListLoading.value
+  );
+});
+
+// The empty message represents only the Bot list on screen: never while it
+// is still loading, and never while it holds rows (a later page can answer
+// empty while earlier pages are already rendered).
+const isBotEmptyVisible = computed(() => {
+  return (
+    isBotTab.value &&
+    !chatListLoading.value &&
+    !conversationList.value.length &&
+    botListStatus.value === 'empty'
   );
 });
 
@@ -709,6 +816,14 @@ function onToggleAdvanceFiltersModal() {
 }
 
 function fetchConversations() {
+  if (!isActiveTabVisible.value) {
+    // Stale admin-only selection (role/account/flag switch): fall back to
+    // Minhas first so the hidden tab is never asked for. The fetch below
+    // then runs exactly once, for the visible tab.
+    resetBulkActions();
+    emitter.emit('clearSearchInput');
+    activeAssigneeTab.value = wootConstants.ASSIGNEE_TYPE.ME;
+  }
   store.dispatch('updateChatListFilters', conversationFilters.value);
   if (isBotTab.value) {
     store
@@ -717,6 +832,75 @@ function fetchConversations() {
   } else {
     store.dispatch('fetchAllConversations').then(emitConversationLoaded);
   }
+}
+
+// One badge request per visible tab with the same active filters as the
+// list; hidden tabs are never asked for. Failures leave the slot unknown
+// (blank, never a fake 0) and the next signal retries them.
+function fetchConnectaBadges() {
+  if (!isConnectaDashboard.value) return;
+  const base = conversationFilters.value;
+  assigneeTabItems.value.forEach(item => {
+    store.dispatch(
+      'conversationStats/get',
+      buildConnectaMetaParams(base, item.key, {
+        orgUnitId: connectaSectorId.value,
+      })
+    );
+  });
+}
+
+// Authorized sector options for the dashboard filter: account catalog fetched
+// only in the Connecta dashboard context. A request token plus the account
+// check drop stale answers, so options from another account or context never
+// render. Errors and empty catalogs hide the filter and keep the authorized
+// aggregate; a successful answer that no longer authorizes the selection
+// falls back to the aggregate instead of sticking on a dead sector.
+async function fetchConnectaSectorCatalog() {
+  if (!isConnectaDashboard.value) {
+    connectaSectorOptions.value = [];
+    return;
+  }
+  const accountId = currentAccountId.value;
+  const requestId = (connectaSectorRequestId += 1);
+  connectaSectorLoading.value = true;
+  connectaSectorOptions.value = [];
+  try {
+    const { data } = await ConnectaAPI.getOrgUnits();
+    if (requestId !== connectaSectorRequestId) return;
+    if (currentAccountId.value !== accountId) return;
+    const options = extractOrgUnitOptions(data);
+    connectaSectorOptions.value = options;
+    if (
+      connectaSectorId.value !== null &&
+      !options.some(option => option.id === connectaSectorId.value)
+    ) {
+      selectedConnectaSectorId.value = null;
+      resetAndFetchData();
+    }
+  } catch (error) {
+    if (requestId !== connectaSectorRequestId) return;
+    if (currentAccountId.value !== accountId) return;
+    connectaSectorOptions.value = [];
+    // No retry here: the aggregate stays in force and the next context or
+    // account signal refetches the catalog.
+  } finally {
+    if (
+      requestId === connectaSectorRequestId &&
+      currentAccountId.value === accountId
+    ) {
+      connectaSectorLoading.value = false;
+    }
+  }
+}
+
+function updateConnectaSector(event) {
+  const raw = event?.target?.value;
+  const id =
+    raw === '' || raw === null || raw === undefined ? null : Number(raw);
+  selectedConnectaSectorId.value =
+    Number.isInteger(id) && id > 0 ? id : null;
+  resetAndFetchData();
 }
 
 function resetAndFetchData() {
@@ -1051,16 +1235,34 @@ useEmitter(BUS_EVENTS.OPEN_CONVERSATION_GONE, () =>
 const runQueueSignal = () => {
   if (hasAppliedFiltersOrActiveFolders.value) return;
   const filters = conversationFilters.value;
+  // Connecta queue: one badge request per visible tab with the same active
+  // filters as the list; hidden tabs are never asked for. The active tab
+  // then reconciles its server membership instead of polling.
+  if (isConnectaDashboard.value) {
+    fetchConnectaBadges();
+    if (isBotTab.value && isActiveTabVisible.value) {
+      store.dispatch('fetchBotConversations', {
+        ...filters,
+        page: 1,
+      });
+    } else if (!isBotTab.value) {
+      store.dispatch('reconcileConversationTab', filters);
+    }
+    return;
+  }
   store.dispatch('conversationStats/get', filters);
-  if (botTabVisible.value) {
+  // The Bot badge has no tab to live on for non-admins: skip its fetch.
+  if (botTabVisible.value && isAccountAdministrator.value) {
     store.dispatch('conversationStats/get', buildBotBadgeFilters(filters));
   }
-  if (isBotTab.value) {
+  // A stale admin-only selection never fetches its hidden tab; the watcher
+  // falls it back to Minhas, whose next signal reconciles instead.
+  if (isBotTab.value && isActiveTabVisible.value) {
     store.dispatch('fetchBotConversations', {
       ...filters,
       page: 1,
     });
-  } else {
+  } else if (!isBotTab.value) {
     store.dispatch('reconcileConversationTab', filters);
   }
 };
@@ -1135,6 +1337,7 @@ onMounted(() => {
   store.dispatch('setChatSortFilter', activeSortBy.value);
   store.dispatch('setChatGroupTypeFilter', activeGroupType.value);
   resetAndFetchData();
+  fetchConnectaBadges();
   if (hasActiveFolders.value) {
     store.dispatch('campaigns/get');
   }
@@ -1144,8 +1347,8 @@ onMounted(() => {
   );
 });
 
-watch(assigneeTabItems, items => {
-  if (!items.some(item => item.key === activeAssigneeTab.value)) {
+watch(assigneeTabItems, () => {
+  if (!isActiveTabVisible.value) {
     updateAssigneeTab(wootConstants.ASSIGNEE_TYPE.ME);
   }
 });
@@ -1153,6 +1356,7 @@ watch(assigneeTabItems, items => {
 onBeforeUnmount(() => {
   if (presenceInterval) clearInterval(presenceInterval);
   if (stopConnectaMetadataTimer) stopConnectaMetadataTimer();
+  connectaSectorRequestId += 1;
 });
 
 const deleteConversationDialogRef = ref(null);
@@ -1220,6 +1424,45 @@ watch(conversationFilters, (newVal, oldVal) => {
     store.dispatch('updateChatListFilters', newVal);
   }
 });
+
+// Badge criteria without page and sorting (the meta endpoint takes neither):
+// a page turn or a re-sort must not refetch badges, while a status, inbox,
+// team, label, group, sector, account or visibility change refetches every
+// visible tab with the list's own filters.
+const connectaBadgeKey = computed(() => {
+  return JSON.stringify({
+    status: activeStatus.value,
+    inboxId: props.conversationInbox || null,
+    teamId: props.teamId || null,
+    label: props.label || null,
+    groupType: activeGroupType.value || null,
+    sectorId: connectaSectorId.value ?? null,
+    accountId: currentAccountId.value,
+    tabs: assigneeTabItems.value.map(item => item.key).join(','),
+  });
+});
+
+watch(connectaBadgeKey, () => {
+  fetchConnectaBadges();
+});
+
+// Sector catalog lifecycle: fetched only in the Connecta dashboard context,
+// selection and options cleared on account change (with a list reset when a
+// selection was active), hidden outside the context. Unauthorized options can
+// never be picked: the select only offers the authorized catalog.
+watch(
+  [() => isConnectaDashboard.value, currentAccountId],
+  ([, accountId], [, prevAccountId] = []) => {
+    if (accountId !== prevAccountId) {
+      const hadSelection = selectedConnectaSectorId.value !== null;
+      selectedConnectaSectorId.value = null;
+      connectaSectorOptions.value = [];
+      if (hadSelection) resetAndFetchData();
+    }
+    fetchConnectaSectorCatalog();
+  },
+  { immediate: true }
+);
 </script>
 
 <template>
@@ -1276,6 +1519,30 @@ watch(conversationFilters, (newVal, oldVal) => {
       @chat-tab-change="updateAssigneeTab"
     />
 
+    <div v-if="showConnectaSectorFilter" class="px-3 pb-2">
+      <select
+        :value="selectedConnectaSectorId ?? ''"
+        :disabled="connectaSectorLoading"
+        :aria-label="$t('CONNECTA.SECTOR_FILTER.LABEL', 'Setor')"
+        class="w-full rounded-lg border border-n-strong bg-n-solid-2 px-2 py-1.5 text-sm text-n-slate-12 disabled:opacity-50"
+        @change="updateConnectaSector"
+      >
+        <option v-if="connectaSectorLoading" value="" disabled>
+          {{ $t('CONNECTA.SECTOR_FILTER.LOADING', 'Carregando setores…') }}
+        </option>
+        <option v-else value="">
+          {{ $t('CONNECTA.SECTOR_FILTER.ALL', 'Todos os setores autorizados') }}
+        </option>
+        <option
+          v-for="option in connectaSectorOptions"
+          :key="option.id"
+          :value="option.id"
+        >
+          {{ option.name }}
+        </option>
+      </select>
+    </div>
+
     <div
       v-if="showBotDegradedWarning"
       class="flex items-center justify-between gap-2 px-4 py-2 text-xs bg-n-surface-2"
@@ -1318,7 +1585,7 @@ watch(conversationFilters, (newVal, oldVal) => {
       {{ $t('CHAT_LIST.LIST.404') }}
     </p>
     <p
-      v-if="isBotTab && botListStatus === 'empty'"
+      v-if="isBotEmptyVisible"
       class="flex overflow-auto justify-center items-center p-4"
     >
       {{ $t('CHAT_LIST.BOT_LIST_EMPTY') }}

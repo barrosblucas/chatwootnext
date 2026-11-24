@@ -29,6 +29,11 @@ const state = {
   // tab states: loading, ready, empty, unavailable (503, retry), error.
   botConversationIds: [],
   botListStatus: 'idle',
+  // Connecta dashboard human tabs are server authority the same way: the
+  // client predicates cannot reproduce Aguardando/Todos membership, so each
+  // tab keeps its own ids (replaced on page 1, unioned on later pages),
+  // cleared with the cache. The Bot tab keeps its own lane above.
+  connectaTabConversationIds: { minhas: [], aguardando: [], todos: [] },
 };
 
 const getConversationById = _state => conversationId => {
@@ -70,6 +75,11 @@ export const mutations = {
     _state.selectedChatId = null;
     _state.botConversationIds = [];
     _state.botListStatus = 'idle';
+    _state.connectaTabConversationIds = {
+      minhas: [],
+      aguardando: [],
+      todos: [],
+    };
   },
   [types.SET_BOT_LIST_STATUS](_state, status) {
     _state.botListStatus = status;
@@ -78,6 +88,19 @@ export const mutations = {
     _state.botConversationIds =
       page > 1
         ? [...new Set([..._state.botConversationIds, ...ids])]
+        : [...ids];
+  },
+  // Server membership for one Connecta human tab (Minhas/Aguardando/Todos):
+  // replaced on page 1, unioned on later pages. Unknown tabs are ignored so
+  // a malformed dispatch can never pollute another tab's membership.
+  [types.SET_CONNECTA_TAB_CONVERSATIONS](
+    _state,
+    { tab = null, ids = [], page = 1 } = {}
+  ) {
+    if (!_state.connectaTabConversationIds[tab]) return;
+    _state.connectaTabConversationIds[tab] =
+      page > 1
+        ? [...new Set([..._state.connectaTabConversationIds[tab], ...ids])]
         : [...ids];
   },
   [types.SET_ALL_MESSAGES_LOADED](_state, conversationId) {

@@ -9,16 +9,28 @@
 # status/contagens/paginação. Só na lista aberta padrão (sem tipo de conversa, sem busca): outras visões nunca
 # disparam lookup externo por acidente. Sem rede no caminho humano: erro de
 # banco preserva a lista e sinaliza via `bot_classification_unavailable`.
+# As abas do dashboard Connecta (`connecta_dashboard=true` + `connecta_tab`)
+# rodam no mesmo ponto pré-contagem via DashboardTabs e subsumem a partição
+# humano/Bot; sob opt-in, `exclude_active_bot`, `assignee_type` e
+# `conversation_type` nativos são ignorados para lista e contagem concordarem.
 module Connecta::Scope::ConversationFinderHook
   private
 
   def find_all_conversations
     super
-    apply_bot_exclusion if bot_exclusion_requested?
+    if Connecta::Scope::DashboardTabs.opt_in?(params)
+      @conversations = Connecta::Scope::DashboardTabs.apply(
+        @conversations, user: current_user, account: current_account, params: params
+      )
+    else
+      apply_bot_exclusion if bot_exclusion_requested?
+    end
     @conversations
   end
 
   def filter_by_conversation_type
+    return @conversations if Connecta::Scope::DashboardTabs.opt_in?(params)
+
     super
     case params[:conversation_type]
     when 'participating'
@@ -32,6 +44,12 @@ module Connecta::Scope::ConversationFinderHook
     @conversations
   end
 
+  def filter_by_assignee_type
+    return @conversations if Connecta::Scope::DashboardTabs.opt_in?(params)
+
+    super
+  end
+
   # A busca da lista nativa procura só conteúdo de mensagem. Aqui a mesma
   # relação (já passou por ConversationQuery em find_all_conversations) ganha
   # OR por protocolo. A subquery de protocolo continua sobre @conversations,
@@ -40,10 +58,10 @@ module Connecta::Scope::ConversationFinderHook
     return super unless params[:q]
 
     message_ids = @conversations.joins(:messages)
-                                .where('messages.content ILIKE :search', search: "%#{params[:q]}%")
-                                .where(messages: { message_type: [Message.message_types[:incoming],
-                                                                  Message.message_types[:outgoing]] })
-                                .select(:id)
+                                 .where('messages.content ILIKE :search', search: "%#{params[:q]}%")
+                                 .where(messages: { message_type: [Message.message_types[:incoming],
+                                                                   Message.message_types[:outgoing]] })
+                                 .select(:id)
     protocol_ids = Connecta::Scope::ProtocolSearch.apply(@conversations, params[:q]).select(:id)
     @conversations = @conversations.where(id: message_ids).or(@conversations.where(id: protocol_ids)).includes(:messages)
   end
