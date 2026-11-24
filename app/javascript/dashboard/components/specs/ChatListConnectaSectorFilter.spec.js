@@ -232,6 +232,28 @@ describe('ChatList Connecta sector filter', () => {
     });
   });
 
+  it('selecting a UUID sector travels as an exact string, never NaN', async () => {
+    const uuid = '123e4567-e89b-12d3-a456-426614174000';
+    ConnectaAPI.getOrgUnits.mockResolvedValue({
+      data: { org_units: [{ id: uuid, name: 'Setor U' }] },
+    });
+    await mountChatList();
+    dispatchCalls.length = 0;
+
+    await sectorSelect().setValue(uuid);
+    await flushPromises();
+    await nextTick();
+
+    expect(payloads('conversationPage/reset')).toHaveLength(1);
+    const listPayload = payloads('updateChatListFilters').at(-1);
+    expect(listPayload.connectaOrgUnitId).toBe(uuid);
+    const badges = payloads('conversationStats/get');
+    expect(badges.length).toBeGreaterThan(0);
+    badges.forEach(badge => {
+      expect(badge.connectaOrgUnitId).toBe(uuid);
+    });
+  });
+
   it('clearing the selection omits the id and restores the aggregate', async () => {
     await mountChatList();
     await sectorSelect().setValue('3');

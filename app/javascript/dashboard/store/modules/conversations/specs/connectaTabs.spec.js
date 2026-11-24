@@ -1,13 +1,13 @@
 import actions from '../actions';
 import types from '../../../mutation-types';
-import ConversationApi from '../../../api/inbox/conversation';
+import ConversationApi from '../../../../api/inbox/conversation';
 import { buildConversationList } from '../helpers/actionHelpers';
 
 // Connecta dashboard list wiring: the list answer sets the active tab's
 // exact total and server membership without touching the native triple, and
 // reconciliation reads the tab's own membership. Synthetic fixtures only.
 
-vi.mock('../../../api/inbox/conversation', () => ({
+vi.mock('../../../../api/inbox/conversation', () => ({
   default: { get: vi.fn(), sync: vi.fn() },
 }));
 

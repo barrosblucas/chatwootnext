@@ -4,7 +4,9 @@
 // layer and the conversation stores, so a tab badge and its list always ask
 // the same question. API contract: `connecta_dashboard=true` (string),
 // `connecta_tab=minhas|aguardando|todos|bot`, optional
-// `connecta_org_unit_id` positive integer for a real selected sector.
+// `connecta_org_unit_id`: the selected sector id — a positive integer on the
+// G0 fixture schema or a UUID on the product schema (see the server-side
+// DashboardTabs selection).
 // Without a selection nothing travels and the server aggregates every sector
 // the actor is authorized for. Grants are never derived from inbox or team.
 //
@@ -76,11 +78,48 @@ export const isConnectaDashboardParams = (params = {}) =>
   params?.connectaDashboard === CONNECTA_DASHBOARD_OPT_IN &&
   isConnectaTab(params?.connectaTab);
 
-// Only a positive integer travels; anything else aggregates (absent).
-export const isValidOrgUnitId = value => {
-  const id = typeof value === 'string' ? Number(value) : value;
-  return Number.isInteger(id) && id > 0;
+// Only a real selection travels; anything else aggregates (absent).
+// Accepted shapes mirror the server-side DashboardTabs selection: a positive
+// integer (G0 fixture schema) or a strict UUID (product schema). Numeric
+// strings are validated as decimal text, never via lossy `Number()` coercion,
+// so ids beyond the safe-integer range keep their exact value as strings and
+// malformed input (zero, fractions, hex, overflow) never becomes 0.
+const UUID_FORMAT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DECIMAL_FORMAT = /^\d+$/;
+const MAX_SAFE_ID = BigInt(Number.MAX_SAFE_INTEGER);
+const MAX_BIGINT_ID = 9223372036854775807n;
+
+const normalizeDecimalId = text => {
+  let id;
+  try {
+    id = BigInt(text);
+  } catch {
+    return null;
+  }
+  if (id <= 0n || id > MAX_BIGINT_ID) return null;
+  return id <= MAX_SAFE_ID ? Number(id) : text;
 };
+
+// Canonical selected-sector id: safe integers stay numbers, big integers
+// stay exact strings, UUIDs are lowercased; anything else is null (aggregate,
+// never a fabricated 0).
+export const normalizeOrgUnitId = value => {
+  if (typeof value === 'number') {
+    return Number.isInteger(value) && value > 0 && Number.isSafeInteger(value)
+      ? value
+      : null;
+  }
+  if (typeof value === 'string') {
+    const text = value.trim();
+    if (text === '') return null;
+    if (UUID_FORMAT.test(text)) return text.toLowerCase();
+    if (!DECIMAL_FORMAT.test(text)) return null;
+    return normalizeDecimalId(text);
+  }
+  return null;
+};
+
+export const isValidOrgUnitId = value => normalizeOrgUnitId(value) !== null;
 
 const pickBaseFilters = (filters = {}) => {
   const picked = {};
@@ -110,8 +149,9 @@ export const buildConnectaListParams = (
     connectaDashboard: CONNECTA_DASHBOARD_OPT_IN,
     connectaTab: tab,
   };
-  if (isValidOrgUnitId(orgUnitId)) {
-    params.connectaOrgUnitId = Number(orgUnitId);
+  const selectedOrgUnitId = normalizeOrgUnitId(orgUnitId);
+  if (selectedOrgUnitId !== null) {
+    params.connectaOrgUnitId = selectedOrgUnitId;
   }
   return params;
 };
@@ -130,8 +170,9 @@ export const buildConnectaMetaParams = (
     connectaDashboard: CONNECTA_DASHBOARD_OPT_IN,
     connectaTab: tab,
   };
-  if (isValidOrgUnitId(orgUnitId)) {
-    params.connectaOrgUnitId = Number(orgUnitId);
+  const selectedOrgUnitId = normalizeOrgUnitId(orgUnitId);
+  if (selectedOrgUnitId !== null) {
+    params.connectaOrgUnitId = selectedOrgUnitId;
   }
   return params;
 };
@@ -149,11 +190,10 @@ export const extractConnectaAllCount = response => {
 // Sector catalog options for the dashboard filter: the server answers
 // `{ org_units: [{ id, name }] }` with only the enabled sectors the actor may
 // read. Malformed entries are dropped, never offered as a choice; anything
-// but that envelope is no authorized sector.
-const toOrgUnitId = value => {
-  const id = typeof value === 'string' ? Number(value) : value;
-  return Number.isInteger(id) && id > 0 ? id : null;
-};
+// but that envelope is no authorized sector. Ids keep the catalog shape:
+// integers stay integers, UUIDs are lowercased, exact big-integers stay
+// strings.
+const toOrgUnitId = value => normalizeOrgUnitId(value);
 
 export const extractOrgUnitOptions = (payload = {}) => {
   const rows = Array.isArray(payload?.org_units) ? payload.org_units : [];

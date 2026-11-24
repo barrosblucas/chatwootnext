@@ -172,26 +172,65 @@ class Connecta::Scope::DashboardTabs
       TABS.include?(tab) ? tab : nil
     end
 
-    # nil = absent (aggregate authorized sectors); :invalid = fail closed
-    # (missing, disabled, or malformed selection is indistinguishable from
-    # denied, so selections cannot probe for sectors).
+    # Selection is either absent (aggregate every authorized sector) or one
+    # verified sector id. The active schema decides the shape: the product
+    # schema (`connecta_org_units`, via G0Adapter in runtime) uses UUID ids,
+    # the G0 fixture schema (`connecta_g0_org_units`) uses bigint ids. The
+    # shape itself selects the path — strict UUID (RFC 4122, case-insensitive,
+    # normalized to lowercase) or explicit positive decimal within the bigint
+    # range (1..2^63-1) — with no permissive coercion: `to_i`/`Number()` would
+    # turn garbage into 0 and silently aggregate without authorization. Any
+    # other shape, a disabled/missing unit, or a type mismatch with the active
+    # table (e.g. a UUID on a bigint column) fails closed to :invalid, so a
+    # selection can never probe for sectors. Truly absent (nil/blank) or an
+    # explicitly cleared selection aggregates instead.
+    UUID_FORMAT = /\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/i.freeze
+    DECIMAL_FORMAT = /\A\d+\z/.freeze
+    MAX_ORG_UNIT_ID = 9_223_372_036_854_775_807
+
     def selected_unit(params)
       raw = fetch(params, :connecta_org_unit_id)
       return nil if raw.nil? || raw.to_s.strip.empty?
 
-      id = Integer(raw.to_s, 10)
-      return :invalid unless id.positive?
+      id = normalize_org_unit_id(raw.to_s.strip)
+      return :invalid if id.nil?
 
-      unit = Connecta::Scope::OrgUnit.find_by(id: id)
+      unit = find_org_unit(id)
       return :invalid if unit.nil? || !unit.enabled?
 
       unit
+    end
+
+    def normalize_org_unit_id(raw)
+      return raw.downcase if raw.match?(UUID_FORMAT)
+      return nil unless raw.match?(DECIMAL_FORMAT)
+
+      id = Integer(raw, 10)
+      id.positive? && id <= MAX_ORG_UNIT_ID ? id : nil
     rescue ArgumentError
-      :invalid
+      nil
+    end
+
+    # A shape that does not fit the active table (UUID on bigint, integer on
+    # uuid) raises at the database; that fails closed like a denied sector,
+    # never as a 500 that would distinguish the schema.
+    def find_org_unit(id)
+      Connecta::Scope::OrgUnit.find_by(id: id)
+    rescue ActiveRecord::StatementInvalid
+      nil
     end
 
     def fetch(params, key)
-      params[key].nil? ? params[key.to_s] : params[key]
+      value = params[key].nil? ? params[key.to_s] : params[key]
+      return value unless value.nil?
+
+      nested = params[:connecta].nil? ? params['connecta'] : params[:connecta]
+      return nil unless nested.respond_to?(:fetch)
+
+      short = key.to_s.sub(/\Aconnecta_/, '')
+      inner = nested[key].nil? ? nested[key.to_s] : nested[key]
+      inner = nested[short].nil? ? nested[short.to_s] : nested[short] if inner.nil?
+      inner
     end
   end
 end

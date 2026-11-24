@@ -96,6 +96,16 @@ RSpec.describe 'Connecta · abas do dashboard (dashboard tabs)', type: :request 
     { connecta_dashboard: 'true', connecta_tab: tab }.merge(extra)
   end
 
+  # Sanitized failure context for selection assertions: active table and id
+  # column type locate the failing layer (integer G0 vs UUID product) without
+  # logging production data; only the fixture id class travels, never values.
+  def scope_diag(fixture)
+    'active_table=' \
+      "#{Connecta::Scope::OrgUnit.table_name} " \
+      "id_type=#{Connecta::Scope::OrgUnit.column_for_attribute('id').type} " \
+      "fixture_id_class=#{fixture.id.class}"
+  end
+
   describe 'minhas' do
     it 'lista so o atribuido ao agente no escopo, com sobreposicao triada permitida', :aggregate_failures do
       get tabs_path, params: opt_in('minhas'), headers: agent.create_new_auth_token, as: :json
@@ -184,10 +194,44 @@ RSpec.describe 'Connecta · abas do dashboard (dashboard tabs)', type: :request 
       get tabs_path, params: opt_in('aguardando', connecta_org_unit_id: 999_999),
                      headers: agent.create_new_auth_token, as: :json
       expect(tab_ids).to be_empty
+      expect(json['data']['meta']).to include('all_count' => 0)
 
       get tabs_path, params: opt_in('aguardando', connecta_org_unit_id: 'abc'),
                      headers: agent.create_new_auth_token, as: :json
       expect(tab_ids).to be_empty
+      expect(json['data']['meta']).to include('all_count' => 0)
+    end
+
+    it 'rejeita formas fora do decimal positivo/bigint e UUID sem agregar nem estourar', :aggregate_failures do
+      diag = "#{scope_diag(org_a)} integer_schema=#{Connecta::Scope::OrgUnit.table_name == 'connecta_g0_org_units'}"
+      ['0', '-5', '1.5', '0x10', '1e3', '+7', '99999999999999999999', 'not-a-uuid'].each do |bad|
+        get tabs_path, params: opt_in('aguardando', connecta_org_unit_id: bad),
+                       headers: agent.create_new_auth_token, as: :json
+
+        expect(response).to have_http_status(:ok), "#{diag} raw_class=#{bad.class}"
+        expect(tab_ids).to be_empty, "#{diag} raw_class=#{bad.class}"
+        expect(json['data']['meta']).to include('all_count' => 0), "#{diag} raw_class=#{bad.class}"
+      end
+    end
+
+    it 'UUID no schema inteiro falha fechado sem excecao (forma do outro schema)', :aggregate_failures do
+      diag = scope_diag(org_a)
+      get tabs_path, params: opt_in('aguardando', connecta_org_unit_id: SecureRandom.uuid),
+                     headers: agent.create_new_auth_token, as: :json
+
+      expect(response).to have_http_status(:ok), diag
+      expect(tab_ids).to be_empty, diag
+      expect(json['data']['meta']).to include('all_count' => 0), diag
+    end
+
+    it 'selecao em branco agrega como ausente (limpar restaura o agregado)', :aggregate_failures do
+      get tabs_path, params: opt_in('aguardando', connecta_org_unit_id: '   '),
+                     headers: agent.create_new_auth_token, as: :json
+
+      expect(response).to have_http_status(:ok), scope_diag(org_a)
+      expect(tab_ids).to contain_exactly(
+        convs[:a_mine].display_id, convs[:a_open].display_id, convs[:b_open].display_id, convs[:generic].display_id
+      ), scope_diag(org_a)
     end
   end
 
@@ -277,6 +321,71 @@ RSpec.describe 'Connecta · abas do dashboard (dashboard tabs)', type: :request 
 
       get tabs_path, params: opt_in('minhas'), headers: agent.create_new_auth_token, as: :json
       expect(tab_ids).to match_array(native_ids)
+    end
+  end
+
+  describe 'selecao UUID no schema produto (runtime, tabelas connecta_*)' do
+    # Mesmo mapa que o G0Adapter aplica em producao, so troca de tabelas sem
+    # os hooks: o caminho admin do DashboardTabs nao passa pela Projection
+    # (cujo granted_paths original e hardcoded nas tabelas G0), entao a troca
+    # basta e nada global vaza para os outros exemplos (restaura as tabelas e
+    # o column cache no ensure; dados sinteticos com rollback transacional).
+    def pin_product_scope_tables
+      {
+        Connecta::Scope::OrgUnit => 'connecta_org_units',
+        Connecta::Scope::ConversationScope => 'connecta_conversation_scopes',
+        Connecta::Scope::ScopedInbox => 'connecta_scoped_inboxes',
+        Connecta::Scope::UserGrant => 'connecta_user_grants',
+        Connecta::Scope::UserAuthEpoch => 'connecta_user_auth_epochs',
+        Connecta::Scope::AclSyncState => 'connecta_acl_sync_state'
+      }
+    end
+
+    around do |example|
+      mapping = pin_product_scope_tables
+      previous = mapping.keys.index_with(&:table_name)
+      mapping.each { |model, table| model.table_name = table }
+      mapping.each_key(&:reset_column_information)
+      begin
+        example.run
+      ensure
+        previous.each { |model, table| model.table_name = table }
+        previous.each_key(&:reset_column_information)
+      end
+    end
+
+    it 'estreita a lista e a meta pelo setor UUID, com maiusculas normalizadas', :aggregate_failures do
+      diag = scope_diag(org_a)
+      get tabs_path, params: opt_in('aguardando', connecta_org_unit_id: org_a.id),
+                     headers: admin.create_new_auth_token, as: :json
+
+      expect(response).to have_http_status(:ok), diag
+      expect(tab_ids).to contain_exactly(
+        convs[:a_mine].display_id, convs[:a_open].display_id, convs[:generic].display_id
+      ), diag
+      expect(json['data']['meta']).to include('all_count' => 3), diag
+
+      get tabs_path, params: opt_in('aguardando', connecta_org_unit_id: org_a.id.upcase),
+                     headers: admin.create_new_auth_token, as: :json
+      expect(tab_ids).to contain_exactly(
+        convs[:a_mine].display_id, convs[:a_open].display_id, convs[:generic].display_id
+      ), diag
+
+      get meta_path, params: opt_in('aguardando', connecta_org_unit_id: org_a.id),
+                     headers: admin.create_new_auth_token, as: :json
+      expect(json['meta']).to include('all_count' => 3), diag
+    end
+
+    it 'UUID inexistente, inteiro e malformado falham fechado sem 500', :aggregate_failures do
+      diag = scope_diag(org_a)
+      [SecureRandom.uuid, '7', 'not-a-uuid'].each do |bad|
+        get tabs_path, params: opt_in('aguardando', connecta_org_unit_id: bad),
+                       headers: admin.create_new_auth_token, as: :json
+
+        expect(response).to have_http_status(:ok), "#{diag} raw_class=#{bad.class}"
+        expect(tab_ids).to be_empty, "#{diag} raw_class=#{bad.class}"
+        expect(json['data']['meta']).to include('all_count' => 0), "#{diag} raw_class=#{bad.class}"
+      end
     end
   end
 end

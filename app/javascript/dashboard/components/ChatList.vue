@@ -86,6 +86,7 @@ import {
   connectaTabForAssigneeKey,
   extractOrgUnitOptions,
   isConnectaDashboardContext,
+  normalizeOrgUnitId,
 } from 'dashboard/helper/connectaDashboardTabs';
 import { CONVERSATION_EVENTS } from '../helper/AnalyticsHelper/events';
 
@@ -345,8 +346,9 @@ const selectedConnectaSectorId = ref(null);
 let connectaSectorRequestId = 0;
 
 const connectaSectorId = computed(() => {
-  const id = Number(selectedConnectaSectorId.value);
-  return Number.isInteger(id) && id > 0 ? id : null;
+  // UUID selections travel as exact strings; `Number()` would turn them into
+  // NaN and silently aggregate instead of filtering.
+  return normalizeOrgUnitId(selectedConnectaSectorId.value);
 });
 
 const showConnectaSectorFilter = computed(() => {
@@ -913,9 +915,10 @@ async function fetchConnectaSectorCatalog() {
 
 function updateConnectaSector(event) {
   const raw = event?.target?.value;
-  const id =
-    raw === '' || raw === null || raw === undefined ? null : Number(raw);
-  selectedConnectaSectorId.value = Number.isInteger(id) && id > 0 ? id : null;
+  selectedConnectaSectorId.value =
+    raw === '' || raw === null || raw === undefined
+      ? null
+      : normalizeOrgUnitId(raw);
   resetAndFetchData();
 }
 

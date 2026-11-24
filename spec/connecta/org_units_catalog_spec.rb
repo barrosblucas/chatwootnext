@@ -62,6 +62,16 @@ RSpec.describe 'Connecta · catalogo de setores do dashboard (org units)', type:
     create(:user, account: other_account, role: :administrator)
   end
 
+  # Mesmo contexto sanitizado do spec das abas: tabela ativa e tipo da coluna
+  # id localizam a camada (inteiro G0 vs UUID produto); so a classe do id da
+  # fixture viaja, nunca valores.
+  def scope_diag(fixture)
+    'active_table=' \
+      "#{Connecta::Scope::OrgUnit.table_name} " \
+      "id_type=#{Connecta::Scope::OrgUnit.column_for_attribute('id').type} " \
+      "fixture_id_class=#{fixture.id.class}"
+  end
+
   def json
     JSON.parse(response.body)
   end
@@ -185,6 +195,67 @@ RSpec.describe 'Connecta · catalogo de setores do dashboard (org units)', type:
         convs[:a_open].display_id, convs[:a1_open].display_id,
         convs[:b_open].display_id, convs[:generic].display_id
       )
+    end
+  end
+
+  describe 'catalogo e selecao UUID no schema produto (runtime)' do
+    # Mesma troca isolada do spec das abas: so tabelas, sem hooks globais;
+    # restaura tudo no ensure. Caminho admin nao usa Projection.
+    def pin_product_scope_tables
+      {
+        Connecta::Scope::OrgUnit => 'connecta_org_units',
+        Connecta::Scope::ConversationScope => 'connecta_conversation_scopes',
+        Connecta::Scope::ScopedInbox => 'connecta_scoped_inboxes',
+        Connecta::Scope::UserGrant => 'connecta_user_grants',
+        Connecta::Scope::UserAuthEpoch => 'connecta_user_auth_epochs',
+        Connecta::Scope::AclSyncState => 'connecta_acl_sync_state'
+      }
+    end
+
+    around do |example|
+      mapping = pin_product_scope_tables
+      previous = mapping.keys.index_with(&:table_name)
+      mapping.each { |model, table| model.table_name = table }
+      mapping.each_key(&:reset_column_information)
+      begin
+        example.run
+      ensure
+        previous.each { |model, table| model.table_name = table }
+        previous.each_key(&:reset_column_information)
+      end
+    end
+
+    it 'catalogo expoe ids UUID e a selecao do catalogo filtra lista e meta', :aggregate_failures do
+      diag = scope_diag(org_a)
+      get catalog_path, headers: admin.create_new_auth_token, as: :json
+
+      expect(response).to have_http_status(:ok), diag
+      expect(catalog.map { |row| row['name'] }).to eq(['Setor A', 'Setor A Norte', 'Setor B', 'Setor C']), diag
+      picked = catalog.find { |row| row['name'] == 'Setor A' }['id']
+      expect(picked).to eq(org_a.id), diag
+
+      get tabs_path, params: opt_in('aguardando', connecta_org_unit_id: picked),
+                     headers: admin.create_new_auth_token, as: :json
+      expect(json['data']['payload'].map { |row| row['id'] }).to contain_exactly(
+        convs[:a_open].display_id, convs[:a1_open].display_id, convs[:generic].display_id
+      ), diag
+
+      get meta_path, params: opt_in('aguardando', connecta_org_unit_id: picked),
+                     headers: admin.create_new_auth_token, as: :json
+      expect(json['meta']).to include('all_count' => 3), diag
+    end
+
+    it 'unidade UUID desativada some do catalogo e a selecao direta falha fechado', :aggregate_failures do
+      diag = scope_diag(org_a)
+      disabled_id = Connecta::Scope::OrgUnit.find_by(path: '/desativado/').id
+
+      get catalog_path, headers: admin.create_new_auth_token, as: :json
+      expect(catalog.map { |row| row['id'] }).not_to include(disabled_id), diag
+
+      get tabs_path, params: opt_in('aguardando', connecta_org_unit_id: disabled_id),
+                     headers: admin.create_new_auth_token, as: :json
+      expect(json['data']['payload']).to be_empty, diag
+      expect(json['data']['meta']).to include('all_count' => 0), diag
     end
   end
 end

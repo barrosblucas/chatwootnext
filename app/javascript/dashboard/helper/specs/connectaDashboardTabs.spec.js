@@ -11,6 +11,7 @@ import {
   isConnectaDashboardParams,
   isConnectaTab,
   isValidOrgUnitId,
+  normalizeOrgUnitId,
 } from '../connectaDashboardTabs';
 
 // Shared list/count mapping for the Connecta dashboard tabs (Correcao 02):
@@ -119,10 +120,64 @@ describe('connectaDashboardTabs', () => {
       expect(isValidOrgUnitId(value)).toBe(true);
     });
 
-    it.each([[0], [-2], ['abc'], [1.5], [null], [undefined], ['']])(
-      'rejects %o (aggregates instead)',
+    it.each([
+      ['123e4567-e89b-12d3-a456-426614174000'],
+      ['123E4567-E89B-12D3-A456-426614174000'],
+      ['  123e4567-e89b-12d3-a456-426614174000  '],
+    ])('accepts UUID %o (product schema)', value => {
+      expect(isValidOrgUnitId(value)).toBe(true);
+    });
+
+    it('accepts exact big integers beyond the safe range as strings', () => {
+      expect(isValidOrgUnitId('9007199254740993')).toBe(true);
+    });
+
+    it.each([
+      [0],
+      [-2],
+      ['abc'],
+      [1.5],
+      [null],
+      [undefined],
+      [''],
+      ['   '],
+      ['0'],
+      ['-5'],
+      ['3.0'],
+      ['0x10'],
+      ['1e3'],
+      ['+7'],
+      ['99999999999999999999'],
+      ['not-a-uuid'],
+      ['123e4567-e89b-12d3-a456'],
+      [{}],
+      [[]],
+      [true],
+    ])('rejects %o (aggregates instead)', value => {
+      expect(isValidOrgUnitId(value)).toBe(false);
+    });
+  });
+
+  describe('normalizeOrgUnitId', () => {
+    it('keeps safe integers as numbers', () => {
+      expect(normalizeOrgUnitId(7)).toBe(7);
+      expect(normalizeOrgUnitId('3')).toBe(3);
+    });
+
+    it('lowercases UUIDs and trims whitespace', () => {
+      expect(
+        normalizeOrgUnitId('123E4567-E89B-12D3-A456-426614174000')
+      ).toBe('123e4567-e89b-12d3-a456-426614174000');
+    });
+
+    it('keeps exact big integers beyond the safe range as strings', () => {
+      expect(normalizeOrgUnitId('9007199254740993')).toBe('9007199254740993');
+    });
+
+    it.each([['x'], [0], [-1], ['99999999999999999999'], [null]])(
+      'returns null for %o',
       value => {
-        expect(isValidOrgUnitId(value)).toBe(false);
+        expect(normalizeOrgUnitId(value)).toBe(null);
       }
     );
   });
@@ -181,6 +236,26 @@ describe('connectaDashboardTabs', () => {
         buildConnectaListParams('me', filters, { orgUnitId: 'x' })
           .connectaOrgUnitId
       ).toBeUndefined();
+    });
+
+    it('forwards UUID selections as exact strings, never as numbers', () => {
+      const uuid = '123e4567-e89b-12d3-a456-426614174000';
+      expect(
+        buildConnectaListParams('me', filters, { orgUnitId: uuid })
+          .connectaOrgUnitId
+      ).toBe(uuid);
+      expect(
+        buildConnectaMetaParams('me', filters, { orgUnitId: uuid })
+          .connectaOrgUnitId
+      ).toBe(uuid);
+    });
+
+    it('keeps exact big-integer strings without Number precision loss', () => {
+      expect(
+        buildConnectaListParams('me', filters, {
+          orgUnitId: '9007199254740993',
+        }).connectaOrgUnitId
+      ).toBe('9007199254740993');
     });
 
     it('leaves unmapped tabs untouched', () => {
@@ -258,6 +333,23 @@ describe('connectaDashboardTabs', () => {
       ).toEqual([
         { id: 3, name: 'Setor A' },
         { id: 5, name: 'Setor B' },
+      ]);
+    });
+
+    it('keeps UUID ids lowercased and exact big integers as strings', () => {
+      expect(
+        extractOrgUnitOptions({
+          org_units: [
+            {
+              id: '123E4567-E89B-12D3-A456-426614174000',
+              name: 'Setor U',
+            },
+            { id: '9007199254740993', name: 'Setor G' },
+          ],
+        })
+      ).toEqual([
+        { id: '123e4567-e89b-12d3-a456-426614174000', name: 'Setor U' },
+        { id: '9007199254740993', name: 'Setor G' },
       ]);
     });
 
