@@ -1,0 +1,140 @@
+# TEMPORARY, DISPOSABLE, NEVER MERGE TO MAIN.
+# Purpose: produce a Bundler-generated Gemfile.lock resolving the two audit
+# findings (Puma 7.2.3 / GHSA-4v6q-hvv7-49h9, rack-protection 4.2.2 /
+# GHSA-pf75-2v58-7mxg, GHSA-r29j-38x9-qr26, GHSA-vvhm-j6m8-64cw) on the exact
+# verified feature baseline 8e75802df0c52c18458733d4f51bf2f7932873f7, without a
+# local Ruby toolchain. This workflow stays on branch
+# ci/chatwoot-c02-lock-resolver only and never enters a release candidate.
+#
+# Receiving steps (run BEFORE trusting any artifact):
+#   1. Open the workflow run and confirm the trigger commit (github.sha) is the
+#      reviewed workflow commit on ci/chatwoot-c02-lock-resolver, and confirm
+#      this workflow file's blob SHA matches the reviewed version; never accept
+#      a run from an edited file without re-review. The dependency checkout is
+#      pinned to immutable 8e75802... inside the workflow (see below), so the
+#      run head (new workflow commit) and the dependency HEAD (8e75802) differ
+#      by design; the green "Assert verified baseline" step proves the latter.
+#   2. Download artifact "connecta-lock-resolver-output" and check
+#      guard-report.txt ends with "GUARDS: PASS". A "connecta-lock-resolver-
+#      diagnostic" artifact instead means guards failed: trust nothing.
+#   3. Carry ONLY Gemfile.lock into the existing feature checkout
+#      (fix/connecta-abas-chatwoot); never copy this workflow file there.
+#   4. Run the existing acceptance gates there (run_foss_spec.yml full Rails +
+#      audit); this resolver proves resolution only, never audit closure.
+#
+# Authorization boundaries: push needs write access to the fork to publish
+# branch ci/chatwoot-c02-lock-resolver; the run itself needs no secrets and
+# holds contents: read only. No write-back, no deploy, no publishing happens
+# inside this workflow.
+
+name: Connecta lock resolver (temporary)
+
+on:
+  push:
+    branches: [ci/chatwoot-c02-lock-resolver]
+
+permissions:
+  contents: read
+
+# Free-plan cap (20 concurrent jobs): a newer push supersedes the older run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  resolve:
+    # Ruby 3.4.4 builders exist for 22.04/24.04 only (see run_foss_spec.yml).
+    runs-on: ubuntu-24.04
+    steps:
+      # Dependency source is the immutable baseline SHA, NOT the mutable branch
+      # head: once this workflow file is committed, the branch head moves past
+      # 8e75802 and a branch checkout could never satisfy the baseline assertion
+      # below. Workflow provenance (which reviewed workflow commit ran) is
+      # established outside the workflow via the run's trigger ref/SHA and the
+      # workflow blob check in the receiving steps above. No credentials kept.
+      - name: Checkout dependency baseline (immutable)
+        uses: actions/checkout@v4
+        with:
+          ref: 8e75802df0c52c18458733d4f51bf2f7932873f7
+          persist-credentials: false
+
+      - name: Assert verified baseline
+        run: |
+          test "$(git rev-parse HEAD)" = "8e75802df0c52c18458733d4f51bf2f7932873f7"
+
+      - name: Setup Ruby (official pins, no install cache)
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4.4"
+          bundler: "2.5.16"
+
+      # Single --update invocation with both gem names: --update takes a list
+      # (guides.rubygems.org/command-reference/bundle-lock: "--update[=<list>]
+      # ... Taking a list of gems", example "bundle lock --update nokogiri").
+      # --patch prefers patch-level updates, --strict forbids resolving past
+      # the patch level (bundle-update reference: patch-level options since
+      # 1.14, also listed in the bundle-lock synopsis). puma 7.2.2->7.2.3 and
+      # rack-protection 4.2.1->4.2.2 are pure patch bumps inside the Gemfile
+      # constraints (~> 7.2, >= 7.2.2; omniauth requires >= 2.2.0), so this
+      # selects exactly the audit targets. The exact-version guards below are
+      # the enforcing mechanism: any other resolution fails closed and uploads
+      # no lockfile.
+      - name: Targeted conservative resolution
+        run: bundle lock --update puma rack-protection --patch --strict
+
+      - name: Bounded guards (exact versions, scope, metadata)
+        run: |
+          set -eo pipefail
+          {
+            echo "HEAD: $(git rev-parse HEAD)"
+            # 1. Manifest must be untouched: resolution only, no dependency edits.
+            git diff --exit-code -- Gemfile
+            echo "GUARD: Gemfile unchanged"
+            # 2. Exact audit targets.
+            grep -qx "    puma (7\.2\.3)" Gemfile.lock
+            grep -qx "    rack-protection (4\.2\.2)" Gemfile.lock
+            echo "GUARD: puma 7.2.3 + rack-protection 4.2.2 exact"
+            # 3. No unrelated gem changes: every added/removed spec line must be
+            #    one of the two targets (dependency lines are indented deeper).
+            changed="$(git diff -U0 -- Gemfile.lock | grep -E '^[+-]    [a-z]' || true)"
+            echo "$changed"
+            if [ -n "$changed" ]; then
+              echo "$changed" | grep -vE '^[+-]    (puma|rack-protection) \(' && exit 1 || true
+            fi
+            echo "GUARD: no unrelated gem changes"
+            # 4. Resolution metadata preserved.
+            grep -q "ruby 3\.4\.4p34" Gemfile.lock
+            grep -A1 "BUNDLED WITH" Gemfile.lock | grep -q "2\.5\.16"
+            git diff -- Gemfile.lock | grep -E '^[+-](  [a-z0-9_-]+$|   ruby |   2\.5)' && exit 1 || true
+            # 4b. DEPENDENCIES section untouched (2-space entries): the Gemfile
+            #     requirement graph must be identical, only resolved versions move.
+            git diff -U0 -- Gemfile.lock | grep -E '^[+-]  [^ ]' && exit 1 || true
+            echo "GUARD: RUBY VERSION / BUNDLED WITH / PLATFORMS / DEPENDENCIES preserved"
+            # 5. Lockfile parses as valid Bundler metadata (no install, no boot).
+            ruby -rbundler -e 'Bundler::LockfileParser.new(File.read("Gemfile.lock")); puts "GUARD: lockfile parses"'
+            echo "GUARDS: PASS"
+          } 2>&1 | tee guard-report.txt
+
+      - name: Sanitized diff
+        if: always()
+        run: git diff -- Gemfile.lock > lock-diff.txt || true
+
+      # Deployable lockfile is uploaded ONLY after all guards succeed: this
+      # step has no `if: always()`, so any guard failure publishes nothing.
+      - name: Upload lockfile artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: connecta-lock-resolver-output
+          path: |
+            Gemfile.lock
+            lock-diff.txt
+            guard-report.txt
+
+      # Sanitized failure diagnostic only (guard log: SHAs, gem names and
+      # versions; no secrets exist in this job). Never carries a lockfile.
+      - name: Upload failure diagnostic
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: connecta-lock-resolver-diagnostic
+          path: guard-report.txt
