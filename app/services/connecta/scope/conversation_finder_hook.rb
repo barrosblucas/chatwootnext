@@ -22,8 +22,8 @@ module Connecta::Scope::ConversationFinderHook
       @conversations = Connecta::Scope::DashboardTabs.apply(
         @conversations, user: current_user, account: current_account, params: params
       )
-    else
-      apply_bot_exclusion if bot_exclusion_requested?
+    elsif bot_exclusion_requested?
+      apply_bot_exclusion
     end
     @conversations
   end
@@ -58,10 +58,10 @@ module Connecta::Scope::ConversationFinderHook
     return super unless params[:q]
 
     message_ids = @conversations.joins(:messages)
-                                 .where('messages.content ILIKE :search', search: "%#{params[:q]}%")
-                                 .where(messages: { message_type: [Message.message_types[:incoming],
-                                                                   Message.message_types[:outgoing]] })
-                                 .select(:id)
+                                .where('messages.content ILIKE :search', search: "%#{params[:q]}%")
+                                .where(messages: { message_type: [Message.message_types[:incoming],
+                                                                  Message.message_types[:outgoing]] })
+                                .select(:id)
     protocol_ids = Connecta::Scope::ProtocolSearch.apply(@conversations, params[:q]).select(:id)
     @conversations = @conversations.where(id: message_ids).or(@conversations.where(id: protocol_ids)).includes(:messages)
   end

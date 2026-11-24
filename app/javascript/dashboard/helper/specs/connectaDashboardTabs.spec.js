@@ -56,9 +56,27 @@ describe('connectaDashboardTabs', () => {
     });
 
     it.each([
-      [{ connectaEnabled: false, conversationType: '', hasFiltersOrFolders: false }],
-      [{ connectaEnabled: true, conversationType: 'mention', hasFiltersOrFolders: false }],
-      [{ connectaEnabled: true, conversationType: '', hasFiltersOrFolders: true }],
+      [
+        {
+          connectaEnabled: false,
+          conversationType: '',
+          hasFiltersOrFolders: false,
+        },
+      ],
+      [
+        {
+          connectaEnabled: true,
+          conversationType: 'mention',
+          hasFiltersOrFolders: false,
+        },
+      ],
+      [
+        {
+          connectaEnabled: true,
+          conversationType: '',
+          hasFiltersOrFolders: true,
+        },
+      ],
     ])('is false outside the plain queue (%o)', context => {
       expect(isConnectaDashboardContext(context)).toBe(false);
     });
@@ -124,7 +142,7 @@ describe('connectaDashboardTabs', () => {
     };
 
     it('keeps identical active filters plus sorting and pagination', () => {
-      expect(buildConnectaListParams(filters, 'me')).toEqual({
+      expect(buildConnectaListParams('me', filters)).toEqual({
         inboxId: 4,
         status: 'open',
         teamId: 9,
@@ -138,37 +156,35 @@ describe('connectaDashboardTabs', () => {
     });
 
     it('maps every visible tab and drops the native selectors', () => {
-      expect(buildConnectaListParams(filters, 'unassigned').connectaTab).toBe(
+      expect(buildConnectaListParams('unassigned', filters).connectaTab).toBe(
         'aguardando'
       );
-      expect(buildConnectaListParams(filters, 'all').connectaTab).toBe(
-        'todos'
-      );
-      expect(buildConnectaListParams(filters, 'bot').connectaTab).toBe('bot');
-      const params = buildConnectaListParams(filters, 'all');
+      expect(buildConnectaListParams('all', filters).connectaTab).toBe('todos');
+      expect(buildConnectaListParams('bot', filters).connectaTab).toBe('bot');
+      const params = buildConnectaListParams('all', filters);
       expect(params.assigneeType).toBeUndefined();
       expect(params.conversationType).toBeUndefined();
       expect(params.excludeActiveBot).toBeUndefined();
     });
 
     it('sends no org unit id without a real selection (aggregates)', () => {
-      const params = buildConnectaListParams(filters, 'me');
+      const params = buildConnectaListParams('me', filters);
       expect(params.connectaOrgUnitId).toBeUndefined();
     });
 
     it('forwards a real selected unit and drops malformed ones', () => {
       expect(
-        buildConnectaListParams(filters, 'me', { orgUnitId: 7 })
+        buildConnectaListParams('me', filters, { orgUnitId: 7 })
           .connectaOrgUnitId
       ).toBe(7);
       expect(
-        buildConnectaListParams(filters, 'me', { orgUnitId: 'x' })
+        buildConnectaListParams('me', filters, { orgUnitId: 'x' })
           .connectaOrgUnitId
       ).toBeUndefined();
     });
 
     it('leaves unmapped tabs untouched', () => {
-      expect(buildConnectaListParams(filters, 'assigned')).toEqual(filters);
+      expect(buildConnectaListParams('assigned', filters)).toEqual(filters);
     });
   });
 
@@ -184,8 +200,8 @@ describe('connectaDashboardTabs', () => {
     };
 
     it('shares the list filters without page and sorting', () => {
-      const list = buildConnectaListParams(filters, 'all');
-      const meta = buildConnectaMetaParams(filters, 'all');
+      const list = buildConnectaListParams('all', filters);
+      const meta = buildConnectaMetaParams('all', filters);
       expect(meta).toEqual({
         inboxId: 4,
         status: 'resolved',

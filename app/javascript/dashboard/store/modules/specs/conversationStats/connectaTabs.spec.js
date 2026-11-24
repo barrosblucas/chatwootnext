@@ -88,21 +88,14 @@ describe('#conversationStats Connecta tabs', () => {
       axios.get.mockImplementationOnce(
         () =>
           new Promise(resolve => {
-            resolveFirst = () =>
-              resolve({ data: { meta: { all_count: 9 } } });
+            resolveFirst = () => resolve({ data: { meta: { all_count: 9 } } });
           })
       );
       const params = CONNECTA({ status: 'open' });
-      actions.get(
-        { commit, state: { allCount: 0 }, rootGetters: {} },
-        params
-      );
+      actions.get({ commit, state: { allCount: 0 }, rootGetters: {} }, params);
       // A newer request for the same tab supersedes the in-flight one.
       axios.get.mockResolvedValueOnce({ data: { meta: { all_count: 1 } } });
-      actions.get(
-        { commit, state: { allCount: 0 }, rootGetters: {} },
-        params
-      );
+      actions.get({ commit, state: { allCount: 0 }, rootGetters: {} }, params);
       resolveFirst();
       await vi.waitFor(() => {
         expect(commit).toHaveBeenCalledWith(
@@ -155,8 +148,7 @@ describe('#conversationStats Connecta tabs', () => {
       axios.get.mockImplementationOnce(
         () =>
           new Promise(resolve => {
-            resolveLate = () =>
-              resolve({ data: { meta: { all_count: 8 } } });
+            resolveLate = () => resolve({ data: { meta: { all_count: 8 } } });
           })
       );
       actions.get(
@@ -222,7 +214,12 @@ describe('#conversationStats Connecta tabs', () => {
 
   describe('#SET_CONNECTA_TAB_META / #SET_CONNECTA_TAB_ERROR', () => {
     const fresh = () => ({
-      connectaCounts: { minhas: null, aguardando: null, todos: null, bot: null },
+      connectaCounts: {
+        minhas: null,
+        aguardando: null,
+        todos: null,
+        bot: null,
+      },
       connectaErrors: {
         minhas: false,
         aguardando: false,
@@ -250,7 +247,10 @@ describe('#conversationStats Connecta tabs', () => {
     });
 
     it('keeps the slot unknown on error instead of zeroing it', () => {
-      const state = { ...fresh(), connectaCounts: { ...fresh().connectaCounts, aguardando: 4 } };
+      const state = {
+        ...fresh(),
+        connectaCounts: { ...fresh().connectaCounts, aguardando: 4 },
+      };
       mutations[types.SET_CONNECTA_TAB_ERROR](state, {
         tab: 'aguardando',
         accountId: 1,
@@ -266,7 +266,10 @@ describe('#conversationStats Connecta tabs', () => {
     });
 
     it('resets every slot on an account switch', () => {
-      const state = { ...fresh(), connectaCounts: { ...fresh().connectaCounts, aguardando: 4 } };
+      const state = {
+        ...fresh(),
+        connectaCounts: { ...fresh().connectaCounts, aguardando: 4 },
+      };
       mutations[types.SET_CONNECTA_TAB_META](state, {
         tab: 'minhas',
         count: 1,

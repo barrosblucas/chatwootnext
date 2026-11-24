@@ -162,7 +162,9 @@ const mountChatList = async (props = {}) => {
 };
 
 const payloads = action =>
-  dispatchCalls.filter(([type]) => type === action).map(([, payload]) => payload);
+  dispatchCalls
+    .filter(([type]) => type === action)
+    .map(([, payload]) => payload);
 
 const sectorSelect = () => wrapper.find('select');
 
@@ -197,11 +199,11 @@ describe('ChatList Connecta sector filter', () => {
     expect(sectorSelect().attributes('aria-label')).toBe(
       'CONNECTA.SECTOR_FILTER.LABEL'
     );
-    expect(sectorSelect().findAll('option').map(o => o.attributes('value'))).toEqual([
-      '',
-      '3',
-      '5',
-    ]);
+    expect(
+      sectorSelect()
+        .findAll('option')
+        .map(o => o.attributes('value'))
+    ).toEqual(['', '3', '5']);
   });
 
   it('never calls the catalog outside the Connecta queue context', async () => {
@@ -298,11 +300,11 @@ describe('ChatList Connecta sector filter', () => {
     resolveSecond({ data: { org_units: CATALOG } });
     await flushPromises();
     await nextTick();
-    expect(sectorSelect().findAll('option').map(o => o.attributes('value'))).toEqual([
-      '',
-      '3',
-      '5',
-    ]);
+    expect(
+      sectorSelect()
+        .findAll('option')
+        .map(o => o.attributes('value'))
+    ).toEqual(['', '3', '5']);
   });
 
   it('changing accounts clears the selection', async () => {

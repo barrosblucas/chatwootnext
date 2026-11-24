@@ -69,11 +69,7 @@ export const isConnectaDashboardContext = ({
   conversationType,
   hasFiltersOrFolders,
 }) => {
-  return (
-    Boolean(connectaEnabled) &&
-    !conversationType &&
-    !hasFiltersOrFolders
-  );
+  return Boolean(connectaEnabled) && !conversationType && !hasFiltersOrFolders;
 };
 
 export const isConnectaDashboardParams = (params = {}) =>
@@ -101,8 +97,8 @@ const pickBaseFilters = (filters = {}) => {
 // and the legacy Bot exclusion are dropped: under the opt-in the server
 // ignores them and they would only suggest a different question.
 export const buildConnectaListParams = (
-  filters = {},
   assigneeKey,
+  filters = {},
   { orgUnitId } = {}
 ) => {
   const tab = connectaTabForAssigneeKey(assigneeKey);
@@ -123,8 +119,8 @@ export const buildConnectaListParams = (
 // Badge params for one visible tab: the same active filters as the list
 // above, without page/sorting (the meta endpoint takes neither).
 export const buildConnectaMetaParams = (
-  filters = {},
   assigneeKey,
+  filters = {},
   { orgUnitId } = {}
 ) => {
   const tab = connectaTabForAssigneeKey(assigneeKey);

@@ -257,16 +257,20 @@ const actions = {
     const connectaTab = isConnectaDashboardParams(filters)
       ? filters.connectaTab
       : null;
-    const tabKey = connectaTab
-      ? `connecta:${connectaTab}`
-      : filters.conversationType === 'bot'
-        ? 'bot'
-        : filters.assigneeType;
-    const tabGetter = connectaTab
-      ? connectaTab === 'bot'
-        ? TAB_GETTERS.bot
-        : null
-      : TAB_GETTERS[tabKey];
+    let tabKey;
+    if (connectaTab) {
+      tabKey = `connecta:${connectaTab}`;
+    } else if (filters.conversationType === 'bot') {
+      tabKey = 'bot';
+    } else {
+      tabKey = filters.assigneeType;
+    }
+    let tabGetter;
+    if (connectaTab) {
+      tabGetter = connectaTab === 'bot' ? TAB_GETTERS.bot : null;
+    } else {
+      tabGetter = TAB_GETTERS[tabKey];
+    }
     if (
       !connectaTab &&
       (!tabGetter || UNRECONCILABLE_VIEWS.includes(filters.conversationType))

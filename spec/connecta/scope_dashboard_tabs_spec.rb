@@ -25,27 +25,6 @@ RSpec.describe 'Connecta · abas do dashboard (dashboard tabs)', type: :request 
   let!(:org_b) { Connecta::Scope::OrgUnit.create!(name: 'Setor B', path: '/setor-b/') }
   let!(:org_c) { Connecta::Scope::OrgUnit.create!(name: 'Setor C', path: '/setor-c/') }
 
-  # Sem memoizacao: cada leitura reflete a resposta atual, nunca um corpo em cache.
-  def json
-    JSON.parse(response.body)
-  end
-
-  def tab_ids(payload = json['data']['payload'])
-    Array(payload).map { |row| row['id'] }
-  end
-
-  def open_conversation!(target_inbox, status: :open, assignee: nil)
-    contact = create(:contact, account: account)
-    create(:conversation, account: account, inbox: target_inbox, contact: contact, status: status, assignee: assignee)
-  end
-
-  def put_scope!(conversation, unit:, state:, protocol:, version:)
-    Connecta::Scope::ConversationScope.create!(
-      conversation_id: conversation.id, inbox_id: conversation.inbox_id, contact_id: conversation.contact_id,
-      org_unit: unit, state: state, case_protocol: protocol, case_version: version
-    )
-  end
-
   let!(:convs) do
     disabled = Connecta::Scope::OrgUnit.create!(name: 'Desativado', path: '/desativado/', enabled: false)
     built = {
@@ -73,6 +52,27 @@ RSpec.describe 'Connecta · abas do dashboard (dashboard tabs)', type: :request 
     put_scope!(built[:pending_row], unit: org_a, state: 'pending_activation', protocol: 'TAB00000006', version: 0)
     put_scope!(built[:closed_row], unit: org_a, state: 'closed', protocol: 'TAB00000007', version: 1)
     built
+  end
+
+  # Sem memoizacao: cada leitura reflete a resposta atual, nunca um corpo em cache.
+  def json
+    JSON.parse(response.body)
+  end
+
+  def tab_ids(payload = json['data']['payload'])
+    Array(payload).map { |row| row['id'] }
+  end
+
+  def open_conversation!(target_inbox, status: :open, assignee: nil)
+    contact = create(:contact, account: account)
+    create(:conversation, account: account, inbox: target_inbox, contact: contact, status: status, assignee: assignee)
+  end
+
+  def put_scope!(conversation, unit:, state:, protocol:, version:)
+    Connecta::Scope::ConversationScope.create!(
+      conversation_id: conversation.id, inbox_id: conversation.inbox_id, contact_id: conversation.contact_id,
+      org_unit: unit, state: state, case_protocol: protocol, case_version: version
+    )
   end
 
   before do
@@ -163,7 +163,7 @@ RSpec.describe 'Connecta · abas do dashboard (dashboard tabs)', type: :request 
   describe 'selecao de setor' do
     it 'estreita para o setor validado sem derivar acesso de inbox', :aggregate_failures do
       get tabs_path, params: opt_in('aguardando', connecta_org_unit_id: org_a.id),
-                      headers: agent.create_new_auth_token, as: :json
+                     headers: agent.create_new_auth_token, as: :json
 
       expect(response).to have_http_status(:ok)
       expect(tab_ids).to contain_exactly(
@@ -173,7 +173,7 @@ RSpec.describe 'Connecta · abas do dashboard (dashboard tabs)', type: :request 
 
     it 'setor nao autorizado falha fechado sem revelar existencia', :aggregate_failures do
       get tabs_path, params: opt_in('aguardando', connecta_org_unit_id: org_c.id),
-                      headers: agent.create_new_auth_token, as: :json
+                     headers: agent.create_new_auth_token, as: :json
 
       expect(response).to have_http_status(:ok)
       expect(tab_ids).to be_empty
@@ -182,11 +182,11 @@ RSpec.describe 'Connecta · abas do dashboard (dashboard tabs)', type: :request 
 
     it 'selecao inexistente ou malformada falha fechado igual a negada', :aggregate_failures do
       get tabs_path, params: opt_in('aguardando', connecta_org_unit_id: 999_999),
-                      headers: agent.create_new_auth_token, as: :json
+                     headers: agent.create_new_auth_token, as: :json
       expect(tab_ids).to be_empty
 
       get tabs_path, params: opt_in('aguardando', connecta_org_unit_id: 'abc'),
-                      headers: agent.create_new_auth_token, as: :json
+                     headers: agent.create_new_auth_token, as: :json
       expect(tab_ids).to be_empty
     end
   end
@@ -276,7 +276,7 @@ RSpec.describe 'Connecta · abas do dashboard (dashboard tabs)', type: :request 
       native_ids = tab_ids
 
       get tabs_path, params: opt_in('minhas'), headers: agent.create_new_auth_token, as: :json
-      expect(tab_ids).to contain_exactly(*native_ids)
+      expect(tab_ids).to match_array(native_ids)
     end
   end
 end

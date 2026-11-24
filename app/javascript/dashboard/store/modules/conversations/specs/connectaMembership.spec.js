@@ -96,10 +96,12 @@ describe('Connecta tab membership', () => {
         chatSortFilter: '',
         connectaTabConversationIds: { minhas: [11], aguardando: [12] },
       };
-      const mine = getters.getConnectaTabChats(state, {}, {}, rootGetters)(
-        'minhas',
-        { status: 'open' }
-      );
+      const mine = getters.getConnectaTabChats(
+        state,
+        {},
+        {},
+        rootGetters
+      )('minhas', { status: 'open' });
       expect(mine.map(chat => chat.id)).toEqual([11]);
     });
   });

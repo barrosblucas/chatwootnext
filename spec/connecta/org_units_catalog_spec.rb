@@ -23,15 +23,44 @@ RSpec.describe 'Connecta · catalogo de setores do dashboard (org units)', type:
   let(:outsider) { create(:user, account: account, role: :agent) }
   let(:stale_user) { create(:user, account: account, role: :agent) }
   let(:admin) { create(:user, account: account, role: :administrator) }
-  let(:other_admin) { create(:user, account: other_account, role: :administrator) }
-  let(:catalog_path) { "/api/v1/accounts/#{account.id}/connecta/org_units" }
-  let(:tabs_path) { "/api/v1/accounts/#{account.id}/conversations" }
-  let(:meta_path) { "#{tabs_path}/meta" }
 
   let!(:org_a) { Connecta::Scope::OrgUnit.create!(name: 'Setor A', path: '/setor-a/') }
   let!(:org_a1) { Connecta::Scope::OrgUnit.create!(name: 'Setor A Norte', parent: org_a, path: '/setor-a/norte/') }
   let!(:org_b) { Connecta::Scope::OrgUnit.create!(name: 'Setor B', path: '/setor-b/') }
   let!(:org_c) { Connecta::Scope::OrgUnit.create!(name: 'Setor C', path: '/setor-c/') }
+
+  let!(:convs) do
+    disabled = Connecta::Scope::OrgUnit.create!(name: 'Desativado', path: '/desativado/', enabled: false)
+    built = {
+      a_open: open_conversation!(marked_inbox),
+      a1_open: open_conversation!(marked_inbox),
+      b_open: open_conversation!(marked_inbox),
+      c_open: open_conversation!(marked_inbox),
+      generic: open_conversation!(control_inbox)
+    }
+    put_scope!(built[:a_open], unit: org_a, protocol: 'CAT00000001')
+    put_scope!(built[:a1_open], unit: org_a1, protocol: 'CAT00000002')
+    put_scope!(built[:b_open], unit: org_b, protocol: 'CAT00000003')
+    put_scope!(built[:c_open], unit: org_c, protocol: 'CAT00000004')
+    Connecta::Scope::UserGrant.create!(user_id: agent.id, org_unit: disabled, permission: 'atender')
+    built
+  end
+
+  def catalog_path
+    "/api/v1/accounts/#{account.id}/connecta/org_units"
+  end
+
+  def tabs_path
+    "/api/v1/accounts/#{account.id}/conversations"
+  end
+
+  def meta_path
+    "#{tabs_path}/meta"
+  end
+
+  def other_admin
+    create(:user, account: other_account, role: :administrator)
+  end
 
   def json
     JSON.parse(response.body)
@@ -51,23 +80,6 @@ RSpec.describe 'Connecta · catalogo de setores do dashboard (org units)', type:
       conversation_id: conversation.id, inbox_id: conversation.inbox_id, contact_id: conversation.contact_id,
       org_unit: unit, state: 'active', case_protocol: protocol, case_version: 1
     )
-  end
-
-  let!(:convs) do
-    disabled = Connecta::Scope::OrgUnit.create!(name: 'Desativado', path: '/desativado/', enabled: false)
-    built = {
-      a_open: open_conversation!(marked_inbox),
-      a1_open: open_conversation!(marked_inbox),
-      b_open: open_conversation!(marked_inbox),
-      c_open: open_conversation!(marked_inbox),
-      generic: open_conversation!(control_inbox)
-    }
-    put_scope!(built[:a_open], unit: org_a, protocol: 'CAT00000001')
-    put_scope!(built[:a1_open], unit: org_a1, protocol: 'CAT00000002')
-    put_scope!(built[:b_open], unit: org_b, protocol: 'CAT00000003')
-    put_scope!(built[:c_open], unit: org_c, protocol: 'CAT00000004')
-    Connecta::Scope::UserGrant.create!(user_id: agent.id, org_unit: disabled, permission: 'atender')
-    built
   end
 
   before do
@@ -146,7 +158,7 @@ RSpec.describe 'Connecta · catalogo de setores do dashboard (org units)', type:
   describe 'selecao compartilha a fronteira do catalogo' do
     it 'setor descendente filtra lista e contagem na mesma inbox Baileys', :aggregate_failures do
       get tabs_path, params: opt_in('aguardando', connecta_org_unit_id: org_a1.id),
-                      headers: agent_a.create_new_auth_token, as: :json
+                     headers: agent_a.create_new_auth_token, as: :json
 
       expect(response).to have_http_status(:ok)
       expect(json['data']['payload'].map { |row| row['id'] }).to contain_exactly(
@@ -154,13 +166,13 @@ RSpec.describe 'Connecta · catalogo de setores do dashboard (org units)', type:
       )
 
       get meta_path, params: opt_in('aguardando', connecta_org_unit_id: org_a1.id),
-                      headers: agent_a.create_new_auth_token, as: :json
+                     headers: agent_a.create_new_auth_token, as: :json
       expect(json['meta']).to include('all_count' => 2)
     end
 
     it 'limpar a selecao restaura o agregado autorizado', :aggregate_failures do
       get tabs_path, params: opt_in('aguardando', connecta_org_unit_id: org_a.id),
-                      headers: agent.create_new_auth_token, as: :json
+                     headers: agent.create_new_auth_token, as: :json
       narrowed = json['data']['payload'].map { |row| row['id'] }
 
       get tabs_path, params: opt_in('aguardando'), headers: agent.create_new_auth_token, as: :json

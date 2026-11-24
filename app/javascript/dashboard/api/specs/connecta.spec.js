@@ -50,6 +50,8 @@ describe('ConnectaAPI sector catalog', () => {
     await ConnectaAPI.getOrgUnits();
 
     expect(axios.get).toHaveBeenCalledTimes(1);
-    expect(axios.get).toHaveBeenCalledWith('/api/v1/accounts/1/connecta/org_units');
+    expect(axios.get).toHaveBeenCalledWith(
+      '/api/v1/accounts/1/connecta/org_units'
+    );
   });
 });

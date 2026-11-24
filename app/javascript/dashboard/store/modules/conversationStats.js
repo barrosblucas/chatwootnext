@@ -62,11 +62,7 @@ const fetchMetaData = async (commit, params, token) => {
     // switched, or a later burst re-asked): the older answer must not
     // overwrite current badges. Answers from the other lane carry their own
     // lane sequence and never invalidate this one.
-    if (
-      token &&
-      (token.seq !== token.readSeq() || token.isStale?.())
-    )
-      return;
+    if (token && (token.seq !== token.readSeq() || token.isStale?.())) return;
     // Connecta opt-in answers carry the exact tab total only: they land on
     // that tab's slot and never rewrite the native triple.
     if (token?.connectaTab) {
@@ -238,10 +234,7 @@ export const mutations = {
     $state,
     { tab, count, accountId, botClassificationUnavailable } = {}
   ) {
-    if (
-      accountId !== undefined &&
-      $state.connectaAccountId !== accountId
-    ) {
+    if (accountId !== undefined && $state.connectaAccountId !== accountId) {
       $state.connectaCounts = {
         minhas: null,
         aguardando: null,
@@ -266,10 +259,7 @@ export const mutations = {
     }
   },
   [types.SET_CONNECTA_TAB_ERROR]($state, { tab, accountId } = {}) {
-    if (
-      accountId !== undefined &&
-      $state.connectaAccountId !== accountId
-    ) {
+    if (accountId !== undefined && $state.connectaAccountId !== accountId) {
       $state.connectaCounts = {
         minhas: null,
         aguardando: null,

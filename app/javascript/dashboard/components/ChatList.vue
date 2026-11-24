@@ -256,6 +256,28 @@ const botTabVisible = computed(() => {
   });
 });
 
+// Connecta dashboard queue: the plain queue (no conversation type, no
+// advanced filter or folder narrowing) with the human-number flag. List and
+// every visible badge share the opt-in contract here; any other route or
+// context keeps native behavior and the legacy opt-ins untouched.
+const isConnectaDashboard = computed(() => {
+  return isConnectaDashboardContext({
+    connectaEnabled: connectaHumanNumberEnabled,
+    conversationType: props.conversationType,
+    hasFiltersOrFolders: hasAppliedFiltersOrActiveFolders.value,
+  });
+});
+
+// Exact Connecta total for one visible tab, or null while unknown. Null
+// renders blank (never a fake 0); only a successful zero shows 0.
+const connectaBadgeCount = assigneeKey => {
+  const tab = connectaTabForAssigneeKey(assigneeKey);
+  const counts = conversationStats.value.connectaCounts;
+  if (!tab || !counts) return null;
+  const count = counts[tab];
+  return typeof count === 'number' ? count : null;
+};
+
 const assigneeTabItems = computed(() => {
   const baseItems = filterItemsByPermission(
     assigneeTabPermissions.value,
@@ -313,28 +335,6 @@ const shouldExcludeBots = computed(() => {
     hasFiltersOrFolders: hasAppliedFiltersOrActiveFolders.value,
   });
 });
-
-// Connecta dashboard queue: the plain queue (no conversation type, no
-// advanced filter or folder narrowing) with the human-number flag. List and
-// every visible badge share the opt-in contract here; any other route or
-// context keeps native behavior and the legacy opt-ins untouched.
-const isConnectaDashboard = computed(() => {
-  return isConnectaDashboardContext({
-    connectaEnabled: connectaHumanNumberEnabled,
-    conversationType: props.conversationType,
-    hasFiltersOrFolders: hasAppliedFiltersOrActiveFolders.value,
-  });
-});
-
-// Exact Connecta total for one visible tab, or null while unknown. Null
-// renders blank (never a fake 0); only a successful zero shows 0.
-const connectaBadgeCount = assigneeKey => {
-  const tab = connectaTabForAssigneeKey(assigneeKey);
-  const counts = conversationStats.value.connectaCounts;
-  if (!tab || !counts) return null;
-  const count = counts[tab];
-  return typeof count === 'number' ? count : null;
-};
 
 // Connecta dashboard sector filter: the account catalog of authorized sectors
 // (id/name only, same boundary as the selected-tab filter) plus the actor's
@@ -448,7 +448,7 @@ const conversationFilters = computed(() => {
   // The sector filter narrows the aggregate: a real selection travels as the
   // verified org-unit id, clearing omits it and restores the authorized
   // aggregate. Grants are never derived from inbox or team.
-  return buildConnectaListParams(base, activeAssigneeTab.value, {
+  return buildConnectaListParams(activeAssigneeTab.value, base, {
     orgUnitId: connectaSectorId.value,
   });
 });
@@ -843,11 +843,27 @@ function fetchConnectaBadges() {
   assigneeTabItems.value.forEach(item => {
     store.dispatch(
       'conversationStats/get',
-      buildConnectaMetaParams(base, item.key, {
+      buildConnectaMetaParams(item.key, base, {
         orgUnitId: connectaSectorId.value,
       })
     );
   });
+}
+
+function resetAndFetchData() {
+  appliedFilter.value = [];
+  resetBulkActions();
+  store.dispatch('conversationPage/reset');
+  store.dispatch('emptyAllConversations');
+  store.dispatch('clearConversationFilters');
+  if (hasActiveFolders.value) {
+    const payload = activeFolder.value.query;
+    fetchSavedFilteredConversations(payload);
+  }
+  if (props.foldersId) {
+    return;
+  }
+  fetchConversations();
 }
 
 // Authorized sector options for the dashboard filter: account catalog fetched
@@ -862,7 +878,8 @@ async function fetchConnectaSectorCatalog() {
     return;
   }
   const accountId = currentAccountId.value;
-  const requestId = (connectaSectorRequestId += 1);
+  connectaSectorRequestId += 1;
+  const requestId = connectaSectorRequestId;
   connectaSectorLoading.value = true;
   connectaSectorOptions.value = [];
   try {
@@ -898,25 +915,8 @@ function updateConnectaSector(event) {
   const raw = event?.target?.value;
   const id =
     raw === '' || raw === null || raw === undefined ? null : Number(raw);
-  selectedConnectaSectorId.value =
-    Number.isInteger(id) && id > 0 ? id : null;
+  selectedConnectaSectorId.value = Number.isInteger(id) && id > 0 ? id : null;
   resetAndFetchData();
-}
-
-function resetAndFetchData() {
-  appliedFilter.value = [];
-  resetBulkActions();
-  store.dispatch('conversationPage/reset');
-  store.dispatch('emptyAllConversations');
-  store.dispatch('clearConversationFilters');
-  if (hasActiveFolders.value) {
-    const payload = activeFolder.value.query;
-    fetchSavedFilteredConversations(payload);
-  }
-  if (props.foldersId) {
-    return;
-  }
-  fetchConversations();
 }
 
 function loadMoreConversations() {

@@ -32,11 +32,10 @@ class Connecta::Scope::DashboardTabs
       return relation.none if tab.nil?
 
       marked_ids = Connecta::Scope::Projection.marked_inbox_ids
-      return relation if marked_ids.empty?
-
       unit = selected_unit(params)
       return relation.none if unit == :invalid
       return relation.none if unit && !sector_allowed?(user, account, unit)
+      return relation.none unless sectors_granted?(user, account)
 
       relation = narrow_to_unit(relation, marked_ids, unit) if unit
       apply_tab(relation, tab, user: user, account: account, marked_ids: marked_ids)
@@ -71,15 +70,45 @@ class Connecta::Scope::DashboardTabs
       when 'aguardando'
         Connecta::Scope::BotEligibility.human_only(relation, marked_ids)
       when 'bot'
-        return relation.none unless Connecta::Scope::NativeAdmin.administrator?(user, account)
-        raise Connecta::Scope::BotEligibility::Unavailable, Connecta::Scope::BotEligibility::UNAVAILABLE_CODE unless Connecta::Scope::BotEligibility.available?
-
-        Connecta::Scope::BotEligibility.new(relation).perform
+        bot_tab(relation, user: user, account: account)
       when 'todos'
-        return relation.none unless Connecta::Scope::NativeAdmin.administrator?(user, account)
-
-        human_attendances(relation, marked_ids)
+        todos_tab(relation, marked_ids, user: user, account: account)
       end
+    end
+
+    # Aguardando agrega os setores autorizados: sem nenhum setor legivel o
+    # ator nao ve nenhuma aba (falha fechado vazio, sem vazar totais).
+    # Admin nativo mantem full same-account (mesma regra de `sector_allowed?`).
+    def sectors_granted?(user, account)
+      return true if Connecta::Scope::NativeAdmin.administrator?(user, account)
+
+      projection = Connecta::Scope::Projection.new(user)
+      return false unless projection.usable?
+
+      projection.granted_paths(Connecta::Scope::Gate::READ_PERMISSIONS).any?
+    end
+
+    # Bot canonico do servidor: so admin, com confirmacao da plataforma
+    # (falha fechada com 503 via BotEligibility::Unavailable, nunca parcial).
+    def bot_tab(relation, user:, account:)
+      return relation.none unless Connecta::Scope::NativeAdmin.administrator?(user, account)
+      raise_unless_bot_available!
+
+      Connecta::Scope::BotEligibility.new(relation).perform
+    end
+
+    def raise_unless_bot_available?
+      return if Connecta::Scope::BotEligibility.available?
+
+      raise Connecta::Scope::BotEligibility::Unavailable, Connecta::Scope::BotEligibility::UNAVAILABLE_CODE
+    end
+
+    # Todos: atendimento humano dos setores autorizados, nunca linhas Bot;
+    # so admin (nao-admin nega sem vazar totais de badge).
+    def todos_tab(relation, marked_ids, user:, account:)
+      return relation.none unless Connecta::Scope::NativeAdmin.administrator?(user, account)
+
+      human_attendances(relation, marked_ids)
     end
 
     # Todos predicate: human attendances of the scoped sectors, never Bot

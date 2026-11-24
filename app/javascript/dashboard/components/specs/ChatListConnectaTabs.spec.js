@@ -175,10 +175,15 @@ const mountChatList = async (props = {}) => {
 };
 
 const payloads = action =>
-  dispatchCalls.filter(([type]) => type === action).map(([, payload]) => payload);
+  dispatchCalls
+    .filter(([type]) => type === action)
+    .map(([, payload]) => payload);
 const tabCounts = () =>
   Object.fromEntries(
-    wrapper.findComponent(ChatTypeTabs).props('items').map(item => [item.key, item])
+    wrapper
+      .findComponent(ChatTypeTabs)
+      .props('items')
+      .map(item => [item.key, item])
   );
 
 describe('ChatList Connecta dashboard tabs', () => {

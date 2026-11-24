@@ -211,16 +211,15 @@ const getters = {
   // no client assignee predicate, so a handoff or resolution only converges
   // through a new server answer, never through local classification.
   getConnectaTabChats:
-    (_state, _, __, rootGetters) => (tab, activeFilters = {}) => {
+    (_state, _, __, rootGetters) =>
+      (tab, activeFilters = {}) => {
       const currentUser = rootGetters.getCurrentUser;
       const currentUserId = rootGetters.getCurrentUser.id;
       const currentAccountId = rootGetters.getCurrentAccountId;
 
       const permissions = getUserPermissions(currentUser, currentAccountId);
       const userRole = getUserRole(currentUser, currentAccountId);
-      const tabIds = new Set(
-        _state.connectaTabConversationIds?.[tab] || []
-      );
+      const tabIds = new Set(_state.connectaTabConversationIds?.[tab] || []);
 
       const chats = _state.allConversations.filter(conversation => {
         if (!tabIds.has(conversation.id)) return false;
