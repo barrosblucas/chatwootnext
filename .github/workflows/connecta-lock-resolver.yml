@@ -90,16 +90,19 @@ jobs:
             # 1. Manifest must be untouched: resolution only, no dependency edits.
             git diff --exit-code -- Gemfile
             echo "GUARD: Gemfile unchanged"
-            # 2. Exact audit targets.
+            # 2. Exact audit targets plus the direct rack-protection runtime
+            #    dependency patch (rack 3.2.9, security release 2026-11-20,
+            #    satisfies rack-protection 4.2.2 requirement rack >= 3.0, < 4).
             grep -qx "    puma (7\.2\.3)" Gemfile.lock
             grep -qx "    rack-protection (4\.2\.2)" Gemfile.lock
-            echo "GUARD: puma 7.2.3 + rack-protection 4.2.2 exact"
+            grep -qx "    rack (3\.2\.9)" Gemfile.lock
+            echo "GUARD: puma 7.2.3 + rack-protection 4.2.2 + rack 3.2.9 exact"
             # 3. No unrelated gem changes: every added/removed spec line must be
-            #    one of the two targets (dependency lines are indented deeper).
+            #    one of the three allowed patches (dependency lines are indented deeper).
             changed="$(git diff -U0 -- Gemfile.lock | grep -E '^[+-]    [a-z]' || true)"
             echo "$changed"
             if [ -n "$changed" ]; then
-              echo "$changed" | grep -vE '^[+-]    (puma|rack-protection) \(' && exit 1 || true
+              echo "$changed" | grep -vE '^[+-]    (puma|rack-protection|rack) \(' && exit 1 || true
             fi
             echo "GUARD: no unrelated gem changes"
             # 4. Resolution metadata preserved.
