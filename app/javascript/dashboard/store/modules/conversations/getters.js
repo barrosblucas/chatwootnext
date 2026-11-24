@@ -212,7 +212,7 @@ const getters = {
   // through a new server answer, never through local classification.
   getConnectaTabChats:
     (_state, _, __, rootGetters) =>
-      (tab, activeFilters = {}) => {
+    (tab, activeFilters = {}) => {
       const currentUser = rootGetters.getCurrentUser;
       const currentUserId = rootGetters.getCurrentUser.id;
       const currentAccountId = rootGetters.getCurrentAccountId;

@@ -24,3 +24,22 @@
 - Não mexido: advisories do security-scan (bundle-audit puma/rack-protection, pré-existentes) — portão separado pendente; Vitest não rodou (lint travava antes); `ReplyToChip.vue` sem erro (só warnings pré-existentes do projeto).
 - Checagens locais: `git diff --check` limpo; `node --check` OK nos 10 `.js` alterados (`.vue` sem checker local; sem ruby/eslint instalados — sem install, sem suíte local, sem DB).
 - Pendente (próximo portão, sem dispatch neste passo): `gh workflow run "Run Chatwoot CE spec" --ref fix/connecta-abas-chatwoot`, `gh workflow run "Frontend Lint & Test" --ref fix/connecta-abas-chatwoot`, depois `gh run view` dos novos runs + security-scan; só então push.
+
+## Correção 02 — slice isolado: 500 do Bot admin + 2 lint exatos (sem publish)
+
+- Base: `8e75802df0c52c18458733d4f51bf2f7932873f7` em `fix/connecta-abas-chatwoot` (isolado em `/tmp/opencode/chatwootnext-correcao-02`); `git status` limpo antes e 2 arquivos modificados depois. Nada publicado neste passo (sem commit/push/dispatch/deploy; sem Gemfile/lockfile/workflow; sem `.env`/dados; `script/criar_admin.rb` não lido).
+- Intenção: reparar na fonte o 500 do exemplo admin Bot (`spec/connecta/scope_dashboard_tabs_spec.rb:245`, run `45479644528`, job backend-tests `138749143706`: 59 exemplos/1 falha) + o erro Prettier `getters.js:215:5` + o offense RuboCop `dashboard_tabs.rb:94`, preservando comportamento (abas marcadas/não-marcadas, escopo por setor autorizado, fronteiras admin).
+- Causa Rails (evidência código+log): `bot_tab` chamava `raise_unless_bot_available!` (bang, `dashboard_tabs.rb:95`) mas a definição era `raise_unless_bot_available?` (interrogação, `:100`) → `NoMethodError ... for class Connecta::Scope::DashboardTabs` (`test.log` do artefato `rails-log-folder-0`, `Completed 500 ... in 60ms`); HTML de erro quebrava `JSON.parse` no spec (`:59`). Correção: renomear a definição para bang (2 referências totais, chamador inalterado) — sem rescue novo, sem enfraquecer contagens/acesso; indisponibilidade real continua 503 via `Unavailable` (rescue existente no controller).
+- Lint: `getters.js:215` menos 2 espaços (Prettier pedia Delete de 2 espaços, 1 linha); `dashboard_tabs.rb:94` linha em branco após guard clause (`Layout/EmptyLineAfterGuardClause`). Sem supressões, sem reformat alheio.
+- Não mexido: advisories do security-scan (puma 7.2.2 GHSA-4v6q-hvv7-49h9 fix ~>7.2.3; rack-protection 4.1.1 GHSA-pf75-2v58-7mxg/GHSA-r29j-38x9-qr26/GHSA-vvhm-j6m8-64cw fix >=4.2.2) — ação separada pendente, sem override/manifest neste passo.
+- Checagens locais: `git diff --check` limpo; `node --check` OK em `getters.js`; `gh run view 45479644528 --job 138749143706 --log-failed` lido (causa acima); Ruby ausente nesta VM então sem suíte local — testes Rails/Vitest marcados pendentes Actions.
+- Pendente (próximo portão, sem dispatch neste passo): novo run oficial `Run Chatwoot CE spec` no branch + `gh run view` do backend-tests/lints/security-scan; só então push/publicação.
+
+## Correção 02 — lockfile audit via resolver isolado (puma/rack-protection/rack; sem main/deploy)
+
+- Base: `8e75802df0c52c18458733d4f51bf2f7932873f7` em `fix/connecta-abas-chatwoot` (isolado em `/tmp/opencode/chatwootnext-correcao-02`); 3 correções 500/lint anteriores preservadas; só `Gemfile.lock` adotado deste passo.
+- Intenção: resolver via Bundler oficial os advisories puma GHSA-4v6q-hvv7-49h9 (fix 7.2.3) e rack-protection GHSA-pf75-2v58-7mxg/GHSA-r29j-38x9-qr26/GHSA-vvhm-j6m8-64cw (fix 4.2.2), sem toolchain local.
+- Resolver: workflow temporário `Connecta lock resolver (temporary)` no ref isolado `ci/chatwoot-c02-lock-resolver` (nunca mergeado); run 1 `45499496162` rejeitou `rack 3.2.8→3.2.9` transitivo; guard corrigido para aceitar o patch exato (rack 3.2.9 é release de segurança 2026-11-20, 5 GHSAs, e satisfaz `rack-protection 4.2.2: rack >= 3.0, < 4`); run 2 `45499942763` verde (`GUARDS: PASS`, HEAD `8e75802`, https://github.com/barrosblucas/chatwootnext/actions/runs/45499942763).
+- Artefato `connecta-lock-resolver-output` verificado: só 3 linhas spec (`puma 7.2.2→7.2.3`, `rack 3.2.8→3.2.9`, `rack-protection 4.2.1→4.2.2`), `Gemfile`/`DEPENDENCIES`/`RUBY VERSION`/`BUNDLED WITH`/`PLATFORMS` intactos, lockfile parseado.
+- Checagens locais: `git diff --check` limpo; `git diff -U0 -- Gemfile.lock` só as 3 trocas; sem suíte local (sem Ruby nesta VM).
+- Pendente (próximo portão): commit/push `fix/connecta-abas-chatwoot` + runs oficiais `Run Chatwoot CE spec` (full=true) e `Frontend Lint & Test`; sem relato de audit fechado só pelo resolver.

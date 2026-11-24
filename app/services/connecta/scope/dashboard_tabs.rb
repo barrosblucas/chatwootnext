@@ -92,12 +92,13 @@ class Connecta::Scope::DashboardTabs
     # (falha fechada com 503 via BotEligibility::Unavailable, nunca parcial).
     def bot_tab(relation, user:, account:)
       return relation.none unless Connecta::Scope::NativeAdmin.administrator?(user, account)
+
       raise_unless_bot_available!
 
       Connecta::Scope::BotEligibility.new(relation).perform
     end
 
-    def raise_unless_bot_available?
+    def raise_unless_bot_available!
       return if Connecta::Scope::BotEligibility.available?
 
       raise Connecta::Scope::BotEligibility::Unavailable, Connecta::Scope::BotEligibility::UNAVAILABLE_CODE
