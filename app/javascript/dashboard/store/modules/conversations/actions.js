@@ -14,6 +14,10 @@ import {
   isOnUnattendedView,
   isOnFoldersView,
 } from './helpers/actionHelpers';
+import {
+  assigneeKeyForConnectaTab,
+  isConnectaDashboardParams,
+} from 'dashboard/helper/connectaDashboardTabs';
 import messageReadActions from './actions/messageReadActions';
 import messageTranslateActions from './actions/messageTranslateActions';
 import * as Sentry from '@sentry/vue';
@@ -88,13 +92,43 @@ const actions = {
     }
   },
 
-  fetchAllConversations: async ({ commit, state, dispatch }) => {
+  fetchAllConversations: async ({ commit, state, dispatch, rootGetters }) => {
     commit(types.SET_LIST_LOADING_STATUS);
     try {
       const params = state.conversationFilters;
       const {
         data: { data },
       } = await ConversationApi.get(params);
+      // Connecta dashboard tabs are server membership: the client predicates
+      // cannot reproduce Aguardando/Todos, so rows land in the shared cache
+      // while tab membership stays in per-tab ids (replaced on page 1,
+      // unioned on later pages, like the Bot tab). The list answer carries
+      // the same exact total as the badge request, so it sets the active
+      // tab's slot directly instead of the native triple.
+      if (isConnectaDashboardParams(params)) {
+        buildConversationList(
+          { commit, dispatch },
+          params,
+          data,
+          assigneeKeyForConnectaTab(params.connectaTab),
+          { skipStatsUpdate: true }
+        );
+        dispatch(
+          'conversationStats/setConnectaTab',
+          {
+            tab: params.connectaTab,
+            count: data?.meta?.all_count,
+            accountId: rootGetters?.getCurrentAccountId,
+          },
+          { root: true }
+        );
+        commit(types.SET_CONNECTA_TAB_CONVERSATIONS, {
+          tab: params.connectaTab,
+          ids: (data.payload || []).map(conversation => conversation.id),
+          page: params.page,
+        });
+        return;
+      }
       buildConversationList(
         { commit, dispatch },
         params,
@@ -102,6 +136,18 @@ const actions = {
         params.assigneeType
       );
     } catch (error) {
+      // A failed Connecta list leaves its badge unknown, never zero: mark the
+      // tab so the UI tells the error apart from a successful zero.
+      if (isConnectaDashboardParams(state.conversationFilters)) {
+        dispatch(
+          'conversationStats/setConnectaTabError',
+          {
+            tab: state.conversationFilters.connectaTab,
+            accountId: rootGetters?.getCurrentAccountId,
+          },
+          { root: true }
+        );
+      }
       // Handle error
     }
   },
@@ -127,7 +173,7 @@ const actions = {
   // while tab membership stays in botConversationIds (replaced on page 1,
   // unioned on later pages). 503 means unavailable with retry, never an empty
   // tab; a stale answer arriving after a newer request is dropped entirely.
-  fetchBotConversations: async ({ commit, dispatch }, params) => {
+  fetchBotConversations: async ({ commit, dispatch, rootGetters }, params) => {
     botRequestSeq += 1;
     const requestId = botRequestSeq;
     commit(types.SET_LIST_LOADING_STATUS);
@@ -145,6 +191,19 @@ const actions = {
         { count: data.meta.all_count },
         { root: true }
       );
+      // Under the Connecta opt-in the same exact total feeds the tab's
+      // Connecta badge slot; the legacy Bot badge stays untouched in shape.
+      if (isConnectaDashboardParams(params)) {
+        dispatch(
+          'conversationStats/setConnectaTab',
+          {
+            tab: params.connectaTab,
+            count: data?.meta?.all_count,
+            accountId: rootGetters?.getCurrentAccountId,
+          },
+          { root: true }
+        );
+      }
       commit(types.SET_BOT_CONVERSATIONS, {
         ids: data.payload.map(conversation => conversation.id),
         page: params.page,
@@ -156,6 +215,16 @@ const actions = {
     } catch (error) {
       if (requestId !== botRequestSeq) return;
       commit(types.CLEAR_LIST_LOADING_STATUS);
+      if (isConnectaDashboardParams(params)) {
+        dispatch(
+          'conversationStats/setConnectaTabError',
+          {
+            tab: params.connectaTab,
+            accountId: rootGetters?.getCurrentAccountId,
+          },
+          { root: true }
+        );
+      }
       commit(
         types.SET_BOT_LIST_STATUS,
         error?.response?.status === 503 ? 'unavailable' : 'error'
@@ -181,20 +250,42 @@ const actions = {
   // Returns what it removed, so the caller can drop the same conversations from anything keyed
   // by them.
   reconcileConversationTab: async ({ commit, getters, state }, filters) => {
-    // The Bot tab asks by server conversation type with no assigneeType, so it
-    // resolves by conversationType: by assigneeType it would look like no tab
-    // and silently reconcile nothing (the reconnect gap).
-    const tabKey =
-      filters.conversationType === 'bot' ? 'bot' : filters.assigneeType;
-    const tabGetter = TAB_GETTERS[tabKey];
-    if (!tabGetter || UNRECONCILABLE_VIEWS.includes(filters.conversationType)) {
+    // Connecta dashboard tabs reconcile against their own server membership:
+    // the native assignee predicates cannot reproduce Aguardando/Todos, so
+    // the Bot tab keeps its server-membership getter and each human Connecta
+    // tab uses its own. Anything else keeps the native resolution.
+    const connectaTab = isConnectaDashboardParams(filters)
+      ? filters.connectaTab
+      : null;
+    let tabKey;
+    if (connectaTab) {
+      tabKey = `connecta:${connectaTab}`;
+    } else if (filters.conversationType === 'bot') {
+      tabKey = 'bot';
+    } else {
+      tabKey = filters.assigneeType;
+    }
+    let tabGetter;
+    if (connectaTab) {
+      tabGetter = connectaTab === 'bot' ? TAB_GETTERS.bot : null;
+    } else {
+      tabGetter = TAB_GETTERS[tabKey];
+    }
+    if (
+      !connectaTab &&
+      (!tabGetter || UNRECONCILABLE_VIEWS.includes(filters.conversationType))
+    ) {
       return [];
     }
     if (tabsBeingReconciled.has(tabKey)) return [];
 
     tabsBeingReconciled.add(tabKey);
     try {
-      const candidates = getters[tabGetter](filters).map(c => ({
+      const candidates = (
+        connectaTab && connectaTab !== 'bot'
+          ? getters.getConnectaTabChats(connectaTab, filters)
+          : getters[tabGetter](filters)
+      ).map(c => ({
         id: c.id,
         inboxId: c.inbox_id,
       }));

@@ -21,6 +21,9 @@ class ConversationApi extends ApiClient {
     updatedWithin,
     groupType,
     excludeActiveBot,
+    connectaDashboard,
+    connectaTab,
+    connectaOrgUnitId,
   }) {
     return axios.get(this.url, {
       params: {
@@ -35,6 +38,9 @@ class ConversationApi extends ApiClient {
         updated_within: updatedWithin,
         group_type: groupType,
         exclude_active_bot: excludeActiveBot,
+        connecta_dashboard: connectaDashboard,
+        connecta_tab: connectaTab,
+        connecta_org_unit_id: connectaOrgUnitId,
       },
     });
   }
@@ -141,6 +147,9 @@ class ConversationApi extends ApiClient {
     conversationType,
     groupType,
     excludeActiveBot,
+    connectaDashboard,
+    connectaTab,
+    connectaOrgUnitId,
   }) {
     return axios.get(`${this.url}/meta`, {
       params: {
@@ -152,6 +161,9 @@ class ConversationApi extends ApiClient {
         conversation_type: conversationType,
         group_type: groupType,
         exclude_active_bot: excludeActiveBot,
+        connecta_dashboard: connectaDashboard,
+        connecta_tab: connectaTab,
+        connecta_org_unit_id: connectaOrgUnitId,
       },
     });
   }

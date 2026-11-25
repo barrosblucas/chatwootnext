@@ -207,6 +207,35 @@ const getters = {
     return sortConversations(chats, _state, rootGetters);
   },
   getBotListStatus: ({ botListStatus }) => botListStatus,
+  // Connecta dashboard human tabs are server membership, like the Bot tab:
+  // no client assignee predicate, so a handoff or resolution only converges
+  // through a new server answer, never through local classification.
+  getConnectaTabChats:
+    (_state, _, __, rootGetters) =>
+    (tab, activeFilters = {}) => {
+      const currentUser = rootGetters.getCurrentUser;
+      const currentUserId = rootGetters.getCurrentUser.id;
+      const currentAccountId = rootGetters.getCurrentAccountId;
+
+      const permissions = getUserPermissions(currentUser, currentAccountId);
+      const userRole = getUserRole(currentUser, currentAccountId);
+      const tabIds = new Set(_state.connectaTabConversationIds?.[tab] || []);
+
+      const chats = _state.allConversations.filter(conversation => {
+        if (!tabIds.has(conversation.id)) return false;
+        const shouldFilter = applyPageFilters(conversation, activeFilters);
+        const allowedForRole = applyRoleFilter(
+          conversation,
+          userRole,
+          permissions,
+          currentUserId
+        );
+
+        return shouldFilter && allowedForRole;
+      });
+
+      return sortConversations(chats, _state, rootGetters);
+    },
   getChatListLoadingStatus: ({ listLoadingStatus }) => listLoadingStatus,
   getAllMessagesLoaded(_state) {
     const [chat] = getSelectedChatConversation(_state);

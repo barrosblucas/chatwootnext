@@ -99,6 +99,13 @@ class ConnectaApi extends ApiClient {
       params: { ids: ids.join(',') },
     });
   }
+
+  // Catalogo de setores do filtro do dashboard (somente leitura): id/nome
+  // das unidades habilitadas legiveis, sob a mesma fronteira do filtro
+  // selecionado. Projecao ausente/inutilizavel responde lista vazia.
+  getOrgUnits() {
+    return axios.get(`${this.url}/org_units`);
+  }
 }
 
 export default new ConnectaApi();

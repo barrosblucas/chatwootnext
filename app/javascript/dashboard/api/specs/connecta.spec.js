@@ -37,3 +37,21 @@ describe('ConnectaAPI admission', () => {
     expect(body.get('org_unit_id')).toBe('unit-1');
   });
 });
+
+describe('ConnectaAPI sector catalog', () => {
+  beforeEach(() => {
+    axios.get.mockReset();
+    window.history.pushState({}, '', '/app/accounts/1/');
+  });
+
+  it('asks the account catalog for the dashboard sector filter', async () => {
+    axios.get.mockResolvedValue({ data: { org_units: [] } });
+
+    await ConnectaAPI.getOrgUnits();
+
+    expect(axios.get).toHaveBeenCalledTimes(1);
+    expect(axios.get).toHaveBeenCalledWith(
+      '/api/v1/accounts/1/connecta/org_units'
+    );
+  });
+});

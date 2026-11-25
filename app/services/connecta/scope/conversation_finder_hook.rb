@@ -9,16 +9,28 @@
 # status/contagens/paginação. Só na lista aberta padrão (sem tipo de conversa, sem busca): outras visões nunca
 # disparam lookup externo por acidente. Sem rede no caminho humano: erro de
 # banco preserva a lista e sinaliza via `bot_classification_unavailable`.
+# As abas do dashboard Connecta (`connecta_dashboard=true` + `connecta_tab`)
+# rodam no mesmo ponto pré-contagem via DashboardTabs e subsumem a partição
+# humano/Bot; sob opt-in, `exclude_active_bot`, `assignee_type` e
+# `conversation_type` nativos são ignorados para lista e contagem concordarem.
 module Connecta::Scope::ConversationFinderHook
   private
 
   def find_all_conversations
     super
-    apply_bot_exclusion if bot_exclusion_requested?
+    if Connecta::Scope::DashboardTabs.opt_in?(params)
+      @conversations = Connecta::Scope::DashboardTabs.apply(
+        @conversations, user: current_user, account: current_account, params: params
+      )
+    elsif bot_exclusion_requested?
+      apply_bot_exclusion
+    end
     @conversations
   end
 
   def filter_by_conversation_type
+    return @conversations if Connecta::Scope::DashboardTabs.opt_in?(params)
+
     super
     case params[:conversation_type]
     when 'participating'
@@ -30,6 +42,12 @@ module Connecta::Scope::ConversationFinderHook
       end
     end
     @conversations
+  end
+
+  def filter_by_assignee_type
+    return @conversations if Connecta::Scope::DashboardTabs.opt_in?(params)
+
+    super
   end
 
   # A busca da lista nativa procura só conteúdo de mensagem. Aqui a mesma
