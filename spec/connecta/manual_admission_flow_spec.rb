@@ -8,13 +8,61 @@ require_relative 'support/g0_transfer_schema'
 # Micro passo 3: percurso completo create -> admit -> active -> primeira mensagem UMA VEZ.
 # WP é stub de fronteira (PlatformClient#post); SUT é real: controller aninhado,
 # ManualAdmissionTransaction, ScopeActivationService, MessageBuilder e dispatch guard.
-# Sem rede, sem dados reais, só tabelas G0 sintéticas.
+# Sem rede, sem dados reais, só tabelas sintéticas (G0 + produto).
 Connecta::G0ScopeSchema.ensure!
 Connecta::G0TransferSchema.ensure!
 Connecta::Scope::Installer.install!
 
+# Sem patch global de Projection: o granted_paths produto entra por exemplo no around abaixo.
+
 RSpec.describe 'Connecta G0 · admissão manual fim a fim (micro passo 3)', type: :request do
   include_context 'with connecta g0 scope fixture'
+
+  # Contrato UUID de produção (C02): ManualAdmissionTransaction exige
+  # org_unit_id UUID, então este spec roda isolado nas tabelas produto
+  # connecta_* (ids UUID) em vez das G0 bigint. Mesmo mapa que o G0Adapter
+  # aplica em produção, só troca de tabelas sem hooks globais; restaura tudo
+  # no ensure com reset do cache de colunas (sem vazar para os demais
+  # exemplos do processo). G0 bigint segue coberto nos specs de dashboard.
+  def pin_product_scope_tables
+    {
+      Connecta::Scope::OrgUnit => 'connecta_org_units',
+      Connecta::Scope::ConversationScope => 'connecta_conversation_scopes',
+      Connecta::Scope::ScopedInbox => 'connecta_scoped_inboxes',
+      Connecta::Scope::UserGrant => 'connecta_user_grants',
+      Connecta::Scope::UserAuthEpoch => 'connecta_user_auth_epochs',
+      Connecta::Scope::AclSyncState => 'connecta_acl_sync_state'
+    }
+  end
+
+  around do |example|
+    mapping = pin_product_scope_tables
+    previous = mapping.keys.index_with(&:table_name)
+    mapping.each { |model, table| model.table_name = table }
+    mapping.each_key(&:reset_column_information)
+    # granted_paths produto é o hook real de produção
+    # (G0Adapter::ProjectionTablesHook), ativo só neste exemplo e restaurado
+    # no ensure: nenhum prepend global vaza para os demais specs do processo.
+    projection_class = Connecta::Scope::Projection
+    original_granted_paths = projection_class.instance_method(:granted_paths)
+    product_granted_paths = Connecta::Runtime::G0Adapter::ProjectionTablesHook.instance_method(:granted_paths)
+    projection_class.class_eval { define_method(:granted_paths, product_granted_paths) }
+    begin
+      example.run
+    ensure
+      projection_class.class_eval { define_method(:granted_paths, original_granted_paths) }
+      previous.each { |model, table| model.table_name = table }
+      previous.each_key(&:reset_column_information)
+    end
+  end
+
+  # Contexto sintético não-PII para falha inesperada: tabela ativa e tipo da
+  # coluna id localizam a camada (inteiro G0 vs UUID produto).
+  def scope_diag
+    'active_table=' \
+      "#{Connecta::Scope::OrgUnit.table_name} " \
+      "id_type=#{Connecta::Scope::OrgUnit.column_for_attribute('id').type}"
+  end
 
   let(:admit_path) { "/api/v1/accounts/#{account.id}/conversations/connecta_manual_admission" }
   let(:destinations_path) { "#{admit_path}/destinations" }
@@ -64,7 +112,7 @@ RSpec.describe 'Connecta G0 · admissão manual fim a fim (micro passo 3)', type
                    idempotency_key: 'attempt-1' },
          headers: agent_a.create_new_auth_token
 
-    expect(response).to have_http_status(:created)
+    expect(response).to have_http_status(:created), scope_diag
     created = Conversation.order(:id).last
     scope = Connecta::Scope::ConversationScope.find_by!(conversation_id: created.id)
     expect(scope).to have_attributes(state: 'active', case_version: 1, case_protocol: 'BND00000001')
@@ -94,11 +142,11 @@ RSpec.describe 'Connecta G0 · admissão manual fim a fim (micro passo 3)', type
     post admit_path, params: base.merge(message: { content: 'primeira' }, idempotency_key: 'nonce-a'),
                      headers: agent_a.create_new_auth_token
     first = Conversation.order(:id).last
-    expect(response).to have_http_status(:created)
+    expect(response).to have_http_status(:created), scope_diag
 
     post admit_path, params: base.merge(message: { content: 'segunda' }, idempotency_key: 'nonce-b'),
                      headers: agent_a.create_new_auth_token
-    expect(response).to have_http_status(:ok)
+    expect(response).to have_http_status(:ok), scope_diag
 
     expect(Conversation.where(inbox: whatsapp_inbox, contact: wa_contact).count).to eq(1)
     expect(Conversation.order(:id).last.id).to eq(first.id)
@@ -121,7 +169,7 @@ RSpec.describe 'Connecta G0 · admissão manual fim a fim (micro passo 3)', type
                    idempotency_key: 'tamper-1' },
          headers: agent_a.create_new_auth_token
 
-    expect(response).to have_http_status(:created)
+    expect(response).to have_http_status(:created), scope_diag
     message = Message.where(message_type: :outgoing).order(:id).last
     expect(message).to be_present
     expect(message).not_to be_private
@@ -139,7 +187,7 @@ RSpec.describe 'Connecta G0 · admissão manual fim a fim (micro passo 3)', type
                    idempotency_key: 'attach-1' },
          headers: agent_a.create_new_auth_token
 
-    expect(response).to have_http_status(:created)
+    expect(response).to have_http_status(:created), scope_diag
     message = Message.where(message_type: :outgoing).order(:id).last
     expect(message.attachments.count).to eq(1)
   end
@@ -157,14 +205,14 @@ RSpec.describe 'Connecta G0 · admissão manual fim a fim (micro passo 3)', type
            headers: agent_a.create_new_auth_token
     end.not_to change(Message, :count)
 
-    expect(response).to have_http_status(:unprocessable_entity)
+    expect(response).to have_http_status(:unprocessable_entity), scope_diag
     expect(Conversation.where(inbox: whatsapp_inbox, contact: wa_contact).count).to eq(0)
   end
 
   it 'destinos lista só unidades ATENDER do ator (WP stub) e exige inbox show?' do
     get destinations_path, params: { inbox_id: whatsapp_inbox.id }, headers: agent_a.create_new_auth_token
 
-    expect(response).to have_http_status(:ok)
+    expect(response).to have_http_status(:ok), scope_diag
     expect(JSON.parse(response.body)['eligible_org_units'].map { |u| u['id'] }).to eq([org_a.id.to_s])
   end
 
@@ -179,7 +227,7 @@ RSpec.describe 'Connecta G0 · admissão manual fim a fim (micro passo 3)', type
            headers: admin_nominal_unused.create_new_auth_token
     end.not_to change(Conversation, :count)
 
-    expect(response).to have_http_status(:forbidden)
+    expect(response).to have_http_status(:forbidden), scope_diag
   end
 
   def admin_nominal_unused

@@ -23,3 +23,38 @@
 - `Frontend Lint & Test`: (run ID + estado).
 - CE direcionada `spec/connecta/scope_dashboard_tabs_spec.rb spec/connecta/org_units_catalog_spec.rb spec/connecta/transfer_schema_smoke_spec.rb`: (run ID + estado, se exigida).
 - Sem merge/PR/deploys neste passo; em verde, recomendar PR normal como próximo passo.
+
+## Correção C02 — admissão manual: fixture UUID produto isolada no spec (sem merge/deploy)
+
+- Base: `22ca5c2e242efb72a88f55c3e23686ea6cd97c35` (main viva verificada via `ls-remote` == `origin/main` antes do checkout) em `fix/connecta-c02-admission-spec` (isolado em `/tmp/opencode/chatwootnext-c02-admission`); main original `/home/thanos/chatwootnext` intacta (8 linhas pendentes em `.context/changelog/CHANGELOG_2026_11_25.md` + `?? script/criar_admin.rb` preservados, script nunca lido); produção `e9baeaaf0` (ancestral do HEAD, sem drift). Nada publicado neste passo até o push abaixo.
+
+## Intenção da feature — Correção C02 (admissão manual UUID)
+
+- Intenção: reparar os 6 exemplos com 422 do run CE `45518055531` shard 1 (`spec/connecta/manual_admission_flow_spec.rb:59,76,89,112,131,171`) sem tocar validadores, rotas, auth, schema ou asserções 201/200/403.
+- Regras de negócio afetadas: nenhuma — contrato mantido (`ManualAdmissionTransaction:63-66,77-79` continua exigindo `org_unit_id` UUID; `ensure_org_unit!`/`uuid_format?` inalterados).
+- Não deve mudar: fonte (`app/`), validadores implantados, rotas, auth, schema, traduções, workflows, `.env`/segredos, checkout original, G0 bigint (dashboard/catálogo seguem com cobertura dupla bigint+UUID), build/suíte local nesta VM; `script/criar_admin.rb` não lido/não tocado.
+- Já feito: causa raiz evidenciada (abaixo); spec remapeado + `git diff --check` limpo; sem Ruby local (portão oficial hospedado).
+- Pendente: commit/push sem force + run oficial CE direcionada no novo SHA com IDs/estados; sem claim de verde local.
+
+## Causa raiz (evidência código + run oficial)
+
+- O fixture compartilhado (`support/g0_scope_fixture.rb`) cria `org_a` em `Connecta::Scope::OrgUnit` (tabela `connecta_g0_org_units`, id bigint); o spec enviava `org_a.id.to_s` (ex.: `"123"`) como `org_unit_id`, e `ManualAdmissionTransaction#ensure_org_unit!` rejeita não-UUID com 422 — 6 exemplos de admissão viraram 422 em vez de 201/200. Expectativa/fixture erradas, não contrato errado.
+- Reparo só no spec: `around` isola os 6 modelos de escopo nas tabelas produto `connecta_*` (ids UUID, mesmo mapa do `G0Adapter.install!`, sem hooks globais; restaura tabelas + `reset_column_information` no `ensure`); módulo de teste `ConnectaAdmissionProductGrantedPaths` acompanha a tabela viva em `granted_paths` (SQL idêntico no G0 padrão, sem vazar comportamento); `scope_diag` (tabela ativa + tipo do id, sem PII) nas asserções de status; asserções 201/200/403, rollback/replay/autorização intactas.
+
+## Publicação e validação oficial (preencher após dispatch)
+
+- Commit/push: (SHA novo + `git status` após).
+- CE direcionada `spec/connecta/manual_admission_flow_spec.rb spec/connecta/scope_dashboard_tabs_spec.rb spec/connecta/org_units_catalog_spec.rb`: (run ID + estado).
+- Sem merge/PR/deploys neste passo; sem rerun frontend isolado (full main cobre); próximo portão oficial: full CE antes de EE.
+- `f511c8844d80c7bef59ca48360a26822af1e2273` + CE direcionada `45521301824`: 42 examples, 0 failures (lint-backend, lint-frontend, security-scan, backend-tests success; frontend-tests skipped).
+
+## Correção C02b — admissão: granted_paths produto sem prepend global (sem merge/deploy)
+
+- Base: `f511c8844d80c7bef59ca48360a26822af1e2273` no mesmo `fix/connecta-c02-admission-spec` isolado; main viva `22ca5c2e` e produção `e9baeaaf0` como ancestrais, sem drift. Escopo estreito: remover a contaminação processo-global do passo anterior.
+
+## Intenção — C02b (isolamento do override de Projection)
+
+- Intenção: trocar o `Projection.prepend(ConnectaAdmissionProductGrantedPaths)` de nível de arquivo (global no processo, sobrescrevia a consulta de grants dos demais specs mesmo com tabelas restauradas) por ativação por exemplo com teardown pareado no harness do spec.
+- Não deve mudar: fonte (`app/`), comportamento de autorização em produção, asserções do spec, demais specs/branches, build/suíte local nesta VM; `script/criar_admin.rb` não lido/não tocado.
+- Já feito: módulo global e prepend removidos (`-18/+9` linhas, `git diff --check` limpo); `around` agora fixa `granted_paths` com o método real de produção (`G0Adapter::ProjectionTablesHook.instance_method`) via `define_method` e restaura o original no `ensure` junto das tabelas + cache; grants reais continuam avaliados pela consulta verdadeira, sem mock de permissão.
+- Pendente: commit/push sem force + run oficial CE direcionada no novo SHA; sem claim de verde local (o verde anterior em `45521301824` era do f511c884 e não vale como evidência final desta mudança).
