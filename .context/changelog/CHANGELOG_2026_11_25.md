@@ -46,3 +46,15 @@
 - Commit/push: (SHA novo + `git status` após).
 - CE direcionada `spec/connecta/manual_admission_flow_spec.rb spec/connecta/scope_dashboard_tabs_spec.rb spec/connecta/org_units_catalog_spec.rb`: (run ID + estado).
 - Sem merge/PR/deploys neste passo; sem rerun frontend isolado (full main cobre); próximo portão oficial: full CE antes de EE.
+- `f511c8844d80c7bef59ca48360a26822af1e2273` + CE direcionada `45521301824`: 42 examples, 0 failures (lint-backend, lint-frontend, security-scan, backend-tests success; frontend-tests skipped).
+
+## Correção C02b — admissão: granted_paths produto sem prepend global (sem merge/deploy)
+
+- Base: `f511c8844d80c7bef59ca48360a26822af1e2273` no mesmo `fix/connecta-c02-admission-spec` isolado; main viva `22ca5c2e` e produção `e9baeaaf0` como ancestrais, sem drift. Escopo estreito: remover a contaminação processo-global do passo anterior.
+
+## Intenção — C02b (isolamento do override de Projection)
+
+- Intenção: trocar o `Projection.prepend(ConnectaAdmissionProductGrantedPaths)` de nível de arquivo (global no processo, sobrescrevia a consulta de grants dos demais specs mesmo com tabelas restauradas) por ativação por exemplo com teardown pareado no harness do spec.
+- Não deve mudar: fonte (`app/`), comportamento de autorização em produção, asserções do spec, demais specs/branches, build/suíte local nesta VM; `script/criar_admin.rb` não lido/não tocado.
+- Já feito: módulo global e prepend removidos (`-18/+9` linhas, `git diff --check` limpo); `around` agora fixa `granted_paths` com o método real de produção (`G0Adapter::ProjectionTablesHook.instance_method`) via `define_method` e restaura o original no `ensure` junto das tabelas + cache; grants reais continuam avaliados pela consulta verdadeira, sem mock de permissão.
+- Pendente: commit/push sem force + run oficial CE direcionada no novo SHA; sem claim de verde local (o verde anterior em `45521301824` era do f511c884 e não vale como evidência final desta mudança).

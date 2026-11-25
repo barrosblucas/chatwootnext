@@ -13,24 +13,7 @@ Connecta::G0ScopeSchema.ensure!
 Connecta::G0TransferSchema.ensure!
 Connecta::Scope::Installer.install!
 
-# granted_paths do Projection referencia a tabela G0 por nome fixo; com os
-# modelos apontados às tabelas produto, a leitura acompanha a tabela viva
-# (nome lido a cada chamada, sem cache). SQL idêntico no mapeamento G0 padrão, então os demais specs do
-# mesmo processo não mudam de comportamento.
-module ConnectaAdmissionProductGrantedPaths
-  def granted_paths(permissions)
-    unit_table = Connecta::Scope::OrgUnit.table_name
-    @granted_paths ||= {}
-    key = [unit_table, Array(permissions).map(&:to_s).sort].freeze
-    @granted_paths[key] ||= Connecta::Scope::UserGrant.joins(:org_unit)
-                                                      .where(user_id: user.id, permission: permissions)
-                                                      .where(unit_table => { enabled: true })
-                                                      .pluck("#{unit_table}.path")
-  end
-end
-
-Connecta::Scope::Projection.prepend(ConnectaAdmissionProductGrantedPaths) unless
-  Connecta::Scope::Projection <= ConnectaAdmissionProductGrantedPaths
+# Sem patch global de Projection: o granted_paths produto entra por exemplo no around abaixo.
 
 RSpec.describe 'Connecta G0 · admissão manual fim a fim (micro passo 3)', type: :request do
   include_context 'with connecta g0 scope fixture'
@@ -57,9 +40,17 @@ RSpec.describe 'Connecta G0 · admissão manual fim a fim (micro passo 3)', type
     previous = mapping.keys.index_with(&:table_name)
     mapping.each { |model, table| model.table_name = table }
     mapping.each_key(&:reset_column_information)
+    # granted_paths produto é o hook real de produção
+    # (G0Adapter::ProjectionTablesHook), ativo só neste exemplo e restaurado
+    # no ensure: nenhum prepend global vaza para os demais specs do processo.
+    projection_class = Connecta::Scope::Projection
+    original_granted_paths = projection_class.instance_method(:granted_paths)
+    product_granted_paths = Connecta::Runtime::G0Adapter::ProjectionTablesHook.instance_method(:granted_paths)
+    projection_class.class_eval { define_method(:granted_paths, product_granted_paths) }
     begin
       example.run
     ensure
+      projection_class.class_eval { define_method(:granted_paths, original_granted_paths) }
       previous.each { |model, table| model.table_name = table }
       previous.each_key(&:reset_column_information)
     end
