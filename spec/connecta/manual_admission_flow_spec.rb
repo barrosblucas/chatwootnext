@@ -23,9 +23,9 @@ module ConnectaAdmissionProductGrantedPaths
     @granted_paths ||= {}
     key = [unit_table, Array(permissions).map(&:to_s).sort].freeze
     @granted_paths[key] ||= Connecta::Scope::UserGrant.joins(:org_unit)
-                                                       .where(user_id: user.id, permission: permissions)
-                                                       .where(unit_table => { enabled: true })
-                                                       .pluck("#{unit_table}.path")
+                                                      .where(user_id: user.id, permission: permissions)
+                                                      .where(unit_table => { enabled: true })
+                                                      .pluck("#{unit_table}.path")
   end
 end
 
