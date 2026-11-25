@@ -146,6 +146,27 @@ describe('conversations actions Connecta tabs', () => {
         { tab: 'bot', count: 2, accountId: 1 },
         { root: true }
       );
+      expect(commit).toHaveBeenCalledWith(types.SET_BOT_CONVERSATIONS, {
+        ids: [5],
+        page: 1,
+      });
+      expect(commit).toHaveBeenCalledWith(types.SET_BOT_LIST_STATUS, 'ready');
+    });
+
+    it('marks the Connecta bot slot empty only for a truly empty answer', async () => {
+      ConversationApi.get.mockResolvedValue({
+        data: { data: { meta: { all_count: 0 }, payload: [] } },
+      });
+      const commit = vi.fn();
+      const dispatch = vi.fn();
+      await actions.fetchBotConversations(
+        { commit, dispatch, rootGetters: { getCurrentAccountId: 1 } },
+        connectaFilters('bot')
+      );
+      expect(commit).toHaveBeenCalledWith(types.SET_BOT_CONVERSATIONS, {
+        ids: [],
+        page: 1,
+      });
       expect(commit).toHaveBeenCalledWith(types.SET_BOT_LIST_STATUS, 'empty');
     });
 
