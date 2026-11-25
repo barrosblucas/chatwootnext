@@ -23,8 +23,8 @@ module ConnectaAdmissionProductGrantedPaths
     @granted_paths ||= {}
     key = [unit_table, Array(permissions).map(&:to_s).sort].freeze
     @granted_paths[key] ||= Connecta::Scope::UserGrant.joins(:org_unit)
-                                                       .where(user_id: user.id, permission: permissions,
-                                                              unit_table => { enabled: true })
+                                                       .where(user_id: user.id, permission: permissions)
+                                                       .where(unit_table => { enabled: true })
                                                        .pluck("#{unit_table}.path")
   end
 end
@@ -136,7 +136,7 @@ RSpec.describe 'Connecta G0 · admissão manual fim a fim (micro passo 3)', type
                 org_unit_id: org_a.id.to_s, message: { content: 'tentativa única' }, idempotency_key: 'dup-1' }
     2.times do
       post admit_path, params: payload, headers: agent_a.create_new_auth_token
-      expect(response).to have_http_status(:ok).or have_http_status(:created), scope_diag
+      expect(response).to have_http_status(:ok).or have_http_status(:created)
     end
 
     created = Conversation.order(:id).last
