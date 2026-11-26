@@ -4,8 +4,8 @@
 # same-account em leitura e escrita, após prova account do recurso; cross-account sempre nega.
 # Só deve ser chamado para inboxes marcadas (os hooks verificam antes).
 class Connecta::Scope::Gate
-  READ_PERMISSIONS = %w[acompanhar atender].freeze
-  WRITE_PERMISSIONS = %w[atender].freeze
+  READ_PERMISSIONS = %w[acompanhar atender gerir].freeze
+  WRITE_PERMISSIONS = %w[atender gerir].freeze
 
   def initialize(user)
     @user = user
@@ -59,7 +59,7 @@ class Connecta::Scope::Gate
 
   def agent_allowed?(conversation, action, scope: nil)
     scope ||= Connecta::Scope::ConversationScope.find_by(conversation_id: conversation.id)
-    scope_allowed?(scope, conversation.inbox_id, action)
+    scope_allowed?(scope, conversation.inbox_id, action) && assignee_allowed?(conversation, scope)
   end
 
   # T3.9: manutenção bloqueia o envio humano (write) com 409. Entrada continua
@@ -72,7 +72,14 @@ class Connecta::Scope::Gate
   end
 
   def scope_readable?(scope)
-    !@projection.admin? && scope_allowed?(scope, scope.inbox_id, :read)
+    conversation = Conversation.find_by(id: scope.conversation_id)
+    !@projection.admin? && conversation.present? && scope_allowed?(scope, scope.inbox_id, :read) &&
+      assignee_allowed?(conversation, scope)
+  end
+
+  def assignee_allowed?(conversation, scope)
+    conversation.assignee_id.nil? || conversation.assignee_id == @user.id ||
+      @projection.granted_paths(['gerir']).any? { |path| scope.org_unit.path.start_with?(path) }
   end
 
   # Setor do grant ou um ancestral dele: o caminho do setor da conversa começa pelo caminho do grant.

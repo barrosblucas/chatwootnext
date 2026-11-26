@@ -1,7 +1,7 @@
 class Connecta::Scope::UserGrant < Connecta::Scope::BaseRecord
   self.table_name = 'connecta_g0_user_grants'
 
-  PERMISSIONS = %w[acompanhar atender admin_nominal].freeze
+  PERMISSIONS = %w[acompanhar atender transferir gerir admin_nominal].freeze
 
   belongs_to :org_unit, class_name: 'Connecta::Scope::OrgUnit'
 

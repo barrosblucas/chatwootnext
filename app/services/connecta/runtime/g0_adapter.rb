@@ -66,15 +66,6 @@ class Connecta::Runtime::G0Adapter
   end
 
   module ConversationQueryTablesHook
-    private
-
-    def visible_conversation_ids
-      Connecta::Scope::ConversationScope.joins(:org_unit)
-                                        .where(state: Connecta::Scope::ConversationScope::READ_STATES, inbox_id: enforced_inbox_ids)
-                                        .where(connecta_org_units: { enabled: true })
-                                        .where('connecta_org_units.path LIKE ANY (ARRAY[?]::text[])', read_path_patterns)
-                                        .select(:conversation_id)
-    end
   end
 
   module GateContainmentHook

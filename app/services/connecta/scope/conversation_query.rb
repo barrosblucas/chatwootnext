@@ -42,11 +42,21 @@ class Connecta::Scope::ConversationQuery
 
   # Sem verificação ou projeção vencida, a lista de caminhos fica vazia e `LIKE ANY` não casa nenhuma linha.
   def visible_conversation_ids
+    unit_table = Connecta::Scope::OrgUnit.table_name
+    scope_table = Connecta::Scope::ConversationScope.table_name
     Connecta::Scope::ConversationScope.joins(:org_unit)
-                                      .where(state: Connecta::Scope::ConversationScope::READ_STATES, inbox_id: enforced_inbox_ids)
-                                      .where(connecta_g0_org_units: { enabled: true })
-                                      .where('connecta_g0_org_units.path LIKE ANY (ARRAY[?]::text[])', read_path_patterns)
-                                      .select(:conversation_id)
+                                      .joins("INNER JOIN conversations ON conversations.id = #{scope_table}.conversation_id")
+                                      .where(scope_table => { state: Connecta::Scope::ConversationScope::READ_STATES, inbox_id: enforced_inbox_ids })
+                                      .where(unit_table => { enabled: true })
+                                      .where("#{unit_table}.path LIKE ANY (ARRAY[?]::text[])", read_path_patterns)
+                                      .where("(conversations.assignee_id IS NULL OR conversations.assignee_id = ? OR " \
+                                             "#{unit_table}.path LIKE ANY (ARRAY[?]::text[]))", @user.id, manager_path_patterns)
+                                      .select("#{scope_table}.conversation_id")
+  end
+
+  def manager_path_patterns
+    return [] unless @projection.usable?
+    @projection.granted_paths(['gerir']).map { |path| "#{path}%" }
   end
 
   def read_path_patterns

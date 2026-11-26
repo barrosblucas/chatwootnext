@@ -9,6 +9,14 @@ module Connecta::Scope::ConversationHttpHook
   rescue Pundit::NotAuthorizedError
     raise unless Connecta::Scope::Projection.marked?(@conversation.inbox_id)
 
+    if controller_name == 'assignments' && !request.get?
+      scope = Connecta::Scope::ConversationScope.includes(:org_unit).find_by(conversation_id: @conversation.id)
+      projection = Connecta::Scope::Projection.new(Current.user)
+      if scope && projection.usable? &&
+         projection.granted_paths(Connecta::Scope::Gate::READ_PERMISSIONS).any? { |path| scope.org_unit.path.start_with?(path) }
+        raise Connecta::Scope::Denied, :forbidden
+      end
+    end
     raise Connecta::Scope::Denied, :not_found
   end
 

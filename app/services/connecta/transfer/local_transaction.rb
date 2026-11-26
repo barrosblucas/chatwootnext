@@ -303,6 +303,8 @@ class Connecta::Transfer::LocalTransaction # rubocop:disable Metrics/ClassLength
   # Por isso adotamos o escopo do callback quando ele é pristine; ausente mantém o create normal.
   def open_destination(origin, origin_conversation, summary)
     destination_conversation = Conversation.create!(origin_conversation.slice(:account_id, :inbox_id, :contact_id, :contact_inbox_id))
+    destination_conversation.update!(assignee: nil, assignee_agent_bot: nil) if
+      destination_conversation.assignee_id.present? || destination_conversation.assignee_agent_bot_id.present?
     adopt_or_create_destination_scope!(origin, origin_conversation, destination_conversation)
     # Nota privada é única para todos os que leem o destino. Não incluir nome,
     # id ou link do setor de origem: um agente do destino pode não ter grant na

@@ -13,11 +13,19 @@ class Api::V1::Accounts::Conversations::AssignmentsController < Api::V1::Account
   private
 
   def set_agent
-    resource = Conversations::AssignmentService.new(
-      conversation: @conversation,
-      assignee_id: params[:assignee_id],
-      assignee_type: params[:assignee_type]
-    ).perform
+    resource = nil
+    @conversation.with_lock do
+      if Connecta::Scope::Projection.marked?(@conversation.inbox_id) &&
+         !Connecta::Scope::AssignmentPolicy.new(conversation: @conversation, actor: Current.user,
+                                                target_id: params[:assignee_id], target_type: params[:assignee_type]).allowed?
+        return head :forbidden
+      end
+      resource = Conversations::AssignmentService.new(
+        conversation: @conversation,
+        assignee_id: params[:assignee_id],
+        assignee_type: params[:assignee_type]
+      ).perform
+    end
 
     render_agent(resource)
   end

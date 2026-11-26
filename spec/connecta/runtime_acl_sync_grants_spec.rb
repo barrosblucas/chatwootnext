@@ -39,6 +39,12 @@ RSpec.describe 'Connecta runtime · ACL grant tombstone + snapshot' do # rubocop
     Connecta::AclSyncState.create!(id: 1, last_version: 1, last_heartbeat_at: Time.current)
   end
 
+  it 'aceita gerir e rejeita permissões desconhecidas no sync' do
+    expect(sync([grant_upsert('permission' => 'gerir')])[:status]).to eq(:applied)
+    expect(Connecta::UserGrant.exists?(user_id: user_id, org_unit_id: org.id, permission: 'gerir')).to be(true)
+    expect { sync([grant_upsert('permission' => 'desconhecida')]) }.to raise_error(ActiveRecord::RecordInvalid)
+  end
+
   it 'evento legado sem grant_id mantém o comportamento (cria e revoga pela trinca)' do
     expect(sync([grant_upsert])[:status]).to eq(:applied)
     grant = Connecta::UserGrant.find_by!(user_id: user_id)

@@ -14,6 +14,76 @@ Connecta::Scope::Installer.install!
 RSpec.describe 'Connecta G0 · escopo de conversas (T0.2 parte A)', type: :request do
   include_context 'with connecta g0 scope fixture'
 
+  describe 'responsável e gestor por unidade' do
+    before do
+      Connecta::Scope::UserGrant.create!(user_id: agent_b.id, org_unit: org_a, permission: 'atender')
+      Connecta::Scope::UserGrant.create!(user_id: manager_a.id, org_unit: org_a, permission: 'gerir')
+    end
+
+    it 'mostra atendimento sem responsável aos dois e oculta lista, detalhe e mensagens após atribuição' do
+      [agent_a, agent_b].each do |agent|
+        get conversations_path, headers: agent.create_new_auth_token
+        expect(json['data']['payload'].pluck('id')).to include(conv_a.display_id)
+      end
+      conv_a.update!(assignee: agent_a)
+      get conversations_path, headers: agent_b.create_new_auth_token
+      expect(json['data']['payload'].pluck('id')).not_to include(conv_a.display_id)
+      get "#{conversations_path}/#{conv_a.display_id}", headers: agent_b.create_new_auth_token
+      expect(response).to have_http_status(:not_found)
+      get "#{conversations_path}/#{conv_a.display_id}/messages", headers: agent_b.create_new_auth_token
+      expect(response).to have_http_status(:not_found)
+      expect(Connecta::Scope::Gate.new(agent_b).write?(conv_a, access_path: 'spec')).to be(false)
+      get "#{conversations_path}/#{conv_a.display_id}", headers: agent_a.create_new_auth_token
+      expect(response).to have_http_status(:ok)
+    end
+
+    it 'gestor vê, reatribui e libera, sem acesso a outra unidade até receber grant' do
+      conv_a.update!(assignee: agent_a)
+      get "#{conversations_path}/#{conv_a.display_id}", headers: manager_a.create_new_auth_token
+      expect(response).to have_http_status(:ok)
+      get "#{conversations_path}/#{conv_b.display_id}", headers: manager_a.create_new_auth_token
+      expect(response).to have_http_status(:not_found)
+      post "#{conversations_path}/#{conv_a.display_id}/assignments", params: { assignee_id: agent_b.id },
+                                                                    headers: manager_a.create_new_auth_token
+      expect(response).to have_http_status(:ok)
+      expect(conv_a.reload.assignee_id).to eq(agent_b.id)
+      post "#{conversations_path}/#{conv_a.display_id}/assignments", params: { assignee_id: nil },
+                                                                    headers: manager_a.create_new_auth_token
+      expect(response).to have_http_status(:ok)
+      expect(conv_a.reload.assignee_id).to be_nil
+      Connecta::Scope::UserGrant.create!(user_id: manager_a.id, org_unit: org_b, permission: 'gerir')
+      get "#{conversations_path}/#{conv_b.display_id}", headers: manager_a.create_new_auth_token
+      expect(response).to have_http_status(:ok)
+    end
+
+    it 'permite liberar o próprio atendimento e devolve visibilidade aos colegas' do
+      post "#{conversations_path}/#{conv_a.display_id}/assignments", params: { assignee_id: agent_a.id },
+                                                                    headers: agent_a.create_new_auth_token
+      expect(response).to have_http_status(:ok)
+      expect(conv_a.reload.assignee_id).to eq(agent_a.id)
+      post "#{conversations_path}/#{conv_a.display_id}/assignments", params: { assignee_id: nil },
+                                                                    headers: agent_a.create_new_auth_token
+      expect(response).to have_http_status(:ok)
+      get "#{conversations_path}/#{conv_a.display_id}", headers: agent_b.create_new_auth_token
+      expect(response).to have_http_status(:ok)
+    end
+
+    it 'restringe transferência ao responsável com grant e destino habilitado' do
+      Connecta::Scope::UserGrant.create!(user_id: agent_a.id, org_unit: org_a, permission: 'transferir')
+      conv_a.update!(assignee: agent_a)
+      post "#{conversations_path}/#{conv_a.display_id}/assignments", params: { assignee_id: member_without_grant.id },
+                                                                    headers: agent_a.create_new_auth_token
+      expect(response).to have_http_status(:forbidden)
+      post "#{conversations_path}/#{conv_a.display_id}/assignments", params: { assignee_id: agent_b.id },
+                                                                    headers: agent_b.create_new_auth_token
+      expect(response).to have_http_status(:forbidden)
+      post "#{conversations_path}/#{conv_a.display_id}/assignments", params: { assignee_id: agent_b.id },
+                                                                    headers: agent_a.create_new_auth_token
+      expect(response).to have_http_status(:ok)
+      expect(conv_a.reload.assignee_id).to eq(agent_b.id)
+    end
+  end
+
   describe 'lista (GET conversations)' do
     it 'agente A vê o próprio setor, o descendente e o controle nativo, com contagem coerente' do
       get conversations_path, headers: agent_a.create_new_auth_token

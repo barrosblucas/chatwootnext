@@ -52,6 +52,22 @@ RSpec.describe 'Connecta runtime · transação prepare→commit→activated' do
     expect(Connecta::Transfer::TransferRecord.where(source_conversation_id: conv_a.id).count).to eq(1)
   end
 
+  it 'cria o destino sem responsável ao transferir atendimento atribuído' do
+    conv_a.update!(assignee: agent_a)
+    Connecta::Runtime::TransferTransaction.new(
+      account_id: account.id, conversation: conv_a, actor: agent_a,
+      destination_org_unit_id: org_b.id, summary: summary
+    ).call
+    record = Connecta::Transfer::TransferRecord.find_by!(source_conversation_id: conv_a.id)
+    destination = Conversation.find(record.destination_conversation_id)
+    expect(destination.assignee_id).to be_nil
+    expect(destination.assignee_agent_bot_id).to be_nil
+    destination_scope = Connecta::Scope::ConversationScope.find_by!(conversation_id: destination.id)
+    destination_scope.update!(state: 'active', case_version: 1)
+    expect(Connecta::Scope::Gate.new(agent_b).read?(destination, access_path: 'spec')).to be(true)
+    expect(Connecta::Scope::Gate.new(agent_a).read?(destination, access_path: 'spec')).to be(false)
+  end
+
   it 'nota do destino usa horário de MS (UTC-4) e resumo rotulado' do
     travel_to Time.utc(2026, 11, 15, 21, 8) do
       Connecta::Runtime::TransferTransaction.new(

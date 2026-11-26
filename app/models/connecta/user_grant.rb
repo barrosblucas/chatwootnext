@@ -19,7 +19,7 @@
 class Connecta::UserGrant < Connecta::BaseRecord
   self.table_name = 'connecta_user_grants'
 
-  PERMISSIONS = %w[acompanhar atender transferir admin_nominal].freeze
+  PERMISSIONS = %w[acompanhar atender transferir gerir admin_nominal].freeze
 
   belongs_to :org_unit, class_name: 'Connecta::OrgUnit', inverse_of: :user_grants
 
