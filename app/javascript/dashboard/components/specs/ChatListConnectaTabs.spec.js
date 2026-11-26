@@ -265,6 +265,11 @@ describe('ChatList Connecta dashboard tabs', () => {
 
     expect(Object.keys(tabCounts())).toContain('all');
     expect(Object.keys(tabCounts())).not.toContain('bot');
+    wrapper.findComponent(ChatTypeTabs).vm.$emit('chatTabChange', 'all');
+    await flushPromises();
+    expect(payloads('updateChatListFilters').at(-1)).toMatchObject({
+      connectaTab: 'todos',
+    });
   });
 
   it('shows exact successful totals and blank for unknown instead of fake zero', async () => {
