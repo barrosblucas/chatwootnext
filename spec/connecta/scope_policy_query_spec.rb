@@ -308,6 +308,21 @@ RSpec.describe 'Connecta G0 · escopo de conversas (T0.2 parte A)', type: :reque
   end
 
   describe 'escrita (gestor sem escrita; agente com grant escreve)' do
+    it 'atribui a primeira resposta e rejeita a segunda sem criar mensagem' do
+      Connecta::Scope::UserGrant.create!(user_id: agent_b.id, org_unit: org_a, permission: 'atender')
+      post "#{conversations_path}/#{conv_a.display_id}/messages",
+           params: { content: 'primeira', message_type: 'outgoing' }, headers: agent_a.create_new_auth_token
+      expect(response).to have_http_status(:ok)
+      expect(conv_a.reload.assignee_id).to eq(agent_a.id)
+
+      expect do
+        post "#{conversations_path}/#{conv_a.display_id}/messages",
+             params: { content: 'segunda', message_type: 'outgoing' }, headers: agent_b.create_new_auth_token
+      end.not_to change(Message, :count)
+      expect(response).to have_http_status(:forbidden)
+      expect(conv_a.reload.assignee_id).to eq(agent_a.id)
+    end
+
     it 'agente A envia mensagem na própria conversa' do
       expect do
         post "#{conversations_path}/#{conv_a.display_id}/messages", params: { content: 'olá', message_type: 'outgoing' },

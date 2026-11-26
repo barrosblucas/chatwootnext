@@ -83,6 +83,27 @@ RSpec.describe 'Connecta G0 · socket pendente apos perda de acesso (RF5/F1)', t
     clear_enqueued_jobs
   end
 
+  it 'revalida destinatários após atribuição e revoga a conversa do colega em tempo real' do
+    Connecta::Scope::UserGrant.create!(user_id: agent_b.id, org_unit: org_a, permission: 'atender')
+    Connecta::Scope::UserGrant.create!(user_id: manager_a.id, org_unit: org_a, permission: 'gerir')
+    listener.message_created(Events::Base.new(:'message.created', Time.zone.now, message: marked_message))
+    tokens, = enqueued_broadcast_args
+    expect(tokens).to include(agent_a.pubsub_token, agent_b.pubsub_token, manager_a.pubsub_token, native_admin.pubsub_token)
+
+    conv_a.update!(assignee: agent_a)
+    allow(ActionCable.server).to receive(:broadcast)
+    listener.assignee_changed(Events::Base.new(:'assignee.changed', Time.zone.now, conversation: conv_a))
+    expect(ActionCable.server).to have_received(:broadcast).with(
+      agent_b.pubsub_token, hash_including(event: 'scope.revoked', data: hash_including(conversation_id: conv_a.display_id))
+    )
+    listener.message_created(Events::Base.new(:'message.created', Time.zone.now, message: marked_message))
+    tokens, = enqueued_broadcast_args
+    expect(tokens).to include(agent_a.pubsub_token, manager_a.pubsub_token, native_admin.pubsub_token)
+    expect(tokens).not_to include(agent_b.pubsub_token)
+    collected = execute_and_collect(serialized_broadcast_hash)
+    expect(broadcast_streams(collected)).not_to include(agent_b.pubsub_token)
+  end
+
   it 'positivo autorizado: message.created chega a A e manager_a com full body; nominal só metadados e nativo full com conteúdo' do
     listener.message_created(Events::Base.new(:'message.created', Time.zone.now, message: marked_message))
     tokens, event_name, _payload = enqueued_broadcast_args

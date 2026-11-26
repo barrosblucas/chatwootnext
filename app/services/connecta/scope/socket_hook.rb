@@ -13,7 +13,7 @@ module Connecta::Scope::SocketHook
   CONVERSATION_EVENTS = {
     message_created: :message, message_updated: :message, first_reply_created: :message, conversation_created: :conversation,
     conversation_read: :conversation, conversation_status_changed: :conversation, conversation_updated: :conversation,
-    assignee_changed: :conversation, team_changed: :conversation, conversation_contact_changed: :conversation,
+    team_changed: :conversation, conversation_contact_changed: :conversation,
     conversation_typing_on: :conversation, conversation_typing_off: :conversation, conversation_recording: :conversation,
     scheduled_message_created: :scheduled_message, scheduled_message_updated: :scheduled_message,
     scheduled_message_deleted: :scheduled_message, recurring_scheduled_message_created: :recurring_scheduled_message,
@@ -37,6 +37,12 @@ module Connecta::Scope::SocketHook
 
   CONVERSATION_EVENTS.each do |event_name, subject|
     define_method(event_name) { |event| with_socket_conversation(event.data[subject]) { super(event) } }
+  end
+
+  def assignee_changed(event)
+    conversation = event.data[:conversation]
+    with_socket_conversation(conversation) { super(event) }
+    Connecta::Runtime::CacheRevocation.assignment_changed!(conversation)
   end
 
   # Menção vai direto ao token do mencionado (sem user_tokens), então o filtro roda antes do listener.

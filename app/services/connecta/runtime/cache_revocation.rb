@@ -1,4 +1,20 @@
 class Connecta::Runtime::CacheRevocation
+  def self.assignment_changed!(conversation)
+    current = Conversation.find_by(id: conversation.id)
+    return unless current&.assignee_id && Connecta::Scope::Projection.marked?(current.inbox_id)
+
+    unassigned = Conversation.find(current.id)
+    unassigned.assignee_id = nil
+    user_ids = current.inbox.members.filter_map do |user|
+      gate = Connecta::Scope::Gate.new(user)
+      next if gate.read?(current, access_path: 'assignment_revoke')
+      next unless gate.read?(unassigned, access_path: 'assignment_previous_visibility')
+
+      user.id
+    end
+    announce(current, user_ids)
+  end
+
   # Leitores do escopo: grants acompanhar/atender/admin_nominal no setor da
   # conversa ou num ancestral (gate.rb granted_sector?), com época válida,
   # mais admins nativos same-account. Nomes de tabela via modelo: o adapter G0

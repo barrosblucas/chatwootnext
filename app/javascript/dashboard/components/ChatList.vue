@@ -235,8 +235,7 @@ const userPermissions = computed(() => {
   return getUserPermissions(currentUser.value, currentAccountId.value);
 });
 
-// Connecta queue scope: Todos and Bot are administrator-only. Standard
-// attendants keep Minhas and Aguardando; the server still enforces the rows.
+// The server supplies the manager capability and still enforces every row.
 const isAccountAdministrator = computed(() => {
   return currentRole.value === 'administrator';
 });
@@ -294,7 +293,7 @@ const assigneeTabItems = computed(() => {
       : conversationStats.value[countKey] || 0,
   }));
   // Todos is administrator-only: attendants only reach their own sector queue.
-  const scopedBaseItems = isAccountAdministrator.value
+  const scopedBaseItems = isAccountAdministrator.value || isConnectaManager.value
     ? baseItems
     : baseItems.filter(item => item.key !== wootConstants.ASSIGNEE_TYPE.ALL);
   // The Bot tab is appended, never permission-filtered: triage rows are only
@@ -341,6 +340,7 @@ const shouldExcludeBots = computed(() => {
 // (id/name only, same boundary as the selected-tab filter) plus the actor's
 // selection. Null aggregates every authorized sector; clearing restores it.
 const connectaSectorOptions = ref([]);
+const isConnectaManager = ref(false);
 const connectaSectorLoading = ref(false);
 const selectedConnectaSectorId = ref(null);
 let connectaSectorRequestId = 0;
@@ -877,6 +877,7 @@ function resetAndFetchData() {
 async function fetchConnectaSectorCatalog() {
   if (!isConnectaDashboard.value) {
     connectaSectorOptions.value = [];
+    isConnectaManager.value = false;
     return;
   }
   const accountId = currentAccountId.value;
@@ -884,11 +885,13 @@ async function fetchConnectaSectorCatalog() {
   const requestId = connectaSectorRequestId;
   connectaSectorLoading.value = true;
   connectaSectorOptions.value = [];
+  isConnectaManager.value = false;
   try {
     const { data } = await ConnectaAPI.getOrgUnits();
     if (requestId !== connectaSectorRequestId) return;
     if (currentAccountId.value !== accountId) return;
     const options = extractOrgUnitOptions(data);
+    isConnectaManager.value = data.connecta_manager === true;
     connectaSectorOptions.value = options;
     if (
       connectaSectorId.value !== null &&
@@ -901,6 +904,7 @@ async function fetchConnectaSectorCatalog() {
     if (requestId !== connectaSectorRequestId) return;
     if (currentAccountId.value !== accountId) return;
     connectaSectorOptions.value = [];
+    isConnectaManager.value = false;
     // No retry here: the aggregate stays in force and the next context or
     // account signal refetches the catalog.
   } finally {

@@ -257,6 +257,16 @@ describe('ChatList Connecta dashboard tabs', () => {
     ]);
   });
 
+  it('shows Todos to a Connecta manager without showing Bot', async () => {
+    ConnectaAPI.getOrgUnits.mockResolvedValue({
+      data: { org_units: [], connecta_manager: true },
+    });
+    await mountChatList();
+
+    expect(Object.keys(tabCounts())).toContain('all');
+    expect(Object.keys(tabCounts())).not.toContain('bot');
+  });
+
   it('shows exact successful totals and blank for unknown instead of fake zero', async () => {
     setRole('administrator');
     await mountChatList();

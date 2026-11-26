@@ -9,7 +9,7 @@ module Connecta::Scope::ConversationHttpHook
   rescue Pundit::NotAuthorizedError
     raise unless Connecta::Scope::Projection.marked?(@conversation.inbox_id)
 
-    if controller_name == 'assignments' && !request.get?
+    if %w[assignments messages].include?(controller_name) && !request.get?
       scope = Connecta::Scope::ConversationScope.includes(:org_unit).find_by(conversation_id: @conversation.id)
       projection = Connecta::Scope::Projection.new(Current.user)
       if scope && projection.usable? &&
@@ -18,6 +18,32 @@ module Connecta::Scope::ConversationHttpHook
       end
     end
     raise Connecta::Scope::Denied, :not_found
+  end
+
+  def connecta_claim_before_message!
+    return yield unless @conversation && Connecta::Scope::Projection.marked?(@conversation.inbox_id)
+
+    @conversation.with_lock do
+      gate = Connecta::Scope::Gate.new(Current.user)
+      raise Connecta::Scope::Denied, :forbidden unless gate.write?(@conversation, access_path: 'message_claim')
+
+      if connecta_human_reply? && @conversation.assignee_id.nil? && @conversation.assignee_agent_bot_id.nil?
+        @conversation.update!(assignee: Current.user)
+      end
+      yield
+      raise ActiveRecord::Rollback unless response.successful?
+    end
+  end
+
+  def connecta_human_reply?
+    return false unless Current.user.is_a?(User)
+    return false if Connecta::Runtime::Feature.reception_sender_user_ids.include?(Current.user.id)
+    return false unless params[:message_type].blank? || params[:message_type] == 'outgoing'
+    return false if ActiveModel::Type::Boolean.new.cast(params[:private])
+
+    attrs = params[:content_attributes]
+    attrs.blank? || (attrs.respond_to?(:[]) && attrs[:automation_rule_id].blank? &&
+      attrs[:connecta_bot] != true && attrs[:relay_origin] != 'bot')
   end
 
   # Qualquer escrita (método que não seja GET) em conversa de inbox marcada: só agente com grant na etapa active e versão válida.
