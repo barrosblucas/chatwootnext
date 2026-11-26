@@ -308,6 +308,27 @@ RSpec.describe 'Connecta G0 · escopo de conversas (T0.2 parte A)', type: :reque
   end
 
   describe 'escrita (gestor sem escrita; agente com grant escreve)' do
+    it 'revalida sob lock quando outro agente reivindica após a primeira autorização' do
+      Connecta::Scope::UserGrant.create!(user_id: agent_b.id, org_unit: org_a, permission: 'atender')
+      allow(Connecta::Scope::Gate).to receive(:new).and_wrap_original do |original, user|
+        gate = original.call(user)
+        if user.id == agent_b.id
+          allow(gate).to receive(:write?).and_wrap_original do |write, conversation, **options|
+            result = write.call(conversation, **options)
+            conv_a.update!(assignee: agent_a) if options[:access_path] == 'message_create'
+            result
+          end
+        end
+        gate
+      end
+
+      post "#{conversations_path}/#{conv_a.display_id}/messages",
+           params: { content: 'segunda sob lock', message_type: 'outgoing' }, headers: agent_b.create_new_auth_token
+      expect(response).to have_http_status(:forbidden)
+      expect(conv_a.reload.assignee_id).to eq(agent_a.id)
+      expect(conv_a.messages.where(content: 'segunda sob lock')).to be_empty
+    end
+
     it 'atribui a primeira resposta e rejeita a segunda sem criar mensagem' do
       Connecta::Scope::UserGrant.create!(user_id: agent_b.id, org_unit: org_a, permission: 'atender')
       post "#{conversations_path}/#{conv_a.display_id}/messages",

@@ -35,7 +35,7 @@ module Connecta::Scope::ConversationHttpHook # rubocop:disable Metrics/ModuleLen
     end
   end
 
-  def connecta_human_reply? # rubocop:disable Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
+  def connecta_human_reply? # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
     return false unless Current.user.is_a?(User)
     return false if Connecta::Runtime::Feature.reception_sender_user_ids.include?(Current.user.id)
     return false unless params[:message_type].blank? || params[:message_type] == 'outgoing'
