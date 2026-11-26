@@ -49,13 +49,14 @@ class Connecta::Scope::ConversationQuery
                                       .where(scope_table => { state: Connecta::Scope::ConversationScope::READ_STATES, inbox_id: enforced_inbox_ids })
                                       .where(unit_table => { enabled: true })
                                       .where("#{unit_table}.path LIKE ANY (ARRAY[?]::text[])", read_path_patterns)
-                                      .where("(conversations.assignee_id IS NULL OR conversations.assignee_id = ? OR " \
+                                      .where('(conversations.assignee_id IS NULL OR conversations.assignee_id = ? OR ' \
                                              "#{unit_table}.path LIKE ANY (ARRAY[?]::text[]))", @user.id, manager_path_patterns)
                                       .select("#{scope_table}.conversation_id")
   end
 
   def manager_path_patterns
     return [] unless @projection.usable?
+
     @projection.granted_paths(['gerir']).map { |path| "#{path}%" }
   end
 

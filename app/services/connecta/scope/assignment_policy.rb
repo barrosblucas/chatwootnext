@@ -6,11 +6,12 @@ class Connecta::Scope::AssignmentPolicy
     @target_type = target_type
   end
 
-  def allowed?
+  def allowed? # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
     return false if @target_type.to_s == 'AgentBot'
+
     scope = Connecta::Scope::ConversationScope.includes(:org_unit).find_by(conversation_id: @conversation.id)
-    return false unless scope && scope.org_unit.enabled?
-    return false unless eligible_target?(scope) if @target_id
+    return false unless scope&.org_unit&.enabled?
+    return false if @target_id && !eligible_target?(scope)
 
     return true if Connecta::Scope::NativeAdmin.authorized_for?(@actor, @conversation)
 
@@ -29,6 +30,7 @@ class Connecta::Scope::AssignmentPolicy
   def eligible_target?(scope)
     target = @conversation.account.users.find_by(id: @target_id)
     return false unless target
+
     projection = Connecta::Scope::Projection.new(target)
     projection.usable? && covers?(projection, scope, 'atender')
   end

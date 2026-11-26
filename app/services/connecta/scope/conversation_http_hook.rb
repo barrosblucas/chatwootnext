@@ -4,7 +4,7 @@ module Connecta::Scope::ConversationHttpHook
   private
 
   # Leitura: o show? nativo negaria com 401. Em inbox marcada a conversa não é revelada (404). Inbox não marcada segue nativa.
-  def conversation
+  def conversation # rubocop:disable Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
     super
   rescue Pundit::NotAuthorizedError
     raise unless Connecta::Scope::Projection.marked?(@conversation.inbox_id)

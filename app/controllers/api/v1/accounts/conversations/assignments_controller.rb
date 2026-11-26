@@ -20,6 +20,7 @@ class Api::V1::Accounts::Conversations::AssignmentsController < Api::V1::Account
                                                 target_id: params[:assignee_id], target_type: params[:assignee_type]).allowed?
         return head :forbidden
       end
+
       resource = Conversations::AssignmentService.new(
         conversation: @conversation,
         assignee_id: params[:assignee_id],
