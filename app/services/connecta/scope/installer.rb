@@ -38,7 +38,7 @@ module Connecta::Scope::Installer
       ConversationBuilder <= Connecta::Scope::ConversationReuse::BuilderInterceptor
   end
 
-  def self.install_conversations!
+  def self.install_conversations! # rubocop:disable Metrics/MethodLength
     [Api::V1::Accounts::ConversationsController, Api::V1::Accounts::Conversations::BaseController].each do |controller|
       controller.prepend(Connecta::Scope::ConversationHttpHook)
       controller.before_action(:connecta_scope_write_guard!)

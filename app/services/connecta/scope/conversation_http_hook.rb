@@ -1,6 +1,6 @@
 # Prepend em Api::V1::Accounts::ConversationsController e Api::V1::Accounts::Conversations::BaseController (instalado só pelo spike G0).
 # Autenticado em inbox marcada: leitura negada vira 404, escrita e criação negadas viram 403. Não autenticado segue para o 401 nativo.
-module Connecta::Scope::ConversationHttpHook
+module Connecta::Scope::ConversationHttpHook # rubocop:disable Metrics/ModuleLength
   private
 
   # Leitura: o show? nativo negaria com 401. Em inbox marcada a conversa não é revelada (404). Inbox não marcada segue nativa.
@@ -20,7 +20,7 @@ module Connecta::Scope::ConversationHttpHook
     raise Connecta::Scope::Denied, :not_found
   end
 
-  def connecta_claim_before_message!
+  def connecta_claim_before_message! # rubocop:disable Metrics/CyclomaticComplexity
     return yield unless @conversation && Connecta::Scope::Projection.marked?(@conversation.inbox_id)
 
     @conversation.with_lock do
@@ -35,15 +35,19 @@ module Connecta::Scope::ConversationHttpHook
     end
   end
 
-  def connecta_human_reply?
+  def connecta_human_reply? # rubocop:disable Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
     return false unless Current.user.is_a?(User)
     return false if Connecta::Runtime::Feature.reception_sender_user_ids.include?(Current.user.id)
     return false unless params[:message_type].blank? || params[:message_type] == 'outgoing'
     return false if ActiveModel::Type::Boolean.new.cast(params[:private])
 
     attrs = params[:content_attributes]
+    attrs = JSON.parse(attrs) if attrs.is_a?(String)
     attrs.blank? || (attrs.respond_to?(:[]) && attrs[:automation_rule_id].blank? &&
-      attrs[:connecta_bot] != true && attrs[:relay_origin] != 'bot')
+      attrs['automation_rule_id'].blank? && attrs[:connecta_bot] != true && attrs['connecta_bot'] != true &&
+      attrs[:relay_origin] != 'bot' && attrs['relay_origin'] != 'bot')
+  rescue JSON::ParserError
+    true
   end
 
   # Qualquer escrita (método que não seja GET) em conversa de inbox marcada: só agente com grant na etapa active e versão válida.

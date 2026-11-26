@@ -210,6 +210,7 @@ const activeFolderVisibility = computed(() => {
 });
 
 const currentRole = useMapGetter('getCurrentRole');
+const isConnectaManager = ref(false);
 const canManageActiveFolder = computed(() => {
   if (!activeFolder.value) return true;
   if (activeFolder.value.visibility === 'global') {
@@ -292,14 +293,15 @@ const assigneeTabItems = computed(() => {
       ? connectaBadgeCount(key)
       : conversationStats.value[countKey] || 0,
   }));
-  // Todos is administrator-only: attendants only reach their own sector queue.
-  const scopedBaseItems = isAccountAdministrator.value || isConnectaManager.value
-    ? baseItems
-    : baseItems.filter(item => item.key !== wootConstants.ASSIGNEE_TYPE.ALL);
+  // Todos is also available to managers, with rows restricted by the server.
+  const scopedBaseItems =
+    isAccountAdministrator.value || isConnectaManager.value
+      ? baseItems
+      : baseItems.filter(item => item.key !== wootConstants.ASSIGNEE_TYPE.ALL);
   // The Bot tab is appended, never permission-filtered: triage rows are only
   // reachable here once the human tabs exclude them, so hiding the tab would
   // strand them. The server still enforces every row it serves.
-  // Connecta scope: administrators only, like Todos.
+  // Connecta scope: Bot remains administrators only.
   if (!botTabVisible.value || !isAccountAdministrator.value)
     return scopedBaseItems;
   return [
@@ -340,7 +342,6 @@ const shouldExcludeBots = computed(() => {
 // (id/name only, same boundary as the selected-tab filter) plus the actor's
 // selection. Null aggregates every authorized sector; clearing restores it.
 const connectaSectorOptions = ref([]);
-const isConnectaManager = ref(false);
 const connectaSectorLoading = ref(false);
 const selectedConnectaSectorId = ref(null);
 let connectaSectorRequestId = 0;

@@ -89,8 +89,10 @@ RSpec.describe 'Connecta G0 · socket pendente apos perda de acesso (RF5/F1)', t
     listener.message_created(Events::Base.new(:'message.created', Time.zone.now, message: marked_message))
     tokens, = enqueued_broadcast_args
     expect(tokens).to include(agent_a.pubsub_token, agent_b.pubsub_token, manager_a.pubsub_token, native_admin.pubsub_token)
+    pending = serialized_broadcast_hash
 
     conv_a.update!(assignee: agent_a)
+    expect(broadcast_streams(execute_and_collect(pending))).not_to include(agent_b.pubsub_token)
     allow(ActionCable.server).to receive(:broadcast)
     listener.assignee_changed(Events::Base.new(:'assignee.changed', Time.zone.now, conversation: conv_a))
     expect(ActionCable.server).to have_received(:broadcast).with(
