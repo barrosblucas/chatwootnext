@@ -8,3 +8,4 @@
 
 ## Tests
 - Adicionada cobertura de visibilidade, atribuição, transferência, sync, lock de resposta, destinatários realtime e aba de gestor; execução no GitHub Actions.
+- Dividido o teste de destinatários realtime, preservando as verificações e respeitando o limite de expectativas.

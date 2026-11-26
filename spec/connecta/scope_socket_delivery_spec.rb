@@ -83,7 +83,7 @@ RSpec.describe 'Connecta G0 · socket pendente apos perda de acesso (RF5/F1)', t
     clear_enqueued_jobs
   end
 
-  it 'revalida destinatários após atribuição e revoga a conversa do colega em tempo real' do
+  it 'revalida os destinatários de mensagem enfileirada antes da atribuição' do
     Connecta::Scope::UserGrant.create!(user_id: agent_b.id, org_unit: org_a, permission: 'atender')
     Connecta::Scope::UserGrant.create!(user_id: manager_a.id, org_unit: org_a, permission: 'gerir')
     listener.message_created(Events::Base.new(:'message.created', Time.zone.now, message: marked_message))
@@ -93,6 +93,12 @@ RSpec.describe 'Connecta G0 · socket pendente apos perda de acesso (RF5/F1)', t
 
     conv_a.update!(assignee: agent_a)
     expect(broadcast_streams(execute_and_collect(pending))).not_to include(agent_b.pubsub_token)
+  end
+
+  it 'revoga a conversa do colega e restringe eventos após atribuição' do
+    Connecta::Scope::UserGrant.create!(user_id: agent_b.id, org_unit: org_a, permission: 'atender')
+    Connecta::Scope::UserGrant.create!(user_id: manager_a.id, org_unit: org_a, permission: 'gerir')
+    conv_a.update!(assignee: agent_a)
     allow(ActionCable.server).to receive(:broadcast)
     listener.assignee_changed(Events::Base.new(:'assignee.changed', Time.zone.now, conversation: conv_a))
     expect(ActionCable.server).to have_received(:broadcast).with(
