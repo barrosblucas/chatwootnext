@@ -58,7 +58,7 @@ module AssignmentHandler
     account.account_users.exists?(user_id: Current.user.id, role: :administrator)
   end
 
-  def connecta_unit_manager? # rubocop:disable Metrics/CyclomaticComplexity
+  def connecta_unit_manager? # rubocop:disable Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
     return false unless Connecta::Scope::ScopedInbox.table_exists? && Connecta::Scope::Projection.marked?(inbox_id)
     return false unless account.users.exists?(id: Current.user.id)
 
