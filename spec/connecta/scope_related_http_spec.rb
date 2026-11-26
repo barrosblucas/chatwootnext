@@ -343,11 +343,11 @@ RSpec.describe 'Connecta G0 · superfícies HTTP relacionadas (T0.2 parte B2)', 
       expect(conv_a.reload.status).to eq('open')
     end
 
-    it 'atribuição em lote não amplia o escopo: o novo responsável sem grant continua sem ler a conversa' do
+    it 'atribuição em lote rejeita responsável sem grant no setor' do
       post bulk_path, params: { type: 'conversation', ids: [conv_a.display_id], fields: { assignee_id: agent_b.id } }, headers: token_a, as: :json
       perform_enqueued_jobs(only: BulkActionsJob)
 
-      expect(conv_a.reload.assignee_id).to eq(agent_b.id)
+      expect(conv_a.reload.assignee_id).to be_nil
       get conv_a_path, headers: token_b
       expect(response).to have_http_status(:not_found)
     end

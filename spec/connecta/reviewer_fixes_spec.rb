@@ -7,7 +7,7 @@ require_relative 'support/g0_scope_fixture'
 Connecta::G0ScopeSchema.ensure!
 Connecta::Scope::Installer.install!
 
-RSpec.describe 'Connecta review regressions', type: :request do # rubocop:disable RSpec/DescribeClass
+RSpec.describe 'Connecta review regressions', type: :request do
   include_context 'with connecta g0 scope fixture'
 
   it 'não atribui em lote a pessoa sem atender no setor' do

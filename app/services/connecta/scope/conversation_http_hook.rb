@@ -35,6 +35,17 @@ module Connecta::Scope::ConversationHttpHook # rubocop:disable Metrics/ModuleLen
     end
   end
 
+  def connecta_scope_locked_write!
+    return yield if request.get? || action_name == 'transcript' || @conversation.nil?
+    return yield unless Connecta::Scope::Projection.marked?(@conversation.inbox_id)
+
+    @conversation.with_lock do
+      connecta_scope_write_guard!
+      yield
+      raise ActiveRecord::Rollback unless response.successful?
+    end
+  end
+
   def connecta_human_reply? # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
     return false unless Current.user.is_a?(User)
     return false if Connecta::Runtime::Feature.reception_sender_user_ids.include?(Current.user.id)

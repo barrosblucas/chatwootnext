@@ -42,6 +42,7 @@ module Connecta::Scope::Installer
     [Api::V1::Accounts::ConversationsController, Api::V1::Accounts::Conversations::BaseController].each do |controller|
       controller.prepend(Connecta::Scope::ConversationHttpHook)
       controller.before_action(:connecta_scope_write_guard!)
+      controller.around_action(:connecta_scope_locked_write!)
     end
     # Ciclo de vida da resolução (decisão 005): reabertura automática nativa
     # nunca reabre conversa resolvida de inbox marcada; mudança de status

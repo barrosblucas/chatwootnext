@@ -25,9 +25,16 @@ class BulkActionsJob < ApplicationJob
   def bulk_conversation_update
     params = available_params(@params)
     records.each do |conversation|
-      bulk_add_labels(conversation)
-      bulk_snoozed_until(conversation)
-      conversation.update!(params) if params
+      if connecta_marked?(conversation)
+        conversation.with_lock do
+          next unless connecta_bulk_allowed?(conversation, params)
+
+          remove_labels(conversation)
+          update_conversation(conversation, params)
+        end
+      else
+        update_conversation(conversation, params)
+      end
     rescue CustomExceptions::Conversation::AlreadyAssigned
       # The conversation belongs to another agent. Skip it instead of taking the
       # rest of the batch down with it: there is no response to raise into here.
@@ -37,8 +44,28 @@ class BulkActionsJob < ApplicationJob
 
   def bulk_remove_labels
     records.each do |conversation|
-      remove_labels(conversation)
+      remove_labels(conversation) unless connecta_marked?(conversation)
     end
+  end
+
+  def connecta_marked?(conversation)
+    Connecta::Scope::ScopedInbox.table_exists? && Connecta::Scope::Projection.marked?(conversation.inbox_id)
+  end
+
+  def connecta_bulk_allowed?(conversation, params)
+    return false unless Connecta::Scope::Gate.new(@user).write?(conversation, access_path: 'bulk_job')
+    return true unless params&.key?('assignee_id') || params&.key?(:assignee_id)
+
+    Connecta::Scope::AssignmentPolicy.new(
+      conversation: conversation, actor: @user,
+      target_id: params[:assignee_id] || params['assignee_id'], target_type: nil
+    ).allowed?
+  end
+
+  def update_conversation(conversation, params)
+    bulk_add_labels(conversation)
+    bulk_snoozed_until(conversation)
+    conversation.update!(params) if params
   end
 
   def available_params(params)
