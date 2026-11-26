@@ -58,14 +58,15 @@ module AssignmentHandler
     account.account_users.exists?(user_id: Current.user.id, role: :administrator)
   end
 
-  def connecta_unit_manager?
+  def connecta_unit_manager? # rubocop:disable Metrics/CyclomaticComplexity
     return false unless Connecta::Scope::ScopedInbox.table_exists? && Connecta::Scope::Projection.marked?(inbox_id)
     return false unless account.users.exists?(id: Current.user.id)
 
     scope = Connecta::Scope::ConversationScope.includes(:org_unit).find_by(conversation_id: id)
     projection = Connecta::Scope::Projection.new(Current.user)
-    scope && scope.org_unit.enabled? && projection.usable? &&
-      projection.granted_paths(['gerir']).any? { |path| scope.org_unit.path.start_with?(path) }
+    return false unless scope&.org_unit&.enabled? && projection.usable?
+
+    projection.granted_paths(['gerir']).any? { |path| scope.org_unit.path.start_with?(path) }
   end
 
   def ensure_assignee_is_from_team
