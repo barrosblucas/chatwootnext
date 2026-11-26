@@ -132,14 +132,14 @@ RSpec.describe 'Connecta · abas do dashboard (dashboard tabs)', type: :request 
   end
 
   describe 'aguardando' do
-    it 'agrega os setores autorizados com triagem completa, mesmo ja atribuido', :aggregate_failures do
+    it 'agrega os setores autorizados com triagem completa e sem responsável', :aggregate_failures do
       get tabs_path, params: opt_in('aguardando'), headers: agent.create_new_auth_token, as: :json
 
       expect(response).to have_http_status(:ok)
       expect(tab_ids).to contain_exactly(
-        convs[:a_mine].display_id, convs[:a_open].display_id, convs[:b_open].display_id, convs[:generic].display_id
+        convs[:a_open].display_id, convs[:b_open].display_id, convs[:generic].display_id
       )
-      expect(json['data']['meta']).to include('all_count' => 4)
+      expect(json['data']['meta']).to include('all_count' => 3)
       expect(client).not_to have_received(:bot_eligibility)
     end
 
@@ -157,7 +157,7 @@ RSpec.describe 'Connecta · abas do dashboard (dashboard tabs)', type: :request 
       get meta_path, params: opt_in('aguardando'), headers: agent.create_new_auth_token, as: :json
 
       expect(response).to have_http_status(:ok)
-      expect(json['meta']).to include('all_count' => 4)
+      expect(json['meta']).to include('all_count' => 3)
       expect(client).not_to have_received(:bot_eligibility)
     end
 
@@ -177,7 +177,7 @@ RSpec.describe 'Connecta · abas do dashboard (dashboard tabs)', type: :request 
 
       expect(response).to have_http_status(:ok)
       expect(tab_ids).to contain_exactly(
-        convs[:a_mine].display_id, convs[:a_open].display_id, convs[:generic].display_id
+        convs[:a_open].display_id, convs[:generic].display_id
       )
     end
 
@@ -230,12 +230,20 @@ RSpec.describe 'Connecta · abas do dashboard (dashboard tabs)', type: :request 
 
       expect(response).to have_http_status(:ok), scope_diag(org_a)
       expect(tab_ids).to contain_exactly(
-        convs[:a_mine].display_id, convs[:a_open].display_id, convs[:b_open].display_id, convs[:generic].display_id
+        convs[:a_open].display_id, convs[:b_open].display_id, convs[:generic].display_id
       ), scope_diag(org_a)
     end
   end
 
-  describe 'todos (admin-only)' do
+  describe 'todos (admin ou gestor)' do
+    it 'permite ao gestor ver conversas atribuídas no setor gerido' do
+      Connecta::Scope::UserGrant.create!(user_id: outsider.id, org_unit: org_a, permission: 'gerir')
+      get tabs_path, params: opt_in('todos'), headers: outsider.create_new_auth_token, as: :json
+
+      expect(tab_ids).to include(convs[:a_mine].display_id)
+      expect(tab_ids).not_to include(convs[:b_open].display_id)
+    end
+
     it 'nega nao-admin sem vazar totais de badge', :aggregate_failures do
       get tabs_path, params: opt_in('todos'), headers: agent.create_new_auth_token, as: :json
 
@@ -299,17 +307,17 @@ RSpec.describe 'Connecta · abas do dashboard (dashboard tabs)', type: :request 
   describe 'paginacao e caminho legado' do
     it 'totais exatos por predicado, nao por tamanho da pagina', :aggregate_failures do
       with_modified_env CONVERSATION_RESULTS_PER_PAGE: '1' do
-        pages = (1..4).map do |page|
+        pages = (1..3).map do |page|
           get tabs_path, params: opt_in('aguardando').merge(page: page), headers: agent.create_new_auth_token, as: :json
           [JSON.parse(response.body).dig('data', 'payload').map { |row| row['id'] },
            JSON.parse(response.body).dig('data', 'meta', 'all_count')]
         end
 
-        expect(pages.map(&:first).map(&:size)).to eq([1, 1, 1, 1])
+        expect(pages.map(&:first).map(&:size)).to eq([1, 1, 1])
         expect(pages.map(&:first).flatten).to contain_exactly(
-          convs[:a_mine].display_id, convs[:a_open].display_id, convs[:b_open].display_id, convs[:generic].display_id
+          convs[:a_open].display_id, convs[:b_open].display_id, convs[:generic].display_id
         )
-        expect(pages.map(&:last).uniq).to eq([4])
+        expect(pages.map(&:last).uniq).to eq([3])
       end
     end
 
@@ -361,19 +369,19 @@ RSpec.describe 'Connecta · abas do dashboard (dashboard tabs)', type: :request 
 
       expect(response).to have_http_status(:ok), diag
       expect(tab_ids).to contain_exactly(
-        convs[:a_mine].display_id, convs[:a_open].display_id, convs[:generic].display_id
+        convs[:a_open].display_id, convs[:generic].display_id
       ), diag
-      expect(json['data']['meta']).to include('all_count' => 3), diag
+      expect(json['data']['meta']).to include('all_count' => 2), diag
 
       get tabs_path, params: opt_in('aguardando', connecta_org_unit_id: org_a.id.upcase),
                      headers: admin.create_new_auth_token, as: :json
       expect(tab_ids).to contain_exactly(
-        convs[:a_mine].display_id, convs[:a_open].display_id, convs[:generic].display_id
+        convs[:a_open].display_id, convs[:generic].display_id
       ), diag
 
       get meta_path, params: opt_in('aguardando', connecta_org_unit_id: org_a.id),
                      headers: admin.create_new_auth_token, as: :json
-      expect(json['meta']).to include('all_count' => 3), diag
+      expect(json['meta']).to include('all_count' => 2), diag
     end
 
     it 'UUID inexistente, inteiro e malformado falham fechado sem 500', :aggregate_failures do

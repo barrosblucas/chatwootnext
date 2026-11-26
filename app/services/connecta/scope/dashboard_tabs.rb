@@ -5,7 +5,7 @@
 # All tabs share the authorized base (ConversationQuery already ran inside the
 # finder) and the same relation feeds list and meta counts, so totals always
 # match the rows. Sector selection narrows by verified org-unit path prefix;
-# grants are never derived from inbox or team. Todos/Bot are account-admin
+# grants are never derived from inbox or team. Todos also permits unit managers; Bot is account-admin
 # only; denied or invalid selections fail closed to an empty relation (same
 # empty shape, so callers cannot probe which rule fired).
 class Connecta::Scope::DashboardTabs
@@ -68,7 +68,10 @@ class Connecta::Scope::DashboardTabs
       when 'minhas'
         relation.assigned_to(user)
       when 'aguardando'
-        Connecta::Scope::BotEligibility.human_only(relation, marked_ids)
+        waiting = relation.where.not(inbox_id: marked_ids).or(
+          relation.where(inbox_id: marked_ids, assignee_id: nil, assignee_agent_bot_id: nil)
+        )
+        Connecta::Scope::BotEligibility.human_only(waiting, marked_ids)
       when 'bot'
         bot_tab(relation, user: user, account: account)
       when 'todos'
@@ -105,9 +108,11 @@ class Connecta::Scope::DashboardTabs
     end
 
     # Todos: atendimento humano dos setores autorizados, nunca linhas Bot;
-    # so admin (nao-admin nega sem vazar totais de badge).
+    # admin nativo ou gestor, limitado pela relação já autorizada.
     def todos_tab(relation, marked_ids, user:, account:)
-      return relation.none unless Connecta::Scope::NativeAdmin.administrator?(user, account)
+      projection = Connecta::Scope::Projection.new(user)
+      manager = projection.usable? && projection.granted_paths(['gerir']).any?
+      return relation.none unless Connecta::Scope::NativeAdmin.administrator?(user, account) || manager
 
       human_attendances(relation, marked_ids)
     end

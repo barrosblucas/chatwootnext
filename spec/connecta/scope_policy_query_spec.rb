@@ -43,12 +43,12 @@ RSpec.describe 'Connecta G0 · escopo de conversas (T0.2 parte A)', type: :reque
       expect(response).to have_http_status(:ok)
       get "#{conversations_path}/#{conv_b.display_id}", headers: manager_a.create_new_auth_token
       expect(response).to have_http_status(:not_found)
-      post "#{conversations_path}/#{conv_a.display_id}/assignments", params: { assignee_id: agent_b.id },
-           headers: manager_a.create_new_auth_token
+      post "#{conversations_path}/#{conv_a.display_id}/assignments",
+           params: { assignee_id: agent_b.id }, headers: manager_a.create_new_auth_token
       expect(response).to have_http_status(:ok)
       expect(conv_a.reload.assignee_id).to eq(agent_b.id)
-      post "#{conversations_path}/#{conv_a.display_id}/assignments", params: { assignee_id: nil },
-           headers: manager_a.create_new_auth_token
+      post "#{conversations_path}/#{conv_a.display_id}/assignments",
+           params: { assignee_id: nil }, headers: manager_a.create_new_auth_token
       expect(response).to have_http_status(:ok)
       expect(conv_a.reload.assignee_id).to be_nil
       Connecta::Scope::UserGrant.create!(user_id: manager_a.id, org_unit: org_b, permission: 'gerir')
@@ -57,12 +57,12 @@ RSpec.describe 'Connecta G0 · escopo de conversas (T0.2 parte A)', type: :reque
     end
 
     it 'permite liberar o próprio atendimento e devolve visibilidade aos colegas' do
-      post "#{conversations_path}/#{conv_a.display_id}/assignments", params: { assignee_id: agent_a.id },
-           headers: agent_a.create_new_auth_token
+      post "#{conversations_path}/#{conv_a.display_id}/assignments",
+           params: { assignee_id: agent_a.id }, headers: agent_a.create_new_auth_token
       expect(response).to have_http_status(:ok)
       expect(conv_a.reload.assignee_id).to eq(agent_a.id)
-      post "#{conversations_path}/#{conv_a.display_id}/assignments", params: { assignee_id: nil },
-           headers: agent_a.create_new_auth_token
+      post "#{conversations_path}/#{conv_a.display_id}/assignments",
+           params: { assignee_id: nil }, headers: agent_a.create_new_auth_token
       expect(response).to have_http_status(:ok)
       get "#{conversations_path}/#{conv_a.display_id}", headers: agent_b.create_new_auth_token
       expect(response).to have_http_status(:ok)
@@ -71,14 +71,14 @@ RSpec.describe 'Connecta G0 · escopo de conversas (T0.2 parte A)', type: :reque
     it 'restringe transferência ao responsável com grant e destino habilitado' do
       Connecta::Scope::UserGrant.create!(user_id: agent_a.id, org_unit: org_a, permission: 'transferir')
       conv_a.update!(assignee: agent_a)
-      post "#{conversations_path}/#{conv_a.display_id}/assignments", params: { assignee_id: member_without_grant.id },
-           headers: agent_a.create_new_auth_token
+      post "#{conversations_path}/#{conv_a.display_id}/assignments",
+           params: { assignee_id: member_without_grant.id }, headers: agent_a.create_new_auth_token
       expect(response).to have_http_status(:forbidden)
-      post "#{conversations_path}/#{conv_a.display_id}/assignments", params: { assignee_id: agent_b.id },
-           headers: agent_b.create_new_auth_token
+      post "#{conversations_path}/#{conv_a.display_id}/assignments",
+           params: { assignee_id: agent_b.id }, headers: agent_b.create_new_auth_token
       expect(response).to have_http_status(:forbidden)
-      post "#{conversations_path}/#{conv_a.display_id}/assignments", params: { assignee_id: agent_b.id },
-           headers: agent_a.create_new_auth_token
+      post "#{conversations_path}/#{conv_a.display_id}/assignments",
+           params: { assignee_id: agent_b.id }, headers: agent_a.create_new_auth_token
       expect(response).to have_http_status(:ok)
       expect(conv_a.reload.assignee_id).to eq(agent_b.id)
     end
