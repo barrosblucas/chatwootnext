@@ -4,9 +4,9 @@
 - Intenção: restringir atendimentos por responsável e permitir supervisão por gestor de unidade.
 - Regras de negócio afetadas: atribuição, liberação, transferência, visibilidade, métricas e atualizações realtime.
 - Não deve mudar: comportamento de inboxes não Connecta e acesso de administradores nativos.
-- Já feito: escopo por responsável, permissão `gerir`, fila e reivindicação de respostas.
-- Pendente: validação das correções da revisão no GitHub Actions.
-- Etapa atual: correções em lote, proteção de atribuição, relatórios, revogação e escritas concorrentes.
+- Já feito: escopo por responsável, permissão `gerir`, fila, reivindicação de respostas e correções dos cinco achados.
+- Pendente: integração e implantação em produção em etapas posteriores.
+- Etapa atual: validação das correções no GitHub Actions.
 
 ## Changed
 - Base `d0b3ab77f678cf6ed168d6ab40b6017b90864467`: limita visibilidade e escrita por responsável, permite gestão por unidade, aplica a política de atribuição e entrega transferências entre unidades sem responsável.

@@ -55,9 +55,7 @@ class Api::V2::Accounts::LiveReportsController < Api::V1::Accounts::BaseControll
   def load_conversations
     scope = Current.account.conversations
     scope = scope.where(team_id: team.id) if team.present?
-    if Connecta::Scope::ScopedInbox.table_exists?
-      scope = Connecta::Scope::ConversationQuery.new(scope, current_user).perform
-    end
+    scope = Connecta::Scope::ConversationQuery.new(scope, current_user).perform if Connecta::Scope::ScopedInbox.table_exists?
     @conversations = scope
   end
 

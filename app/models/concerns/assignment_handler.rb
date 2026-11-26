@@ -53,14 +53,19 @@ module AssignmentHandler
   def assignment_change_allowed?(current_assignee_id)
     return true unless Current.user.is_a?(User)
     return true if Current.user.id == current_assignee_id
-    if Connecta::Scope::ScopedInbox.table_exists? && Connecta::Scope::Projection.marked?(inbox_id)
-      scope = Connecta::Scope::ConversationScope.includes(:org_unit).find_by(conversation_id: id)
-      projection = Connecta::Scope::Projection.new(Current.user)
-      return true if scope && projection.usable? &&
-                     projection.granted_paths(['gerir']).any? { |path| scope.org_unit.enabled? && scope.org_unit.path.start_with?(path) }
-    end
+    return true if connecta_unit_manager?
 
     account.account_users.exists?(user_id: Current.user.id, role: :administrator)
+  end
+
+  def connecta_unit_manager?
+    return false unless Connecta::Scope::ScopedInbox.table_exists? && Connecta::Scope::Projection.marked?(inbox_id)
+    return false unless account.users.exists?(id: Current.user.id)
+
+    scope = Connecta::Scope::ConversationScope.includes(:org_unit).find_by(conversation_id: id)
+    projection = Connecta::Scope::Projection.new(Current.user)
+    scope && scope.org_unit.enabled? && projection.usable? &&
+      projection.granted_paths(['gerir']).any? { |path| scope.org_unit.path.start_with?(path) }
   end
 
   def ensure_assignee_is_from_team
