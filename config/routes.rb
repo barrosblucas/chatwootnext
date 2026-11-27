@@ -66,6 +66,7 @@ Rails.application.routes.draw do
             post 'acl/emergency-revocations', to: 'acl#emergency_revocations'
             patch 'scoped_inboxes/:inbox_id', to: 'scoped_inboxes#update'
             get 'conversations/metadata', to: 'conversation_metadata#index'
+            resources :assignable_agents, only: [:index]
             resources :org_units, only: [:index]
             resources :protocols, only: [:show], param: :protocol, constraints: { protocol: %r{[^/]+} }
             resources :outbound_dispatches, only: [:index] do

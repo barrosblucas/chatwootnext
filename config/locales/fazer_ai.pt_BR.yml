@@ -34,6 +34,8 @@ pt_BR:
         timeout: A solicitação ao gateway Connecta expirou
         gateway_error: O gateway Connecta retornou um erro
         target_department_id_required: target_department_id é obrigatório
+      connecta_assignable_agents:
+        conversation_ids_required: conversation_ids é obrigatório
       connecta_bot_optout:
         not_scoped: Esta conversa não está em uma caixa de atendimento humano Connecta
         disabled_required: disabled precisa ser true ou false

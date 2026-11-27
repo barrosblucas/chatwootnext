@@ -34,6 +34,8 @@ en:
         timeout: Connecta gateway request timed out
         gateway_error: Connecta gateway returned an error
         target_department_id_required: target_department_id is required
+      connecta_assignable_agents:
+        conversation_ids_required: conversation_ids is required
       connecta_bot_optout:
         not_scoped: This conversation is not in a Connecta human-number inbox
         disabled_required: disabled must be true or false
