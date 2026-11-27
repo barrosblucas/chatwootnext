@@ -37,3 +37,6 @@
 - Run 46042728693 (workflow_dispatch no ref fix/assign-by-unit): completed/success (~21 min); tag ee-src-a21f6ac7c4d75417765d5e2cd036e54aef142662; digest sha256:5bce4aac0866eb065ecfc695a1003d522c98fd42d0d8ba9c244f9f619ef65aea.
 - Imagem verificada por pull: /app/.git_sha=a21f6ac7c4d75417765d5e2cd036e54aef142662; controller connecta/assignable_agents_controller.rb presente; "Nenhum agente disponível neste setor" presente em /app/public/vite/assets/DashboardIcon-jQ-vbGBE.js.
 - Sem migrations: 876b58624..head -- db/migrate vazio. Rollout preparado (não executado) em /home/thanos/conectacidade/.runtime/rollout-chatwoot-a21f6ac-20261127/.
+
+## Main pareada com produção (2026-11-27)
+- main fast-forward para 857d5ba3c1bcb93adfb38984b5a5cca0574ced94; produção a21f6ac; workflow publish_ee_github_docker.yml fica pinado em fix/assign-by-unit/PINNED_BASE 876b586 — próximo build EE precisa re-pinar (mesmo padrão de antes).
