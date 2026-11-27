@@ -30,3 +30,10 @@
 - run_foss_spec 46019522562: success — plan, lint-backend, lint-frontend, security-scan e backend-tests (0) todos success; frontend-tests skipped (specs explícitas, sem detecção de diff frontend).
 - frontend-fe 46019527570: success (job test).
 - Falha pré-existente transfer_activation_spec.rb:168 não apareceu (não estava na lista de specs do dispatch).
+
+## Build EE no Actions (2026-11-27, head a21f6ac7c)
+- Build local OOM compilando grpc-1.72.0 (5 GB); produção ficou saudável. Decisão humana: build no Actions na branch fix/assign-by-unit.
+- Workflow publish_ee_github_docker.yml despinado nesta branch: EXPECTED_BRANCH=fix/assign-by-unit, PINNED_BASE=876b58624c09a7b9c83a12b30dd477dd59c7c29c (commit "ci: permite build EE da branch fix/assign-by-unit").
+- Run 46042728693 (workflow_dispatch no ref fix/assign-by-unit): completed/success (~21 min); tag ee-src-a21f6ac7c4d75417765d5e2cd036e54aef142662; digest sha256:5bce4aac0866eb065ecfc695a1003d522c98fd42d0d8ba9c244f9f619ef65aea.
+- Imagem verificada por pull: /app/.git_sha=a21f6ac7c4d75417765d5e2cd036e54aef142662; controller connecta/assignable_agents_controller.rb presente; "Nenhum agente disponível neste setor" presente em /app/public/vite/assets/DashboardIcon-jQ-vbGBE.js.
+- Sem migrations: 876b58624..head -- db/migrate vazio. Rollout preparado (não executado) em /home/thanos/conectacidade/.runtime/rollout-chatwoot-a21f6ac-20261127/.
