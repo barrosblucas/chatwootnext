@@ -479,7 +479,7 @@ const actions = {
   // looking at their own name and believing they owned the conversation.
   assignAgent: async (
     { commit, dispatch, getters },
-    { conversationId, assignee, assigneeType }
+    { conversationId, assignee, assigneeType, connectaOrgUnitId }
   ) => {
     const previousChat = getters.getConversationById(conversationId);
     const previousAssignee = previousChat?.meta?.assignee ?? null;
@@ -492,6 +492,7 @@ const actions = {
         conversationId,
         agentId: assignee?.id ?? null,
         assigneeType,
+        connectaOrgUnitId,
       });
       commit(types.ASSIGN_AGENT, {
         conversationId,

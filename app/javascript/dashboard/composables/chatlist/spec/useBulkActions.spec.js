@@ -49,6 +49,19 @@ describe('useBulkActions#onAssignAgent', () => {
     expect(dispatch).toHaveBeenCalledWith('assignAgent', {
       conversationId: 42,
       assignee: agent,
+      connectaOrgUnitId: null,
+    });
+  });
+
+  it('forwards the department of an another-department agent', async () => {
+    const { onAssignAgent } = useBulkActions();
+
+    await onAssignAgent({ ...agent, connectaOrgUnitId: 'unit-9' }, [42]);
+
+    expect(dispatch).toHaveBeenCalledWith('assignAgent', {
+      conversationId: 42,
+      assignee: { ...agent, connectaOrgUnitId: 'unit-9' },
+      connectaOrgUnitId: 'unit-9',
     });
   });
 

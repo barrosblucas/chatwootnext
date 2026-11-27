@@ -72,6 +72,10 @@ export function useBulkActions() {
         await store.dispatch('assignAgent', {
           conversationId: singleConversationId,
           assignee: agent,
+          // Cross-department move (right-click menu / bulk bar on one
+          // conversation): only present when the agent object carries it.
+          // Bulk multi-assign never sends it.
+          connectaOrgUnitId: agent?.connectaOrgUnitId ?? null,
         });
         useAlert(
           t('CONVERSATION.CARD_CONTEXT_MENU.API.AGENT_ASSIGNMENT.SUCCESFUL', {

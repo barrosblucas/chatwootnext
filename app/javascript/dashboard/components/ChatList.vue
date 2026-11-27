@@ -160,7 +160,6 @@ const connectaMetadataEpoch = useMapGetter('connectaMetadata/getEpoch');
 
 const {
   selectedConversations,
-  selectedInboxes,
   selectConversation,
   deSelectConversation,
   selectAllConversations,
@@ -605,10 +604,6 @@ const allConversationsSelected = computed(() => {
       selectedConversations.value.includes(el.id)
     )
   );
-});
-
-const uniqueInboxes = computed(() => {
-  return [...new Set(selectedInboxes.value)];
 });
 
 // ---------------------- Methods -----------------------
@@ -1601,7 +1596,6 @@ watch(
     <ConversationBulkActions
       :conversations="selectedConversations"
       :all-conversations-selected="allConversationsSelected"
-      :selected-inboxes="uniqueInboxes"
       :show-open-action="allSelectedConversationsStatus('open')"
       :show-resolved-action="allSelectedConversationsStatus('resolved')"
       :show-snoozed-action="allSelectedConversationsStatus('snoozed')"

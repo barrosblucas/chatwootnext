@@ -234,6 +234,7 @@
         "NEXT_WEEK": "Until next week"
       },
       "ASSIGN_AGENT": "Assign agent",
+      "NO_AGENTS_IN_UNIT": "No agents available in this department",
       "ASSIGN_LABEL": "Assign label",
       "SEARCH_LABELS": "Search labels",
       "NO_LABELS_FOUND": "No labels found",

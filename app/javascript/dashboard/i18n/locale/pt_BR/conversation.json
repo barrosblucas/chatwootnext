@@ -196,6 +196,7 @@
         "NEXT_WEEK": "Até a próxima semana"
       },
       "ASSIGN_AGENT": "Atribuir Agente",
+      "NO_AGENTS_IN_UNIT": "Nenhum agente disponível neste setor",
       "ASSIGN_LABEL": "Atribuir etiqueta",
       "SEARCH_LABELS": "Pesquisar etiquetas",
       "NO_LABELS_FOUND": "Nenhuma etiqueta encontrada",

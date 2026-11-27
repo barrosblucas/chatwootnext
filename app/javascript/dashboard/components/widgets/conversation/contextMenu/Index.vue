@@ -6,10 +6,11 @@ import { useConfig } from 'dashboard/composables/useConfig';
 import connectaAPI from 'dashboard/api/connecta';
 import ConfirmationModal from 'dashboard/components/widgets/modal/ConfirmationModal.vue';
 import { copyTextToClipboard } from 'shared/helpers/clipboard';
+import { getAgentsByUpdatedPresence } from 'dashboard/helper/agentHelper.js';
 import {
-  getSortedAgentsByAvailability,
-  getAgentsByUpdatedPresence,
-} from 'dashboard/helper/agentHelper.js';
+  isMenuHeader,
+  menuEntriesFromPayload,
+} from 'dashboard/helper/connectaAssignableAgents.js';
 import { picoSearch } from '@chatwoot/pico-search';
 import MenuItem from './menuItem.vue';
 import MenuItemWithSubmenu from './menuItemWithSubmenu.vue';
@@ -60,10 +61,6 @@ export default {
       type: Boolean,
       default: false,
     },
-    inboxId: {
-      type: Number,
-      default: null,
-    },
     priority: {
       type: String,
       default: null,
@@ -99,6 +96,7 @@ export default {
     const { isAdmin } = useAdmin();
     return {
       isAdmin,
+      isMenuHeader,
     };
   },
   data() {
@@ -210,25 +208,33 @@ export default {
     ...mapGetters({
       labels: 'labels/getLabels',
       teams: 'teams/getTeams',
-      assignableAgentsUiFlags: 'inboxAssignableAgents/getUIFlags',
+      assignableAgentsUiFlags: 'connectaAssignableAgents/getUIFlags',
       currentUser: 'getCurrentUser',
       currentAccountId: 'getCurrentAccountId',
     }),
-    filteredAgentOnAvailability() {
-      const agents = this.$store.getters[
-        'inboxAssignableAgents/getAssignableAgents'
-      ](this.inboxId);
-      const agentsByUpdatedPresence = getAgentsByUpdatedPresence(
-        agents,
-        this.currentUser,
-        this.currentAccountId
-      );
-      const filteredAgents = getSortedAgentsByAvailability(
-        agentsByUpdatedPresence
-      );
-      return filteredAgents;
+    connectaPayload() {
+      const getPayload =
+        this.$store.getters['connectaAssignableAgents/getPayload'];
+      if (typeof getPayload !== 'function' || !this.chatId) return null;
+      return getPayload([this.chatId]);
     },
-    assignableAgents() {
+    // Department-aware entries for this conversation: "None" is rendered by
+    // the caller first, then either a flat alphabetical list (grouped=false)
+    // or department headers each followed by their users (grouped=true).
+    // Presence is refreshed for the current user, order stays alphabetical.
+    assignableAgentEntries() {
+      const entries = menuEntriesFromPayload(this.connectaPayload);
+      return entries.map(entry => {
+        if (isMenuHeader(entry)) return entry;
+        const [withPresence] = getAgentsByUpdatedPresence(
+          [entry],
+          this.currentUser,
+          this.currentAccountId
+        );
+        return withPresence || entry;
+      });
+    },
+    assignMenuRows() {
       return [
         {
           confirmed: true,
@@ -237,8 +243,9 @@ export default {
           role: 'agent',
           account_id: 0,
           email: 'None',
+          connectaOrgUnitId: null,
         },
-        ...this.filteredAgentOnAvailability,
+        ...this.assignableAgentEntries,
       ];
     },
     showSnooze() {
@@ -273,14 +280,25 @@ export default {
       return [...labels].sort((a, b) => isAssigned(b) - isAssigned(a));
     },
   },
+  watch: {
+    chatId() {
+      this.fetchAssignableAgents();
+    },
+  },
   mounted() {
-    this.$store.dispatch('inboxAssignableAgents/fetch', [this.inboxId]);
+    this.fetchAssignableAgents();
     this.fetchBotOptout();
   },
   methods: {
     isAllowed(keys) {
       if (!this.allowedOptions.length) return true;
       return keys.some(key => this.allowedOptions.includes(key));
+    },
+    fetchAssignableAgents() {
+      // Department-aware source, keyed by conversation id: opening another
+      // conversation fetches its own list instead of reusing this one.
+      if (!this.chatId) return;
+      this.$store.dispatch('connectaAssignableAgents/fetch', [this.chatId]);
     },
     toggleStatus(status, snoozedUntil) {
       this.$emit('updateConversation', status, snoozedUntil);
@@ -482,17 +500,31 @@ export default {
       <MenuItemWithSubmenu
         v-if="isAllowed([MENU.AGENT])"
         :option="agentMenuConfig"
-        :sub-menu-available="!!assignableAgents.length"
+        :sub-menu-available="!!assignMenuRows.length"
       >
         <AgentLoadingPlaceholder v-if="assignableAgentsUiFlags.isFetching" />
         <template v-else>
-          <MenuItem
-            v-for="agent in assignableAgents"
-            :key="agent.id"
-            :option="generateMenuLabelConfig(agent, 'agent')"
-            variant="agent"
-            @click.stop="$emit('assignAgent', agent)"
-          />
+          <template v-for="(row, i) in assignMenuRows" :key="i">
+            <p
+              v-if="isMenuHeader(row)"
+              class="px-2 pt-2 pb-1 m-0 text-[11px] font-medium uppercase tracking-wide text-n-slate-11 cursor-default"
+              @click.stop
+            >
+              {{ row.header }}
+            </p>
+            <MenuItem
+              v-else
+              :option="generateMenuLabelConfig(row, 'agent')"
+              variant="agent"
+              @click.stop="$emit('assignAgent', row)"
+            />
+          </template>
+          <p
+            v-if="assignMenuRows.length <= 1"
+            class="px-2 py-2 m-0 text-xs text-center text-n-slate-11"
+          >
+            {{ $t('CONVERSATION.CARD_CONTEXT_MENU.NO_AGENTS_IN_UNIT') }}
+          </p>
         </template>
       </MenuItemWithSubmenu>
       <MenuItemWithSubmenu
