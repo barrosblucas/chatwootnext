@@ -1,11 +1,11 @@
-name: Publish Chatwoot EE isolated build (fix/assign-by-unit)
+name: Publish Chatwoot EE isolated build (fix/builder-nil-user)
 
-# ISOLATED one-shot EE image build for branch fix/assign-by-unit.
-# Manual dispatch ONLY, ONLY from branch fix/assign-by-unit. This
+# ISOLATED one-shot EE image build for branch fix/builder-nil-user.
+# Manual dispatch ONLY, ONLY from branch fix/builder-nil-user. This
 # branch is never merged to main. The immutable source is the dispatched run's
 # github.sha: every job validates the checkout equals that SHA and that it
 # descends from the deployed base
-# 876b58624c09a7b9c83a12b30dd477dd59c7c29c.
+# 0a84d08b17a771465af36d6d027b0c5cd0e094b8.
 # Publishes ONLY one tag ee-src-<full-sha> derived from the dispatch SHA.
 # latest-ee, fix-producao-20261106-ee and any CE tags are never written by this
 # workflow (the merge step names a single -t, and pre/post checks fail the run
@@ -23,13 +23,13 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ee-build-fix-assign-by-unit
+  group: ee-build-fix-builder-nil-user
   cancel-in-progress: false
 
 env:
   GITHUB_REPO: ghcr.io/${{ github.repository }}
-  EXPECTED_BRANCH: fix/assign-by-unit
-  PINNED_BASE: 876b58624c09a7b9c83a12b30dd477dd59c7c29c
+  EXPECTED_BRANCH: fix/builder-nil-user
+  PINNED_BASE: 0a84d08b17a771465af36d6d027b0c5cd0e094b8
 
 jobs:
   guard:
@@ -440,7 +440,7 @@ jobs:
             echo "- source SHA (app code at dispatch): $SOURCE_SHA"
             echo "- workflow SHA (branch $BRANCH dispatch commit): $DISPATCH_SHA"
             echo "- source pinned to dispatch SHA; branch moves cannot change the build"
-            echo "- deployed base ancestor: 876b58624c09a7b9c83a12b30dd477dd59c7c29c"
+            echo "- deployed base ancestor: 0a84d08b17a771465af36d6d027b0c5cd0e094b8"
             echo "- image reference: ghcr.io/${{ github.repository }}:$EE_TAG"
             echo "- final index digest: ${{ steps.create.outputs.index-digest }}"
             echo "- deployment identity (digest, tags are mutable): ghcr.io/${{ github.repository }}@${{ steps.create.outputs.index-digest }}"
