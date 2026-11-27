@@ -38,6 +38,8 @@ const ConfirmationModalStub = {
 const storeGetters = {
   'labels/getLabels': [],
   'teams/getTeams': [],
+  'connectaAssignableAgents/getUIFlags': { isFetching: false },
+  'connectaAssignableAgents/getPayload': () => null,
   'inboxAssignableAgents/getUIFlags': {},
   'inboxAssignableAgents/getAssignableAgents': () => [],
   getCurrentUser: {},

@@ -5,6 +5,7 @@ import { useRoute } from 'vue-router';
 import { useConversationLabels } from 'dashboard/composables/useConversationLabels';
 import { useCaptain } from 'dashboard/composables/useCaptain';
 import { useAgentsList } from 'dashboard/composables/useAgentsList';
+import { useConnectaAssignableAgents } from 'dashboard/composables/useConnectaAssignableAgents';
 import { REPLY_EDITOR_MODES } from 'dashboard/components/widgets/WootWriter/constants';
 import {
   mockAssignableAgents,
@@ -20,6 +21,7 @@ vi.mock('vue-router');
 vi.mock('dashboard/composables/useConversationLabels');
 vi.mock('dashboard/composables/useCaptain');
 vi.mock('dashboard/composables/useAgentsList');
+vi.mock('dashboard/composables/useConnectaAssignableAgents');
 
 describe('useConversationHotKeys', () => {
   let store;
@@ -54,6 +56,13 @@ describe('useConversationHotKeys', () => {
     useAgentsList.mockReturnValue({
       agentsList: { value: [] },
       assignableAgents: { value: mockAssignableAgents },
+    });
+    useConnectaAssignableAgents.mockReturnValue({
+      flatAgents: { value: mockAssignableAgents },
+      payload: { value: null },
+      menuEntries: { value: [] },
+      isFetching: { value: false },
+      fetchAgents: vi.fn(),
     });
   });
 
@@ -99,8 +108,17 @@ describe('useConversationHotKeys', () => {
       if (childAction && childAction.handler) {
         childAction.handler({ agentInfo: { id: 2 } });
         expect(store.dispatch).toHaveBeenCalledWith('assignAgent', {
-          conversationId: 1,
+          conversationId: 138,
           assignee: { id: 2 },
+          connectaOrgUnitId: null,
+        });
+        childAction.handler({
+          agentInfo: { id: 3, connectaOrgUnitId: 'unit-2' },
+        });
+        expect(store.dispatch).toHaveBeenCalledWith('assignAgent', {
+          conversationId: 138,
+          assignee: { id: 3, connectaOrgUnitId: 'unit-2' },
+          connectaOrgUnitId: 'unit-2',
         });
       }
     }

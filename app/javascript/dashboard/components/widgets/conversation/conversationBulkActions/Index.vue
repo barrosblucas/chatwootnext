@@ -30,10 +30,6 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
-  selectedInboxes: {
-    type: Array,
-    default: () => [],
-  },
   showOpenAction: {
     type: Boolean,
     default: false,
@@ -192,7 +188,6 @@ onUnmounted(() => {
             @update="onUpdateConversations"
           />
           <BulkAgentActions
-            :selected-inboxes="selectedInboxes"
             :conversation-count="conversations.length"
             @select="onAssignAgent"
           />

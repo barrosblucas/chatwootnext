@@ -6,7 +6,7 @@ import { emitter } from 'shared/helpers/mitt';
 import { useAssignmentError } from 'dashboard/composables';
 import { useConversationLabels } from 'dashboard/composables/useConversationLabels';
 import { useCaptain } from 'dashboard/composables/useCaptain';
-import { useAgentsList } from 'dashboard/composables/useAgentsList';
+import { useConnectaAssignableAgents } from 'dashboard/composables/useConnectaAssignableAgents';
 import { CMD_AI_ASSIST } from 'dashboard/helper/commandbar/events';
 import { REPLY_EDITOR_MODES } from 'dashboard/components/widgets/WootWriter/constants';
 
@@ -150,7 +150,6 @@ export function useConversationHotKeys() {
   } = useConversationLabels();
 
   const { captainTasksEnabled } = useCaptain();
-  const { agentsList } = useAgentsList();
 
   const currentChat = useMapGetter('getSelectedChat');
   const replyMode = useMapGetter('draftMessages/getReplyEditorMode');
@@ -160,6 +159,10 @@ export function useConversationHotKeys() {
   const getDraftMessage = useMapGetter('draftMessages/get');
 
   const conversationId = computed(() => currentChat.value?.id);
+  // Department-aware assignees for the open conversation (flat,
+  // alphabetical). The unfiltered inbox list is no longer used here.
+  const { flatAgents: connectaAgents } =
+    useConnectaAssignableAgents(conversationId);
   const draftKey = computed(
     () => `draft-${conversationId.value}-${replyMode.value}`
   );
@@ -180,6 +183,9 @@ export function useConversationHotKeys() {
       await store.dispatch('assignAgent', {
         conversationId: currentChat.value.id,
         assignee: action.agentInfo,
+        // Cross-department move: only present when the agent comes from
+        // another department's group.
+        connectaOrgUnitId: action.agentInfo?.connectaOrgUnitId ?? null,
       });
     } catch (error) {
       useAssignmentError(error, t('CONVERSATION.CHANGE_AGENT_FAILED'));
@@ -225,7 +231,23 @@ export function useConversationHotKeys() {
   );
 
   const assignAgentActions = computed(() => {
-    const agentOptions = agentsList.value.map(agent => ({
+    // Department-aware source for the open conversation: only agents
+    // returned by the new endpoint (flat, alphabetical), never the
+    // unfiltered inbox list. "None" (unassign) is offered exactly when the
+    // conversation has an assignee, as the legacy list did.
+    const noneAgent = {
+      confirmed: true,
+      name: t('AGENT_MGMT.MULTI_SELECTOR.LIST.NONE') || 'None',
+      id: 0,
+      role: 'agent',
+      account_id: 0,
+      email: 'None',
+      connectaOrgUnitId: null,
+    };
+    const source = currentChat.value?.meta?.assignee
+      ? [noneAgent, ...connectaAgents.value]
+      : connectaAgents.value;
+    const agentOptions = source.map(agent => ({
       id: `agent-${agent.id}`,
       title: agent.name,
       parent: 'assign_an_agent',

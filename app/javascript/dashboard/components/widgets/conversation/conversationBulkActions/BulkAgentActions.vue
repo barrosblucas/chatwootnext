@@ -8,12 +8,9 @@ import { useMapGetter } from 'dashboard/composables/store';
 
 import Button from 'dashboard/components-next/button/Button.vue';
 import DropdownMenu from 'dashboard/components-next/dropdown-menu/DropdownMenu.vue';
+import { flatAgentsFromPayload } from 'dashboard/helper/connectaAssignableAgents';
 
 const props = defineProps({
-  selectedInboxes: {
-    type: Array,
-    default: () => [],
-  },
   conversationCount: {
     type: Number,
     default: 0,
@@ -30,18 +27,27 @@ const [showDropdown, toggleDropdown] = useToggle(false);
 const selectedAgent = ref(null);
 
 const assignableAgentsUiFlags = useMapGetter(
-  'inboxAssignableAgents/getUIFlags'
+  'connectaAssignableAgents/getUIFlags'
 );
 const bulkActionsUiFlags = useMapGetter('bulkActions/getUIFlags');
 
 const isLoading = computed(() => assignableAgentsUiFlags.value.isFetching);
 const isUpdating = computed(() => bulkActionsUiFlags.value.isUpdating);
 
-const assignableAgentsList = useMapGetter(
-  'inboxAssignableAgents/getAssignableAgents'
+// Department-aware source for every selected conversation (flat,
+// alphabetical). Bulk assignment never sends connecta_org_unit_id.
+const selectedConversationIds = useMapGetter(
+  'bulkActions/getSelectedConversationIds'
+);
+const getAssignablePayload = useMapGetter(
+  'connectaAssignableAgents/getPayload'
 );
 const assignableAgents = computed(() =>
-  assignableAgentsList.value(props.selectedInboxes.join(','))
+  flatAgentsFromPayload(
+    selectedConversationIds.value.length
+      ? getAssignablePayload.value(selectedConversationIds.value)
+      : null
+  )
 );
 
 const agentMenuItems = computed(() => {
@@ -104,8 +110,11 @@ const handleToggleDropdown = () => {
   toggleDropdown();
 
   // Fetch agents only when opening the dropdown
-  if (willOpen && props.selectedInboxes.length > 0) {
-    store.dispatch('inboxAssignableAgents/fetch', props.selectedInboxes);
+  if (willOpen && selectedConversationIds.value.length > 0) {
+    store.dispatch(
+      'connectaAssignableAgents/fetch',
+      selectedConversationIds.value
+    );
   }
 };
 </script>

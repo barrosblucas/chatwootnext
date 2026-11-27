@@ -272,7 +272,6 @@ const onTogglePin = () => {
   >
     <ConversationContextMenu
       :status="source.status"
-      :inbox-id="inbox.id"
       :priority="source.priority"
       :chat-id="source.id"
       :has-unread-messages="source.unread_count > 0"

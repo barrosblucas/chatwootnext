@@ -81,11 +81,18 @@ class ConversationApi extends ApiClient {
     });
   }
 
-  assignAgent({ conversationId, agentId, assigneeType }) {
-    return axios.post(`${this.url}/${conversationId}/assignments`, {
+  assignAgent({ conversationId, agentId, assigneeType, connectaOrgUnitId }) {
+    const payload = {
       assignee_id: agentId,
       assignee_type: assigneeType,
-    });
+    };
+    // Cross-department move: only sent when the chosen agent comes from a
+    // group other than the conversation's own department. The server
+    // enforces gestor/admin for this move.
+    if (connectaOrgUnitId) {
+      payload.connecta_org_unit_id = connectaOrgUnitId;
+    }
+    return axios.post(`${this.url}/${conversationId}/assignments`, payload);
   }
 
   assignTeam({ conversationId, teamId }) {

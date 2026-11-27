@@ -1,7 +1,12 @@
 <!-- eslint-disable vue/v-slot-style -->
 <script>
+import { computed } from 'vue';
 import { mapGetters } from 'vuex';
-import { useAgentsList } from 'dashboard/composables/useAgentsList';
+import { useStore } from 'dashboard/composables/store';
+import { useI18n } from 'vue-i18n';
+import { useConnectaAssignableAgents } from 'dashboard/composables/useConnectaAssignableAgents';
+import { getAgentsByUpdatedPresence } from 'dashboard/helper/agentHelper';
+import { sortAgentsByName } from 'dashboard/helper/connectaAssignableAgents';
 import ContactDetailsItem from './ContactDetailsItem.vue';
 import MultiselectDropdown from 'shared/components/ui/MultiselectDropdown.vue';
 import ConversationLabels from './labels/LabelBox.vue';
@@ -24,7 +29,47 @@ export default {
     },
   },
   setup() {
-    const { agentsList } = useAgentsList(true, { includeAgentBots: true });
+    const store = useStore();
+    const { t } = useI18n();
+    const currentChatId = computed(() => store.getters.getSelectedChat?.id);
+    const { flatAgents } = useConnectaAssignableAgents(currentChatId);
+
+    // Department-aware sidebar list: only agents returned by the new
+    // endpoint (already filtered server-side), alphabetical, with the
+    // current user's live presence. Grouping is skipped here because
+    // MultiselectDropdown has no section headers; the flat sorted list is
+    // the requirement.
+    const agentsList = computed(() => {
+      const currentChat = store.getters.getSelectedChat;
+      const currentUser = store.getters.getCurrentUser;
+      const currentAccountId = store.getters.getCurrentAccountId;
+      const agents = (flatAgents.value || []).map(agent =>
+        !agent.name && agent.assignee_type === 'AgentBot'
+          ? { ...agent, name: '-' }
+          : agent
+      );
+      const withPresence = getAgentsByUpdatedPresence(
+        agents,
+        currentUser,
+        currentAccountId
+      );
+      const sorted = sortAgentsByName(withPresence);
+      const isAgentSelected = !!currentChat?.meta?.assignee;
+      if (!isAgentSelected) return sorted;
+      return [
+        {
+          confirmed: true,
+          name: t('AGENT_MGMT.MULTI_SELECTOR.LIST.NONE') || 'None',
+          id: 0,
+          role: 'agent',
+          account_id: 0,
+          email: 'None',
+          connectaOrgUnitId: null,
+        },
+        ...sorted,
+      ];
+    });
+
     return {
       agentsList,
     };
@@ -95,6 +140,9 @@ export default {
             conversationId: this.currentChat.id,
             assignee: agent,
             assigneeType,
+            // Cross-department move: only present when the agent comes from
+            // another department's group.
+            connectaOrgUnitId: agent?.connectaOrgUnitId ?? null,
           });
           useAlert(this.$t('CONVERSATION.CHANGE_AGENT'));
         } catch (error) {
