@@ -178,9 +178,7 @@ RSpec.describe 'Connecta G0 · escopo HTTP de filtros, mensagens e criação (T0
       expect(response).to have_http_status(:not_found)
     end
 
-    it 'atende a conversa ativa mesmo com outro assignee: o agente com grant opera' do
-      conv_a.update!(assignee: agent_b)
-
+    it 'atende a conversa ativa sem responsável do próprio setor: o agente com grant opera' do
       expect do
         post messages_path, params: { content: 'olá', message_type: 'outgoing' }, headers: agent_a.create_new_auth_token
       end.to change(Message, :count).by(1)
@@ -218,7 +216,7 @@ RSpec.describe 'Connecta G0 · escopo HTTP de filtros, mensagens e criação (T0
           post "#{conversations_path}/#{conversation.display_id}/messages", params: { content: 'nao', message_type: 'outgoing' },
                                                                             headers: agent_a.create_new_auth_token
         end.not_to change(Message, :count)
-        expect(response).to have_http_status(:not_found)
+        expect(response).to have_http_status(:forbidden)
       end
     end
   end
@@ -297,7 +295,7 @@ RSpec.describe 'Connecta G0 · escopo HTTP de filtros, mensagens e criação (T0
       expect(response).to have_http_status(:not_found)
 
       post "#{base}/assignments", params: { assignee_id: agent_a.id }, headers: headers
-      expect(response).to have_http_status(:not_found)
+      expect(response).to have_http_status(:forbidden)
 
       expect(conv_transferred.reload.status).to eq('resolved')
       expect(conv_transferred.assignee_id).to be_nil

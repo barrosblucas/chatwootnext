@@ -31,3 +31,6 @@ O spike de escopo (T0.2 parte A) negava com `Pundit::NotAuthorizedError`, que o 
 
 Status: **Aceita com superseding de 2026-10-28** (substitui a proibição de criação; restante da decisão vigente).
 Ver também `.context/decisions/001-runner-aceita-extras-g0.md` e `.context/evidence/g0/07-scope-http-filter.md`.
+
+## Esclarecimento 2026-11-27 — escrita em estado não legível do próprio setor
+- Escrita em conversa do próprio setor em estado não legível (`pending_activation`, `activation_stuck`, `transferred_out`) responde **403**; leitura segue **404**. Consistente com a linha 8 (escrita negada → 403).

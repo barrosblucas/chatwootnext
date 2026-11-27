@@ -57,3 +57,8 @@
 - Branch `7bf707627`: lint-backend success, security-scan success, backend-tests 163 exemplos, 3 falhas — só as pré-existentes do filtro (181, 212, 288); os 5 exemplos novos passam, nenhuma falha nova.
 - Baseline main `0a84d08` (mesma seleção, sem o spec novo): backend-tests 158 exemplos, AS MESMAS 3 falhas (181, 212, 288). Prova que são pré-existentes (expectativas do filtro defasadas vs `f024375dd`), não regressão do fix; corrigi-las exigiria reescrever expectativas contra decisão humana vigente — fora do escopo, fica para o humano.
 - Head final: `7bf707627`; main remota segue `0a84d08`; nada mergeado, nenhum deploy.
+
+## Fix round 3 — specs defasados do filtro atualizados (2026-11-27, decisão humana)
+- Os 3 exemplos de `spec/connecta/scope_http_filter_spec.rb` estavam defasados desde `f024375dd` (regra: atendente só opera conversa sem responsável ou própria do setor): `:181` atribuía a conversa ao colega e esperava sucesso; `:221` e `:300` esperavam 404 em escrita negada quando o código responde 403 (`conversation_http_hook.rb:12-18,28`).
+- Decisão humana 2026-11-27 ("Proibido"): escrita em conversa do próprio setor em estado não legível (`pending_activation`, `activation_stuck`, `transferred_out`) responde 403 (leitura segue 404) — aceito como consistente com a decisão 002 linha 8. Sem mudança em código de produção, sem deploy.
+- Mudanças só no spec: `:181` retitulado para 'atende a conversa ativa sem responsável do próprio setor: o agente com grant opera' (linha `conv_a.update!(assignee: agent_b)` removida; o caso 403 de colega responsável já é coberto por `scope_policy_query_spec.rb:332-345`); `:221` e `:300` `not_found` → `forbidden` (GETs `:215` e `:294`/`:297` mantidos 404).
