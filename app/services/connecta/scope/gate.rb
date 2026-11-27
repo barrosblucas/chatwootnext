@@ -36,6 +36,8 @@ class Connecta::Scope::Gate
   private
 
   def decide(conversation, action, access_path, scope: nil)
+    return deny_without_user(conversation, action, access_path) if @user.nil?
+
     allowed = native_admin_authorized?(conversation) ||
               (@projection.admin? ? action == :read : agent_allowed?(conversation, action, scope: scope))
     Connecta::Scope::AccessAudit.create!(
@@ -43,6 +45,14 @@ class Connecta::Scope::Gate
       access_path: access_path, decision: allowed ? 'allow' : 'deny'
     )
     allowed
+  end
+
+  # Sem usuário não há grants, epoch nem admin: nega sem linha de auditoria
+  # (user_id é NOT NULL) e registra linha estruturada. Comportamento para
+  # usuário não-nil inalterado.
+  def deny_without_user(conversation, action, access_path)
+    Rails.logger.warn("connecta_scope_deny_no_user conversation_id=#{conversation.id} action=#{action} access_path=#{access_path}")
+    false
   end
 
   # Administrador nativo full same-account: vínculo ATUAL de administrator na
@@ -78,7 +88,7 @@ class Connecta::Scope::Gate
   end
 
   def assignee_allowed?(conversation, scope)
-    conversation.assignee_id.nil? || conversation.assignee_id == @user.id ||
+    conversation.assignee_id.nil? || conversation.assignee_id == @user&.id ||
       @projection.granted_paths(['gerir']).any? { |path| scope.org_unit.path.start_with?(path) }
   end
 

@@ -40,3 +40,10 @@
 
 ## Main pareada com produção (2026-11-27)
 - main fast-forward para 857d5ba3c1bcb93adfb38984b5a5cca0574ced94; produção a21f6ac; workflow publish_ee_github_docker.yml fica pinado em fix/assign-by-unit/PINNED_BASE 876b586 — próximo build EE precisa re-pinar (mesmo padrão de antes).
+
+## Fix builder-nil-user: reuso sem usuário logado (branch fix/builder-nil-user, sobre 0a84d08)
+- Causa raiz: `ConversationReuse::BuilderInterceptor#find_reusable_conversation` passava `Current.user` (nil no create da API pública) ao Gate; `Projection#verified?` chamava `user.id` → NoMethodError (500). Pré-existente em 876b586; alcançável só via create público em inbox Channel::Api marcada como escopo com atendimento aberto (inbox 8 Channel::Api sem escopo; WhatsApp inbound usa Conversation.create!, sem builder).
+- Fix A1 (`app/services/connecta/scope/conversation_reuse.rb`): `Current.user.nil?` → `open_conversation` (reusa a consulta de resolução, sem Gate nem auditoria) e `super` quando não há escopo; `resolve` com usuário inalterado (extraído `open_scope`/`open_conversation`, mesma semântica Denied). Com mensagem no reuso sem write, Denied mantido como no caminho com usuário (API pública só envia custom_attributes, ramo inalcançável por ela).
+- Fix A2 (`gate.rb`/`projection.rb`): `decide` nega sem usuário sem gravar auditoria (user_id NOT NULL) e loga `connecta_scope_deny_no_user`; `verified?` false e `granted_paths` vazio para nil; `assignee_allowed?` com `&.`. Sem mudança para usuário não-nil.
+- Specs: `spec/connecta/builder_interceptor_nil_user_spec.rb` (5 exemplos: reuso público duplo sem 500/RecordNotUnique; create sem escopo; Gate nil nega leitura/escrita; sem linha de auditoria; Projection nil nega).
+- Aguardando próximo deploy do Chatwoot; não mergeado na main para não desparear de produção.

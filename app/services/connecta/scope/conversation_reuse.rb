@@ -27,18 +27,38 @@ module Connecta::Scope::ConversationReuse
   def self.resolve(user:, inbox:, contact:)
     return nil unless Connecta::Scope::Projection.marked?(inbox.id)
 
-    scope = Connecta::Scope::ConversationScope
-            .where(inbox_id: inbox.id, contact_id: contact.id,
-                   state: Connecta::Scope::ConversationScope::NON_TERMINAL_STATES)
-            .order(updated_at: :desc)
-            .first
+    conversation = open_conversation(inbox: inbox, contact: contact)
+    return nil if conversation.nil?
+    raise Connecta::Scope::Denied, :forbidden unless readable_by?(user, conversation)
+
+    conversation
+  end
+
+  # Atendimento aberto do par SEM checagem de Gate. Caminho sem usuário
+  # (create da API pública: Current.user nil): o contato não tem grants nem
+  # epoch, então o Gate nunca autorizaria — reusar aqui evita o NoMethodError
+  # em Projection#verified? e o RecordNotUnique do índice parcial
+  # (inbox, contato). Sem escopo aberto, nil (o chamador segue o fluxo
+  # nativo). Escopo sem conversa (dado inconsistente) nega sem vazar ID,
+  # como o resolve.
+  def self.open_conversation(inbox:, contact:)
+    scope = open_scope(inbox: inbox, contact: contact)
     return nil if scope.nil?
 
     conversation = Conversation.find_by(id: scope.conversation_id)
     raise Connecta::Scope::Denied, :forbidden if conversation.nil?
-    raise Connecta::Scope::Denied, :forbidden unless readable_by?(user, conversation)
 
     conversation
+  end
+
+  # Consulta única de resolução (regras de escopo num só lugar): escopo
+  # não-terminal mais recente do par (inbox, contato).
+  def self.open_scope(inbox:, contact:)
+    Connecta::Scope::ConversationScope
+      .where(inbox_id: inbox.id, contact_id: contact.id,
+             state: Connecta::Scope::ConversationScope::NON_TERMINAL_STATES)
+      .order(updated_at: :desc)
+      .first
   end
 
   # Leitura autorizada pelo Gate (audita). O envio inicial na conversa
@@ -75,10 +95,27 @@ module Connecta::Scope::ConversationReuse
       return nil unless ci && inbox && Connecta::Scope::Projection.marked?(inbox.id)
 
       Connecta::Scope::ConversationReuse.lock!(inbox_id: inbox.id, contact_id: ci.contact_id)
+      return find_reusable_without_user(inbox, ci) if Current.user.nil?
+
       existing = Connecta::Scope::ConversationReuse.resolve(user: Current.user, inbox: inbox, contact: ci.contact)
       return nil if existing.nil?
       return existing if params[:message].blank?
       return existing if Connecta::Scope::ConversationReuse.writable_by?(Current.user, existing)
+
+      raise Connecta::Scope::Denied, :forbidden
+    end
+
+    # Reuso sem usuário (API pública de contato): devolve o atendimento
+    # aberto do par sem passar pelo Gate e sem auditoria (não há user_id
+    # para auditar); sem existente, nil (o perform cai no super nativo).
+    # Com mensagem, nega como o caminho autenticado sem escrita — nil nunca
+    # tem write. A API pública nunca envia message (só custom_attributes),
+    # então esse Denied não é alcançável por ela; mantido para consistência
+    # com o caminho com usuário.
+    def find_reusable_without_user(inbox, contact_inbox)
+      existing = Connecta::Scope::ConversationReuse.open_conversation(inbox: inbox, contact: contact_inbox.contact)
+      return nil if existing.nil?
+      return existing if params[:message].blank?
 
       raise Connecta::Scope::Denied, :forbidden
     end

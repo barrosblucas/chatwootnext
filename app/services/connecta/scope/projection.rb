@@ -35,6 +35,8 @@ class Connecta::Scope::Projection
   def verified?
     return @verified if defined?(@verified)
 
+    return @verified = false if user.nil?
+
     @verified = Connecta::Scope::UserAuthEpoch.exists?(user_id: user.id, revoked_locally_at: nil)
   end
 
@@ -69,6 +71,8 @@ class Connecta::Scope::Projection
   end
 
   def granted_paths(permissions)
+    return [].freeze if user.nil?
+
     @granted_paths ||= {}
     key = Array(permissions).map(&:to_s).sort.freeze
     @granted_paths[key] ||= Connecta::Scope::UserGrant.joins(:org_unit)
