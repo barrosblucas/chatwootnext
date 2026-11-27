@@ -168,7 +168,8 @@ module Connecta::Scope::Installer
       Api::V1::Accounts::Captain::CopilotThreadsController, Api::V1::Accounts::Captain::CopilotMessagesController,
       Api::V1::Accounts::Captain::AgentSessionsController, Api::V1::Accounts::Captain::MessageReportsController,
       Api::V1::Accounts::Conversations::DirectUploadsController,
-      Api::V1::Accounts::Conversations::ConnectaManualAdmissionsController
+      Api::V1::Accounts::Conversations::ConnectaManualAdmissionsController,
+      Api::V1::Accounts::Connecta::AssignableAgentsController
     ].each { |controller| install_denied_rendering_for!(controller) }
   end
 end

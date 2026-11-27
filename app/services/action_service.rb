@@ -48,6 +48,7 @@ class ActionService
 
     @agent = @account.users.find_by(id: agent_ids)
     return unless @agent.present? && @agent.confirmed?
+    return if connecta_scope_target_denied?(@agent.id)
 
     # Locks the row so a concurrent writer (e.g. AutoAssignment::AssignmentService) can't
     # interleave with a stale in-memory assignee_id and produce a spurious duplicate activity message.
@@ -130,6 +131,26 @@ class ActionService
     assignable_agent_ids = member_ids + @account.administrators.ids
 
     assignable_agent_ids.include?(agent_ids[0])
+  end
+
+  # Scoped inboxes (macros/automation path): the same target rule the
+  # assignment endpoint enforces. An ineligible target is skipped with a log —
+  # automation must never raise on a denial.
+  def connecta_scope_target_denied?(target_id)
+    return false unless connecta_scope_enforced?
+
+    scope = Connecta::Scope::ConversationScope.includes(:org_unit).find_by(conversation_id: @conversation.id)
+    denied = scope.nil? || !Connecta::Scope::AssignmentPolicy.target_eligible?(
+      account: @account, org_unit: scope.org_unit, target_id: target_id
+    )
+    Rails.logger.warn("connecta_assign_skip conversation_id=#{@conversation.id} target_id=#{target_id}") if denied
+    denied
+  end
+
+  def connecta_scope_enforced?
+    Connecta::Scope::ScopedInbox.table_exists? && Connecta::Scope::Projection.marked?(@conversation.inbox_id)
+  rescue StandardError
+    false
   end
 
   def team_belongs_to_account?(team_ids)
