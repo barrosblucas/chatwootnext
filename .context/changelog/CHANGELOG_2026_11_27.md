@@ -24,3 +24,9 @@
 - run_foss_spec.yml despachado no ref fix/assign-by-unit com specs explícitas: spec/connecta/assignable_agents_by_unit_spec.rb, spec/connecta/cross_unit_assignment_spec.rb, spec/connecta/assignment_scope_guards_spec.rb, spec/connecta/scope_policy_query_spec.rb.
 - frontend-fe.yml despachado no ref fix/assign-by-unit.
 - Falha pré-existente na main, não relacionada: spec/connecta/transfer_activation_spec.rb:168 (runs 45894696016, 45899629106).
+
+## Resultados (round 2, 2026-11-27 ~14:50 UTC, head 7cd4cebc8)
+- Round 1 (run 46017848690): lint-backend 20 ofensas no código novo + 4 exemplos falhando (2 de grupo extra Sub A1 para gestor, 2 de crash nil-user no interceptor de reuso). Corrigido em 7cd4cebc8.
+- run_foss_spec 46019522562: success — plan, lint-backend, lint-frontend, security-scan e backend-tests (0) todos success; frontend-tests skipped (specs explícitas, sem detecção de diff frontend).
+- frontend-fe 46019527570: success (job test).
+- Falha pré-existente transfer_activation_spec.rb:168 não apareceu (não estava na lista de specs do dispatch).
