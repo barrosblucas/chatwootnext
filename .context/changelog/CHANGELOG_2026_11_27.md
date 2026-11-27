@@ -69,3 +69,9 @@
 - Imagem `ghcr.io/barrosblucas/chatwootnext@sha256:97e78a521b45c21a2240260fa9125ee06be2e6ff2a6e0051a0f728707305f2d1`: `/app/.git_sha` = head; `find_reusable_without_user` e `deny_without_user` presentes.
 - CI de testes: runs 46057260651 (`7bf707627`) e 46060793899 (`107d82ddc`); única falha a pré-existente `transfer_activation_spec.rb:168`. Migrações `0a84d08..head`: nenhuma.
 - Rollout preparado (não executado) em `/home/thanos/conectacidade/.runtime/rollout-chatwoot-a34d525-20261127/`; rollback aponta produção atual `a21f6ac` / `sha256:5bce4aac...`.
+
+## Deploy a34d525 builder-nil-user em produção (2026-11-27 ~20:49-20:53Z)
+- Deploy 20:49:51Z, saudável 20:53:32Z; imagem `ghcr.io/barrosblucas/chatwootnext@sha256:97e78a521b45c21a2240260fa9125ee06be2e6ff2a6e0051a0f728707305f2d1`; rails/sidekiq `/app/.git_sha` = `a34d52517497c03d1b0015d0051f7b1849e3b672`; HTTP 192.168.1.39:23003 301/301 inalterado; janela unhealthy só durante recreate (301 o tempo todo).
+- Funcional (conversa 51, Farmácia Municipal): ator 15 → 1 grupo, ator 8 → 14 grupos, mesma ordem de agentes do rollout a21f6ac; nil-user path presente (`open_conversation`/`open_scope`, `find_reusable_without_user`, `deny_without_user` privado no Gate). Rollback não necessário.
+- Pós-deploy: main fast-forward para `origin/fix/builder-nil-user` (`a6012f439`, só docs além de `a34d525`); produção `a34d525` é ancestral da main.
+- Nota: `publish_ee_github_docker.yml` segue pinado em `fix/builder-nil-user`/PINNED_BASE `0a84d08` — próximo build EE precisa re-pinar.
