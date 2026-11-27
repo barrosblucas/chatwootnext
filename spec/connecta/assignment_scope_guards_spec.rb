@@ -10,7 +10,7 @@ require_relative 'support/g0_scope_fixture'
 Connecta::G0ScopeSchema.ensure!
 Connecta::Scope::Installer.install!
 
-RSpec.describe 'Connecta · guardas de atribuição por setor', type: :request do # rubocop:disable RSpec/DescribeClass
+RSpec.describe 'Connecta · guardas de atribuição por setor', type: :request do
   include_context 'with connecta g0 scope fixture'
 
   describe 'AssignmentPolicy.target_eligible?' do
@@ -54,7 +54,11 @@ RSpec.describe 'Connecta · guardas de atribuição por setor', type: :request d
   end
 
   describe 'ConversationBuilder' do
-    let(:contact_inbox) { create(:contact_inbox, contact: contact_a, inbox: whatsapp_inbox) }
+    # Contato fresco (sem atendimento existente no par inbox/contato): o
+    # interceptor de reuso não entra e o fluxo nativo de criação exercita a
+    # guarda do assignee. Reusar contact_a colidiria com conv_a do fixture.
+    let(:fresh_contact) { create(:contact, account: account) }
+    let(:contact_inbox) { create(:contact_inbox, contact: fresh_contact, inbox: whatsapp_inbox) }
 
     before do
       stub_const('ENV', ENV.to_h.merge('CONNECTA_RECEPTION_ORG_UNIT_ID' => org_a.id.to_s))

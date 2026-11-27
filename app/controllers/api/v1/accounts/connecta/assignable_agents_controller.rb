@@ -7,8 +7,10 @@ class Api::V1::Accounts::Connecta::AssignableAgentsController < Api::V1::Account
   # native assignable_agents endpoint renders (api/v1/models/agent).
   def index
     display_ids = Array(params[:conversation_ids]).reject(&:blank?).map(&:to_s).uniq
-    return render json: { error: I18n.t('errors.conversations.connecta_assignable_agents.conversation_ids_required') },
-                  status: :unprocessable_entity if display_ids.empty?
+    if display_ids.empty?
+      return render json: { error: I18n.t('errors.conversations.connecta_assignable_agents.conversation_ids_required') },
+                    status: :unprocessable_entity
+    end
 
     conversations = display_ids.map { |display_id| find_conversation!(display_id) }
     scoped = load_scopes(conversations)
@@ -54,6 +56,13 @@ class Api::V1::Accounts::Connecta::AssignableAgentsController < Api::V1::Account
     raise Connecta::Scope::Denied, :not_found if scope.nil?
 
     units = visible_units(conversation, scope)
+    @groups = sorted_groups(units, scope)
+    @grouped = @groups.size > 1
+    @conversation_org_unit_id = scope.org_unit_id
+    render template: 'api/v1/accounts/connecta/assignable_agents/index'
+  end
+
+  def sorted_groups(units, scope)
     ids_by_unit = Connecta::Scope::AssignmentPolicy.eligible_target_ids_by_unit(account: Current.account, org_units: units)
     agents_by_unit = load_agents(ids_by_unit)
     groups = units.filter_map do |unit|
@@ -61,12 +70,7 @@ class Api::V1::Accounts::Connecta::AssignableAgentsController < Api::V1::Account
 
       group_for(unit, agents_by_unit[unit.id])
     end
-    groups = groups.sort_by { |group| I18n.transliterate(group[:org_unit_name].to_s).downcase }
-
-    @grouped = groups.size > 1
-    @conversation_org_unit_id = scope.org_unit_id
-    @groups = groups
-    render template: 'api/v1/accounts/connecta/assignable_agents/index'
+    groups.sort_by { |group| I18n.transliterate(group[:org_unit_name].to_s).downcase }
   end
 
   def render_unscoped(conversation)
@@ -97,8 +101,9 @@ class Api::V1::Accounts::Connecta::AssignableAgentsController < Api::V1::Account
 
   # Base group = the conversation unit (always present); extra groups = every
   # enabled unit the actor may pull from: all units with eligible agents for a
-  # native admin, gerir-covered units for a manager. A plain atendente keeps
-  # only the conversation unit.
+  # native admin, directly granted units for a manager. A plain atendente keeps
+  # only the conversation unit. Inheritance still applies inside each group
+  # (agents with `atender` on an ancestor are eligible in the child group).
   def visible_units(conversation, scope)
     base = scope.org_unit
     extra = []
@@ -110,7 +115,7 @@ class Api::V1::Accounts::Connecta::AssignableAgentsController < Api::V1::Account
         gerir_paths = projection.granted_paths(['gerir'])
         unless gerir_paths.empty?
           extra = Connecta::Scope::OrgUnit.where(enabled: true).to_a.select do |unit|
-            unit.id != base.id && gerir_paths.any? { |path| unit.path.start_with?(path) }
+            unit.id != base.id && gerir_paths.include?(unit.path)
           end
         end
       end
@@ -136,7 +141,7 @@ class Api::V1::Accounts::Connecta::AssignableAgentsController < Api::V1::Account
   # reception senders. Mirrors AssignableAgentsController#index.
   def native_assignable_set(inbox_id)
     member_ids = Current.account.inboxes.find(inbox_id).members.pluck(:user_id)
-    (member_ids + Current.account.administrators.ids).map(&:to_i).to_set - reception_sender_ids
+    (member_ids + Current.account.administrators.ids).to_set(&:to_i) - reception_sender_ids
   end
 
   def load_sorted_agents(id_set)
@@ -145,7 +150,7 @@ class Api::V1::Accounts::Connecta::AssignableAgentsController < Api::V1::Account
   end
 
   def reception_sender_ids
-    @reception_sender_ids ||= Connecta::Runtime::Feature.reception_sender_user_ids.map(&:to_i).to_set
+    @reception_sender_ids ||= Connecta::Runtime::Feature.reception_sender_user_ids.to_set(&:to_i)
   end
 
   def sort_agents(agents)

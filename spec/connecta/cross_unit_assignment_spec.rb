@@ -16,7 +16,7 @@ Connecta::G0ProductTables.install!
 Connecta::Scope::Installer.install!
 Connecta::Transfer::Installer.install!
 
-RSpec.describe 'Connecta · atribuição com mudança de setor (cross-unit)', type: :request do # rubocop:disable RSpec/DescribeClass
+RSpec.describe 'Connecta · atribuição com mudança de setor (cross-unit)', type: :request do
   include ActiveJob::TestHelper
 
   around do |example|

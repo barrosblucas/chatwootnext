@@ -20,11 +20,7 @@ class Api::V1::Accounts::Conversations::AssignmentsController < Api::V1::Account
         resource = connecta_assign_with_unit(dest_id.to_s)
         return if performed?
       else
-        if Connecta::Scope::Projection.marked?(@conversation.inbox_id) &&
-           !Connecta::Scope::AssignmentPolicy.new(conversation: @conversation, actor: Current.user,
-                                                  target_id: params[:assignee_id], target_type: params[:assignee_type]).allowed?
-          return head :forbidden
-        end
+        return head :forbidden unless connecta_same_unit_actor_allowed?
 
         resource = Conversations::AssignmentService.new(
           conversation: @conversation,
@@ -37,6 +33,15 @@ class Api::V1::Accounts::Conversations::AssignmentsController < Api::V1::Account
     render_agent(resource)
   end
 
+  # Same-unit assign keeps the native behaviour after the sector rule check.
+  def connecta_same_unit_actor_allowed?
+    return true unless Connecta::Scope::Projection.marked?(@conversation.inbox_id)
+
+    Connecta::Scope::AssignmentPolicy.new(conversation: @conversation, actor: Current.user,
+                                          target_id: params[:assignee_id],
+                                          target_type: params[:assignee_type]).allowed?
+  end
+
   # Cross-unit assign (gestor/admin): the conversation moves to the destination
   # unit through the same TransferTransaction the transfer endpoint uses (scope
   # state, audit and whatsapp-platform propagation identical to a sector
@@ -44,24 +49,47 @@ class Api::V1::Accounts::Conversations::AssignmentsController < Api::V1::Account
   # Same unit or unresolvable destination falls back to the current behaviour;
   # rule failures answer head :forbidden like other assignment denials.
   def connecta_assign_with_unit(dest_id)
-    scope = Connecta::Scope::ConversationScope.includes(:org_unit).find_by(conversation_id: @conversation.id)
-    return head :forbidden if scope.nil? || !scope.org_unit&.enabled?
+    scope = connecta_assign_scope
+    return nil if performed?
 
+    destination = connecta_assign_destination(dest_id)
+    return nil if performed?
+    return connecta_assign_same_unit!(scope) if destination.id.to_s == scope.org_unit_id.to_s
+    return head :forbidden unless connecta_cross_unit_actor_allowed?(scope.org_unit, destination)
+
+    connecta_assign_on_destination!(scope.org_unit, destination)
+  end
+
+  # The conversation must sit in an enabled unit; otherwise there is nothing
+  # the sector rule could allow.
+  def connecta_assign_scope
+    scope = Connecta::Scope::ConversationScope.includes(:org_unit).find_by(conversation_id: @conversation.id)
+    head :forbidden if scope.nil? || !scope.org_unit&.enabled?
+    scope
+  end
+
+  # Same message/status the transfer path answers for an unknown destination
+  # (TransferTransaction.build_local_transaction): the move cannot start.
+  def connecta_assign_destination(dest_id)
     destination = connecta_destination_unit(dest_id)
-    # Same message/status the transfer path answers for an unknown destination
-    # (TransferTransaction.build_local_transaction): the move cannot start.
     if destination.nil?
       render json: { error: 'Destination unit is not synchronized' }, status: :unprocessable_entity
       return nil
     end
-    return connecta_assign_same_unit!(scope) if destination.id.to_s == scope.org_unit_id.to_s
+    destination
+  end
 
-    return head :forbidden unless connecta_cross_unit_actor_allowed?(scope.org_unit, destination)
+  # Eligibility on the destination, then move + assign.
+  def connecta_assign_on_destination!(source_unit, destination)
     return head :forbidden unless Connecta::Scope::AssignmentPolicy.target_eligible?(
       account: Current.account, org_unit: destination, target_id: params[:assignee_id]
     )
 
-    transfer = connecta_move_unit!(scope.org_unit, destination)
+    connecta_assign_after_move!(source_unit, destination)
+  end
+
+  def connecta_assign_after_move!(source_unit, destination)
+    transfer = connecta_move_unit!(source_unit, destination)
     return nil if transfer.nil?
 
     destination_conversation = Conversation.find(
@@ -74,7 +102,7 @@ class Api::V1::Accounts::Conversations::AssignmentsController < Api::V1::Account
     ).perform
   end
 
-  def connecta_assign_same_unit!(scope)
+  def connecta_assign_same_unit!(_scope)
     unless Connecta::Scope::AssignmentPolicy.new(conversation: @conversation, actor: Current.user,
                                                  target_id: params[:assignee_id],
                                                  target_type: params[:assignee_type]).allowed?

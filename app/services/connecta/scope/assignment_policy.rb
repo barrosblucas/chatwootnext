@@ -27,12 +27,16 @@ class Connecta::Scope::AssignmentPolicy
       paths_by_user = atender_paths_by_user(account)
       return by_unit if paths_by_user.nil?
 
+      fill_eligible_targets(by_unit, units, paths_by_user)
+      by_unit
+    end
+
+    def fill_eligible_targets(by_unit, units, paths_by_user)
       paths_by_user.each do |user_id, paths|
         units.each do |unit|
           by_unit[unit.id] << user_id if paths.any? { |path| unit.path.start_with?(path) }
         end
       end
-      by_unit
     end
 
     private
@@ -42,8 +46,8 @@ class Connecta::Scope::AssignmentPolicy
     def atender_paths_by_user(account)
       return nil unless heartbeat_usable?
 
-      verified_ids = Connecta::Scope::UserAuthEpoch.where(user_id: account.users.select(:id),
-                                                           revoked_locally_at: nil).pluck(:user_id)
+      epoch_scope = Connecta::Scope::UserAuthEpoch.where(user_id: account.users.select(:id))
+      verified_ids = epoch_scope.where(revoked_locally_at: nil).pluck(:user_id)
       return {} if verified_ids.empty?
 
       unit_table = Connecta::Scope::OrgUnit.quoted_table_name

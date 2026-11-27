@@ -10,7 +10,7 @@ require_relative 'support/g0_scope_fixture'
 Connecta::G0ScopeSchema.ensure!
 Connecta::Scope::Installer.install!
 
-RSpec.describe 'Connecta · assignees por departamento (endpoint)', type: :request do # rubocop:disable RSpec/DescribeClass
+RSpec.describe 'Connecta · assignees por departamento (endpoint)', type: :request do
   include_context 'with connecta g0 scope fixture'
 
   let(:endpoint_path) { "/api/v1/accounts/#{account.id}/connecta/assignable_agents" }
@@ -61,8 +61,13 @@ RSpec.describe 'Connecta · assignees por departamento (endpoint)', type: :reque
       expect(group['org_unit_name']).to eq('Setor A')
       names = group['agents'].map { |agent| agent['name'] }
       expect(names).to eq(['Agente A', 'Álvaro Nunes', 'beatriz luz', 'Diana Dupla'])
-      agent_keys = group['agents'].first.keys
-      expect(agent_keys).to include('id', 'name', 'email', 'role', 'availability_status')
+    end
+
+    it 'expõe o shape do agente da lista nativa (AC1)' do
+      body = get_agents(agent_a, conv_a)
+
+      expect(response).to have_http_status(:ok)
+      expect(body['groups'].first['agents'].first.keys).to include('id', 'name', 'email', 'role', 'availability_status')
     end
 
     it 'lista do setor exclui recepção e admins sem grant (AC4)' do
@@ -110,7 +115,7 @@ RSpec.describe 'Connecta · assignees por departamento (endpoint)', type: :reque
 
     it 'sem grant de leitura a conversa não é revelada (404)' do
       get endpoint_path, params: { conversation_ids: [conv_a.display_id] },
-                          headers: member_without_grant.create_new_auth_token
+                         headers: member_without_grant.create_new_auth_token
 
       expect(response).to have_http_status(:not_found)
     end
