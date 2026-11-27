@@ -47,3 +47,8 @@
 - Fix A2 (`gate.rb`/`projection.rb`): `decide` nega sem usuário sem gravar auditoria (user_id NOT NULL) e loga `connecta_scope_deny_no_user`; `verified?` false e `granted_paths` vazio para nil; `assignee_allowed?` com `&.`. Sem mudança para usuário não-nil.
 - Specs: `spec/connecta/builder_interceptor_nil_user_spec.rb` (5 exemplos: reuso público duplo sem 500/RecordNotUnique; create sem escopo; Gate nil nega leitura/escrita; sem linha de auditoria; Projection nil nega).
 - Aguardando próximo deploy do Chatwoot; não mergeado na main para não desparear de produção.
+
+## Fix round 1 (CI run 46056011284: lint 1 ofensa + 4 falhas rspec)
+- Lint: `Metrics/PerceivedComplexity [9/8]` em `find_reusable_conversation` (o ramo nil-user somou +1): extraído `find_reusable_with_user`, removido o `rubocop:disable` (ambos os métodos ficam ≤4; sem mudança de comportamento).
+- `Projection#granted_paths` com nil ainda quebrava: o `ProjectionTablesHook` (prepend do `G0Adapter`, `g0_adapter.rb:57-65`) intercepta antes do guard e chama `user.id`. Guard `return [].freeze if user.nil?` adicionado no hook (support file; sem mudança para usuário não-nil). Via Gate o hook nunca é alcançado com nil (o `decide` nega antes), mas a chamada direta `Projection.new(nil).granted_paths` do spec exigia o guard.
+- 3 falhas em `scope_http_filter_spec.rb` (181, 212, 288) são PRÉ-EXISTENTES na base, não regressão: `f024375dd` ("Restrict Connecta conversations to assignees and unit managers", na main desde 26/11) adicionou `assignee_allowed?` ao Gate sem atualizar esse spec (o spec parou em `53d67367a`). Caminhos não-nil do fix são idênticos (`&.`, guards só disparam com nil, `resolve` mesma consulta e mesmos Denied). Baseline na main com a mesma seleção de specs despachado para confirmar.

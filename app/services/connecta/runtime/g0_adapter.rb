@@ -55,6 +55,8 @@ class Connecta::Runtime::G0Adapter
     end
 
     def granted_paths(permissions)
+      return [].freeze if user.nil?
+
       @granted_paths ||= {}
       key = Array(permissions).map(&:to_s).sort.freeze
       @granted_paths[key] ||= Connecta::Scope::UserGrant.joins(:org_unit)

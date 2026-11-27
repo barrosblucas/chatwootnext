@@ -89,15 +89,17 @@ module Connecta::Scope::ConversationReuse
 
     # Lock do par + lookup read-only sob o lock; nil = segue fluxo nativo.
     # Com mensagem no reuso sem write?: Denied 403 antes de qualquer criação.
-    def find_reusable_conversation # rubocop:disable Metrics/CyclomaticComplexity
+    def find_reusable_conversation
       ci = @contact_inbox
       inbox = ci&.inbox
       return nil unless ci && inbox && Connecta::Scope::Projection.marked?(inbox.id)
 
       Connecta::Scope::ConversationReuse.lock!(inbox_id: inbox.id, contact_id: ci.contact_id)
-      return find_reusable_without_user(inbox, ci) if Current.user.nil?
+      Current.user.nil? ? find_reusable_without_user(inbox, ci) : find_reusable_with_user(inbox, ci)
+    end
 
-      existing = Connecta::Scope::ConversationReuse.resolve(user: Current.user, inbox: inbox, contact: ci.contact)
+    def find_reusable_with_user(inbox, contact_inbox)
+      existing = Connecta::Scope::ConversationReuse.resolve(user: Current.user, inbox: inbox, contact: contact_inbox.contact)
       return nil if existing.nil?
       return existing if params[:message].blank?
       return existing if Connecta::Scope::ConversationReuse.writable_by?(Current.user, existing)
