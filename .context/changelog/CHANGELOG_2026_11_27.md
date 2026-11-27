@@ -78,3 +78,7 @@
 
 ## Spec transfer_activation defasado alinhado (2026-11-27, sem mudança de código)
 - `spec/connecta/transfer_activation_spec.rb:173` (`agente de A não cria mensagem na origem`): `not_found` → `forbidden`. Expectativa defasada desde `f024375dd`; escrita (POST messages) em conversa do próprio setor em estado não legível (`transferred_out`) responde 403, leitura segue 404 — esclarecimento 2026-11-27 da decisão 002. GETs mantidos 404; sem mudança de código, sem deploy.
+
+## Build EE passa a sair da main, sem re-pinar (2026-11-27)
+- Workflow `publish_ee_github_docker.yml`: EXPECTED_BRANCH → `main` (guard só aceita `main`, sem input livre de ref); concurrency `ee-build-main`; PINNED_BASE → `a34d52517497c03d1b0015d0051f7b1849e3b672` (produção 2026-11-27; main só anda para frente, então nunca precisa re-pinar salvo reescrita de história); build verifica `HEAD == DISPATCH_SHA`, `DISPATCH_SHA == origin/main` (só o topo atual builda), ancestralidade de PINNED_BASE, overlay `enterprise/`, `/app/.git_sha`, tag única `ee-src-<SHA>`, snapshot/recheck de `latest-ee` e `fix-producao-20261106-ee`, digest no summary. Branch `ci/ee-build-from-main` a partir de `323047cc3`.
+- Husky: worktree fresca vem sem `.husky/_/` (loader `husky.sh`); copiado do checkout da main — sem `--no-verify`.

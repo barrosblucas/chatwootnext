@@ -1,11 +1,15 @@
-name: Publish Chatwoot EE isolated build (fix/builder-nil-user)
+name: Publish Chatwoot EE isolated build (main)
 
-# ISOLATED one-shot EE image build for branch fix/builder-nil-user.
-# Manual dispatch ONLY, ONLY from branch fix/builder-nil-user. This
-# branch is never merged to main. The immutable source is the dispatched run's
-# github.sha: every job validates the checkout equals that SHA and that it
-# descends from the deployed base
-# 0a84d08b17a771465af36d6d027b0c5cd0e094b8.
+# ISOLATED one-shot EE image build from the current tip of main.
+# Manual dispatch ONLY, ONLY from branch main (`gh workflow run
+# publish_ee_github_docker.yml --ref main`). The immutable source is the
+# dispatched run's github.sha: every job validates the checkout equals that
+# SHA, that it IS the current origin/main tip, and that it descends from the
+# deployed base
+# a34d52517497c03d1b0015d0051f7b1849e3b672.
+# NOTE: main only moves forward, so PINNED_BASE never needs re-pinning for a
+# normal deploy — it changes ONLY if history is rewritten (then set it to the
+# rewritten production SHA deliberately).
 # Publishes ONLY one tag ee-src-<full-sha> derived from the dispatch SHA.
 # latest-ee, fix-producao-20261106-ee and any CE tags are never written by this
 # workflow (the merge step names a single -t, and pre/post checks fail the run
@@ -23,26 +27,28 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ee-build-fix-builder-nil-user
+  group: ee-build-main
   cancel-in-progress: false
 
 env:
   GITHUB_REPO: ghcr.io/${{ github.repository }}
-  EXPECTED_BRANCH: fix/builder-nil-user
-  PINNED_BASE: 0a84d08b17a771465af36d6d027b0c5cd0e094b8
+  EXPECTED_BRANCH: main
+  # Production SHA 2026-11-27 (deploy a34d525). Main only moves forward, so
+  # this never needs re-pinning unless history is rewritten.
+  PINNED_BASE: a34d52517497c03d1b0015d0051f7b1849e3b672
 
 jobs:
   guard:
     runs-on: ubuntu-latest
     steps:
-      - name: Allow only manual dispatch on the allowed branches
+      - name: Allow only manual dispatch on main
         env:
           REF_NAME: ${{ github.ref_name }}
           EVENT_NAME: ${{ github.event_name }}
           EXPECTED: ${{ env.EXPECTED_BRANCH }}
         run: |
-          if [ "$REF_NAME" != "$EXPECTED" ] && [ "$REF_NAME" != "main" ]; then
-            echo "Refusing: this workflow runs only on '$EXPECTED' or 'main' (got '$REF_NAME')." >&2
+          if [ "$REF_NAME" != "$EXPECTED" ]; then
+            echo "Refusing: this workflow runs only on '$EXPECTED' (got '$REF_NAME')." >&2
             exit 1
           fi
           if [ "$EVENT_NAME" != "workflow_dispatch" ]; then
@@ -180,6 +186,14 @@ jobs:
           HEAD_SHA="$(git rev-parse HEAD)"
           if [ "$HEAD_SHA" != "$DISPATCH_SHA" ]; then
             echo "Refusing: checked out $HEAD_SHA, dispatch source is $DISPATCH_SHA (branch moved?)." >&2
+            exit 1
+          fi
+          # Build only the current tip of main: the dispatch SHA must equal
+          # origin/main HEAD, so a stale dispatch can never build.
+          git fetch origin main --quiet
+          MAIN_SHA="$(git rev-parse origin/main)"
+          if [ "$DISPATCH_SHA" != "$MAIN_SHA" ]; then
+            echo "Refusing: dispatch source $DISPATCH_SHA is not the current origin/main tip $MAIN_SHA." >&2
             exit 1
           fi
           if ! git merge-base --is-ancestor "$BASE_SHA" "$HEAD_SHA"; then
@@ -440,7 +454,7 @@ jobs:
             echo "- source SHA (app code at dispatch): $SOURCE_SHA"
             echo "- workflow SHA (branch $BRANCH dispatch commit): $DISPATCH_SHA"
             echo "- source pinned to dispatch SHA; branch moves cannot change the build"
-            echo "- deployed base ancestor: 0a84d08b17a771465af36d6d027b0c5cd0e094b8"
+            echo "- deployed base ancestor: a34d52517497c03d1b0015d0051f7b1849e3b672 (production 2026-11-27)"
             echo "- image reference: ghcr.io/${{ github.repository }}:$EE_TAG"
             echo "- final index digest: ${{ steps.create.outputs.index-digest }}"
             echo "- deployment identity (digest, tags are mutable): ghcr.io/${{ github.repository }}@${{ steps.create.outputs.index-digest }}"
