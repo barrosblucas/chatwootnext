@@ -75,3 +75,6 @@
 - Funcional (conversa 51, Farmácia Municipal): ator 15 → 1 grupo, ator 8 → 14 grupos, mesma ordem de agentes do rollout a21f6ac; nil-user path presente (`open_conversation`/`open_scope`, `find_reusable_without_user`, `deny_without_user` privado no Gate). Rollback não necessário.
 - Pós-deploy: main fast-forward para `origin/fix/builder-nil-user` (`a6012f439`, só docs além de `a34d525`); produção `a34d525` é ancestral da main.
 - Nota: `publish_ee_github_docker.yml` segue pinado em `fix/builder-nil-user`/PINNED_BASE `0a84d08` — próximo build EE precisa re-pinar.
+
+## Spec transfer_activation defasado alinhado (2026-11-27, sem mudança de código)
+- `spec/connecta/transfer_activation_spec.rb:173` (`agente de A não cria mensagem na origem`): `not_found` → `forbidden`. Expectativa defasada desde `f024375dd`; escrita (POST messages) em conversa do próprio setor em estado não legível (`transferred_out`) responde 403, leitura segue 404 — esclarecimento 2026-11-27 da decisão 002. GETs mantidos 404; sem mudança de código, sem deploy.

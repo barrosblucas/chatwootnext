@@ -170,7 +170,7 @@ RSpec.describe 'Connecta G0 · barreira de ativação da transferência (T0.7a)'
       headers = agent_a.create_new_auth_token
 
       expect { post path, params: { content: 'tentativa' }, headers: headers }.not_to change(Message, :count)
-      expect(response).to have_http_status(:not_found)
+      expect(response).to have_http_status(:forbidden)
     end
 
     it 'toggle_status para open na origem é negado ao agente de A e ao admin nominal' do
